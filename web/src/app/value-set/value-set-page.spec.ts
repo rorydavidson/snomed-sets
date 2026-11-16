@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { Concept } from '../core/value-set-api';
 import { ValueSetPage } from './value-set-page';
 
@@ -88,5 +88,54 @@ describe('ValueSetPage', () => {
 
     expect(page.querySelector('pre')?.textContent).toContain('<< 195967001 |Asthma|');
     expect(page.querySelector('[role="alert"]')?.textContent).toContain('Snowstorm could not be reached');
+  });
+
+  function button(page: HTMLElement, label: string): HTMLButtonElement | undefined {
+    return Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.includes(label));
+  }
+
+  const SET = {
+    id: 7,
+    name: 'Asthma diagnoses',
+    description: 'All asthma disorders.',
+    ecl: '<< 195967001 |Asthma|',
+    branch: 'MAIN',
+    status: 'DRAFT',
+    visibility: 'PRIVATE',
+    ownerName: 'Me',
+    ownedByMe: true,
+    updatedAt: '2026-11-16T12:00:00Z',
+  };
+
+  it('lets the owner delete only after confirming', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const fixture = TestBed.createComponent(ValueSetPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets/7').flush(SET);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush({ items: [], total: 0, offset: 0, limit: 50 });
+    await fixture.whenStable();
+
+    expect(page.querySelector('a[href="/value-sets/7/edit"]')).not.toBeNull();
+    button(page, 'Delete')?.click();
+    await fixture.whenStable();
+    http.expectNone({ method: 'DELETE', url: '/api/value-sets/7' });
+
+    button(page, 'Yes, delete')?.click();
+    http.expectOne({ method: 'DELETE', url: '/api/value-sets/7' }).flush(null, { status: 204, statusText: 'No Content' });
+
+    expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  it('offers no edit or delete on a value set owned by someone else', async () => {
+    const fixture = TestBed.createComponent(ValueSetPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets/7').flush({ ...SET, ownedByMe: false });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush({ items: [], total: 0, offset: 0, limit: 50 });
+    await fixture.whenStable();
+
+    expect(page.querySelector('a[href="/value-sets/7/edit"]')).toBeNull();
+    expect(button(page, 'Delete')).toBeUndefined();
   });
 });

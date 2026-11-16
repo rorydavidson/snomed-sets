@@ -1,5 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ExpansionPage, ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 
 const PAGE_SIZE = 50;
@@ -25,11 +25,36 @@ const PAGE_SIZE = 50;
         </div>
         <p class="lead">{{ set.description }}</p>
 
+        @if (set.ownedByMe) {
+          @if (deleteError(); as message) {
+            <div class="error-panel" role="alert">
+              <h2>The value set could not be deleted</h2>
+              <p>{{ message }}</p>
+            </div>
+          }
+          <div class="actions">
+            @if (confirmingDelete()) {
+              <span>Delete this value set? This cannot be undone.</span>
+              <button type="button" class="button button-danger" [disabled]="deleting()" (click)="delete()">
+                Yes, delete
+              </button>
+              <button type="button" class="button button-secondary" (click)="confirmingDelete.set(false)">
+                Keep it
+              </button>
+            } @else {
+              <a class="button button-secondary" [routerLink]="['/value-sets', set.id, 'edit']">Edit</a>
+              <button type="button" class="button button-secondary" (click)="confirmingDelete.set(true)">
+                Delete
+              </button>
+            }
+          </div>
+        }
+
         <div class="columns">
           <section aria-labelledby="definition-heading">
             <h2 id="definition-heading" class="overline">Definition</h2>
             <pre class="ecl ecl-block">{{ set.ecl }}</pre>
-            <p class="meta">Evaluated against {{ set.branch }}. Editing arrives in a later release.</p>
+            <p class="meta">Evaluated against {{ set.branch }}.</p>
           </section>
 
           <section aria-labelledby="expansion-heading" class="wide">
@@ -85,6 +110,7 @@ const PAGE_SIZE = 50;
 })
 export class ValueSetPage implements OnInit {
   private readonly api = inject(ValueSetApi);
+  private readonly router = inject(Router);
   private readonly id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
 
   protected readonly valueSet = signal<ValueSet | null>(null);
@@ -92,6 +118,9 @@ export class ValueSetPage implements OnInit {
   protected readonly expansion = signal<ExpansionPage | null>(null);
   protected readonly expansionError = signal<string | null>(null);
   protected readonly offset = signal(0);
+  protected readonly confirmingDelete = signal(false);
+  protected readonly deleting = signal(false);
+  protected readonly deleteError = signal<string | null>(null);
 
   protected readonly hasPrevious = computed(() => this.offset() > 0);
   protected readonly hasNext = computed(() => {
@@ -123,6 +152,19 @@ export class ValueSetPage implements OnInit {
     this.api.expansion(this.id, offset, PAGE_SIZE).subscribe({
       next: (page) => this.expansion.set(page),
       error: (error: unknown) => this.expansionError.set(describeError(error)),
+    });
+  }
+
+  protected delete(): void {
+    this.deleting.set(true);
+    this.deleteError.set(null);
+    this.api.delete(this.id).subscribe({
+      next: () => void this.router.navigate(['/']),
+      error: (error: unknown) => {
+        this.deleting.set(false);
+        this.confirmingDelete.set(false);
+        this.deleteError.set(describeError(error));
+      },
     });
   }
 

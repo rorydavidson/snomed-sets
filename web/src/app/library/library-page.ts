@@ -11,6 +11,9 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
         <p class="overline">Community library</p>
         <h1 class="display">shared value sets</h1>
         <p class="lead">Sets shared with the community, and your own.</p>
+        <div class="actions">
+          <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
+        </div>
       </div>
     </section>
 

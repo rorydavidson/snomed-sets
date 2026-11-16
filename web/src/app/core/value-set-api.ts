@@ -15,6 +15,9 @@ export interface ValueSet {
   updatedAt: string;
 }
 
+/** The fields a person can set when creating or editing a value set. */
+export type ValueSetDraft = Pick<ValueSet, 'name' | 'description' | 'ecl' | 'branch' | 'visibility'>;
+
 export interface Concept {
   conceptId: string;
   preferredTerm: string | null;
@@ -42,6 +45,23 @@ export class ValueSetApi {
 
   expansion(id: number, offset: number, limit: number): Observable<ExpansionPage> {
     return this.http.get<ExpansionPage>(`/api/value-sets/${id}/expansion`, { params: { offset, limit } });
+  }
+
+  create(draft: ValueSetDraft): Observable<ValueSet> {
+    return this.http.post<ValueSet>('/api/value-sets', draft);
+  }
+
+  update(id: number, draft: ValueSetDraft): Observable<ValueSet> {
+    return this.http.put<ValueSet>(`/api/value-sets/${id}`, draft);
+  }
+
+  delete(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/value-sets/${id}`);
+  }
+
+  /** Expands a definition that has not been saved yet. */
+  preview(ecl: string, branch: string, limit: number): Observable<ExpansionPage> {
+    return this.http.get<ExpansionPage>('/api/ecl/expansion', { params: { ecl, branch, limit } });
   }
 }
 

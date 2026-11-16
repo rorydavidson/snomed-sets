@@ -177,15 +177,16 @@ describe('ValueSetPage', () => {
     expect(page.textContent).toContain('Showing 1 to 1 of 121 concepts');
   });
 
-  it('opens the details of a concept when its term is clicked, and follows a parent', async () => {
+  it('opens a concept as a map of its relationships and moves along them', async () => {
     open(SET);
     http
       .expectOne('/api/value-sets/7/expansion?offset=0&limit=50')
-      .flush({ items: [{ conceptId: '233678006', preferredTerm: 'Childhood asthma', fullySpecifiedName: 'Childhood asthma (disorder)' }], total: 1, offset: 0, limit: 50 });
+      .flush({ items: [{ conceptId: '233678006', preferredTerm: 'Childhood asthma', fullySpecifiedName: 'Childhood asthma (disorder)', language: 'en' }], total: 1, offset: 0, limit: 50 });
     await fixture.whenStable();
 
     button(page, 'Childhood asthma')?.click();
     await fixture.whenStable();
+    http.expectOne('/api/concepts/233678006/children?branch=MAIN').flush({ items: [], total: 0 });
     http.expectOne('/api/concepts/233678006?branch=MAIN').flush({
       conceptId: '233678006',
       fullySpecifiedName: 'Childhood asthma (disorder)',
@@ -194,22 +195,64 @@ describe('ValueSetPage', () => {
       definitionStatus: 'PRIMITIVE',
       moduleId: '900000000000207008',
       effectiveTime: '20020131',
-      descriptions: [{ term: 'Childhood asthma', type: 'SYNONYM', language: 'en', preferred: true }],
-      parents: [{ typeTerm: 'Is a', targetId: '195967001', targetTerm: 'Asthma', group: 0 }],
-      attributes: [{ typeTerm: 'Occurrence', targetId: '255398004', targetTerm: 'Childhood', group: 1 }],
+      descriptions: [{ term: 'Childhood asthma', type: 'SYNONYM', language: 'en', preferredIn: ['en-GB', 'en-US'] }],
+      parents: [{ typeId: '116680003', typeTerm: 'Is a', targetId: '195967001', targetTerm: 'Asthma', group: 0 }],
+      attributes: [
+        { typeId: '246454002', typeTerm: 'Occurrence', targetId: '255398004', targetTerm: 'Childhood', group: 1 },
+        { typeId: '363698007', typeTerm: 'Finding site', targetId: '89187006', targetTerm: 'Airway structure', group: 2 },
+      ],
     });
     await fixture.whenStable();
 
     const dialog = page.querySelector('dialog')!;
-    expect(dialog.textContent).toContain('Preferred synonym');
-    expect(dialog.textContent).toContain('Occurrence =');
-    expect(dialog.textContent).toContain('Group 1');
+    expect(dialog.querySelector('.cv-tag')?.textContent).toBe('disorder');
+    expect(dialog.textContent).toContain('Synonym · preferred in en-GB, en-US');
+    expect(Array.from(dialog.querySelectorAll('.cv-group-label')).map((label) => label.textContent)).toEqual(['Group 1', 'Group 2']);
+    expect(dialog.textContent).toContain('Has no kinds of its own');
+    expect(dialog.querySelector('.cv-expression')?.textContent).toBe(
+      [
+        '<<< 195967001 |Asthma| :',
+        '    { 246454002 |Occurrence| = 255398004 |Childhood| },',
+        '    { 363698007 |Finding site| = 89187006 |Airway structure| }',
+      ].join('\n'),
+    );
 
-    Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Asthma')?.click();
+    // Follow the parent: the map moves onto Asthma and the trail remembers where we came from.
+    Array.from(dialog.querySelectorAll<HTMLButtonElement>('.cv-above .cv-node'))[0].click();
     await fixture.whenStable();
-    http.expectOne('/api/concepts/195967001?branch=MAIN').flush({ detail: 'Concept 195967001 was not found in this code system.' }, { status: 400, statusText: 'Bad Request' });
+    http.expectOne('/api/concepts/195967001/children?branch=MAIN').flush({
+      items: Array.from({ length: 14 }, (_, i) => ({ conceptId: String(1000000 + i), preferredTerm: `Kind ${i}`, fullySpecifiedName: null })),
+      total: 27,
+    });
+    http.expectOne('/api/concepts/195967001?branch=MAIN').flush({
+      conceptId: '195967001',
+      fullySpecifiedName: 'Asthma (disorder)',
+      preferredTerm: 'Asthma',
+      active: true,
+      definitionStatus: 'FULLY_DEFINED',
+      moduleId: '900000000000207008',
+      effectiveTime: '20020131',
+      descriptions: [],
+      parents: [],
+      attributes: [],
+    });
+    await fixture.whenStable();
+
+    expect(dialog.querySelector('h2')?.textContent).toBe('Asthma');
+    expect(dialog.querySelector('.cv-focus')?.classList.contains('cv-defined')).toBe(true);
+    expect(dialog.querySelectorAll('.cv-below .cv-node')).toHaveLength(12);
+    expect(dialog.textContent).toContain('27 kinds of this');
+    expect(dialog.querySelector('.cv-step')?.textContent).toBe('Childhood asthma');
+
+    dialog.querySelector<HTMLButtonElement>('.cv-step')!.click();
+    await fixture.whenStable();
+    http.expectOne('/api/concepts/233678006/children?branch=MAIN').flush({ items: [], total: 0 });
+    http
+      .expectOne('/api/concepts/233678006?branch=MAIN')
+      .flush({ detail: 'Concept 233678006 was not found in this code system.' }, { status: 400, statusText: 'Bad Request' });
     await fixture.whenStable();
     expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('was not found');
+    expect(dialog.querySelector('.cv-step')).toBeNull();
   });
 
   it('offers a download only for a published set that is shared with the community', async () => {

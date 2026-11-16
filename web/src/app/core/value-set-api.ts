@@ -63,6 +63,7 @@ export interface Concept {
 }
 
 export interface ConceptRelationship {
+  typeId: string;
   typeTerm: string | null;
   targetId: string;
   targetTerm: string | null;
@@ -78,7 +79,8 @@ export interface ConceptDetails {
   definitionStatus: string | null;
   moduleId: string | null;
   effectiveTime: string | null;
-  descriptions: { term: string; type: string; language: string; preferred: boolean }[];
+  /** preferredIn lists the dialects in which the term is the preferred one, for example en-US. */
+  descriptions: { term: string; type: string; language: string; preferredIn: string[] }[];
   parents: ConceptRelationship[];
   attributes: ConceptRelationship[];
 }

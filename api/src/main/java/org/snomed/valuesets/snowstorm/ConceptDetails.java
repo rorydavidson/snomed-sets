@@ -13,10 +13,13 @@ public record ConceptDetails(String conceptId, String fullySpecifiedName, String
 		String definitionStatus, String moduleId, String effectiveTime, List<Description> descriptions,
 		List<Relationship> parents, List<Relationship> attributes) {
 
-	/** @param preferred true when the term is preferred in at least one language reference set */
-	public record Description(String term, String type, String language, boolean preferred) {
+	/**
+	 * @param preferredIn the dialects in which this is the preferred term, for example en-US.
+	 *        A language reference set this application has no name for is given by its identifier.
+	 */
+	public record Description(String term, String type, String language, List<String> preferredIn) {
 	}
 
-	public record Relationship(String typeTerm, String targetId, String targetTerm, int group) {
+	public record Relationship(String typeId, String typeTerm, String targetId, String targetTerm, int group) {
 	}
 }

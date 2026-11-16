@@ -88,6 +88,8 @@ class LocalLoginTests {
 		MockHttpSession session = signIn();
 		org.mockito.BDDMockito.given(snowstorm.codeSystems()).willReturn(java.util.List.of(
 				new org.snomed.valuesets.snowstorm.CodeSystem("SNOMEDCT", "International Edition", "MAIN", null)));
+		org.mockito.BDDMockito.given(snowstorm.expand("195967001", "MAIN", 0, 100)).willReturn(
+				new org.snomed.valuesets.snowstorm.ExpansionPage(java.util.List.of(), 0, 0, 100));
 
 		mvc.perform(get("/api/me").session(session))
 				.andExpect(status().isOk())

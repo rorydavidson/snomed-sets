@@ -3,6 +3,8 @@ package org.snomed.valuesets;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
@@ -70,6 +72,12 @@ class ValueSetApiTests {
 			{"name": "Childhood asthma", "description": "Asthma with onset in childhood.",
 			 "ecl": "<< 233678006", "branch": "MAIN", "visibility": "PRIVATE"}
 			""";
+
+	@BeforeEach
+	void snowstormFindsNothingUnlessATestSaysOtherwise() {
+		given(snowstorm.expand(anyString(), anyString(), anyInt(), anyInt()))
+				.willReturn(new ExpansionPage(List.of(), 0, 0, 100));
+	}
 
 	@BeforeEach
 	void snowstormHasTwoCodeSystems() {
@@ -329,6 +337,28 @@ class ValueSetApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$", hasSize(2)))
 				.andExpect(jsonPath("$[1].shortName").value("SNOMEDCT-BE"));
+	}
+
+	@Test
+	void savingWritesTheTermAfterIdentifiersTypedWithoutOne() throws Exception {
+		given(snowstorm.expand("233678006", "MAIN", 0, 100))
+				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA), 1, 0, 100));
+
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.ecl").value("<< 233678006 |Childhood asthma|"));
+	}
+
+	@Test
+	void savingStillWorksWhenSnowstormCannotSupplyTheTerms() throws Exception {
+		given(snowstorm.expand("233678006", "MAIN", 0, 100))
+				.willThrow(new SnowstormException("Snowstorm could not be reached.", false, null));
+
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.ecl").value("<< 233678006"));
 	}
 
 	@Test

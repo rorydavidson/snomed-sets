@@ -70,6 +70,7 @@ type Preview =
                   @if (showError('ecl')) {
                     <p class="field-error">Enter an ECL expression, for example &lt;&lt; 195967001 |Asthma|.</p>
                   }
+                  <p class="meta">Identifiers typed without a term get their term added when you save.</p>
                 </div>
               }
 

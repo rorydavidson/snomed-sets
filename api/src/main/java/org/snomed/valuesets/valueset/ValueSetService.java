@@ -2,6 +2,7 @@ package org.snomed.valuesets.valueset;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -14,6 +15,7 @@ import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
+import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.snomed.valuesets.user.CurrentUser;
 import org.snomed.valuesets.valueset.ValueSetView.VersionView;
 import org.springframework.http.HttpStatus;
@@ -32,6 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ValueSetService {
 
 	private static final int SNOWSTORM_BATCH_SIZE = 100;
+	private static final int MAX_ECL_LENGTH = 4000;
 	private static final int PUBLISH_PAGE_SIZE = 1000;
 	/** Snowstorm does not page past 10,000 results without a different paging method. */
 	static final int MAX_PUBLISHED_CONCEPTS = 10_000;
@@ -74,10 +77,11 @@ public class ValueSetService {
 		boolean manual = definition.type() == ValueSet.DefinitionType.MANUAL;
 		String branch = branchOf(definition.codeSystem());
 		List<Concept> concepts = manual ? resolveConcepts(definition, branch, List.of()) : List.of();
+		String ecl = manual ? "" : withTerms(definition.ecl(), branch);
 
 		ValueSet created = transaction.execute(status -> {
 			ValueSet valueSet = valueSets.save(new ValueSet(definition.type(), definition.codeSystem(), branch,
-					definition.name(), definition.description(), manual ? "" : definition.ecl(),
+					definition.name(), definition.description(), ecl,
 					definition.visibility(), user.subject(), user.name()));
 			saveWorkingList(valueSet, concepts);
 			return valueSet;
@@ -100,9 +104,10 @@ public class ValueSetService {
 				? resolveConcepts(definition, valueSet.getBranch(), workingList(valueSet))
 				: List.of();
 
+		String ecl = valueSet.isManual() ? "" : withTerms(definition.ecl(), valueSet.getBranch());
+
 		transaction.executeWithoutResult(status -> {
-			valueSet.update(definition.name(), definition.description(), valueSet.isManual() ? "" : definition.ecl(),
-					definition.visibility());
+			valueSet.update(definition.name(), definition.description(), ecl, definition.visibility());
 			valueSets.save(valueSet);
 			if (valueSet.isManual()) {
 				members.deleteWorkingList(valueSet.getId());
@@ -247,6 +252,28 @@ public class ValueSetService {
 					.equals(members.findConceptIds(valueSet.getId(), version.getVersionNumber()));
 		}
 		return !version.getEcl().equals(valueSet.getEcl()) || !version.getBranch().equals(valueSet.getBranch());
+	}
+
+	/**
+	 * Writes the preferred term after each concept identifier that was typed without one,
+	 * so the stored expression can be read without looking the identifiers up.
+	 */
+	private String withTerms(String ecl, String branch) {
+		List<String> conceptIds = List.copyOf(EclTerms.conceptIdsWithoutTerm(ecl));
+		Map<String, String> terms = new HashMap<>();
+		try {
+			for (int start = 0; start < conceptIds.size(); start += SNOWSTORM_BATCH_SIZE) {
+				List<String> batch = conceptIds.subList(start, Math.min(start + SNOWSTORM_BATCH_SIZE, conceptIds.size()));
+				snowstorm.expand(String.join(" OR ", batch), branch, 0, SNOWSTORM_BATCH_SIZE).items()
+						.forEach(concept -> terms.put(concept.conceptId(), concept.preferredTerm()));
+			}
+		}
+		catch (SnowstormException e) {
+			// Saving a draft must not depend on Snowstorm. The terms are added on a later save.
+			return ecl;
+		}
+		String withTerms = EclTerms.addTerms(ecl, terms);
+		return withTerms.length() <= MAX_ECL_LENGTH ? withTerms : ecl;
 	}
 
 	/** The branch a code system's content is on, according to Snowstorm. */

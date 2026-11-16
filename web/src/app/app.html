@@ -1,0 +1,43 @@
+<header class="site-header">
+  <a class="brand" routerLink="/">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>SNOMED CT <span class="brand-light">value sets</span></span>
+  </a>
+  @if (session.state(); as state) {
+    @if (state.status === 'signedIn') {
+      <nav aria-label="Primary">
+        <a routerLink="/">Library</a>
+      </nav>
+      <span class="who">{{ state.name }}</span>
+      <button type="button" class="button button-on-dark" (click)="session.signOut()">Sign out</button>
+    }
+  }
+</header>
+
+@switch (session.state().status) {
+  @case ('loading') {
+    <main class="page"><p class="muted" role="status">Loading…</p></main>
+  }
+  @case ('signedOut') {
+    <main class="page sign-in">
+      <p class="overline">Community library</p>
+      <h1 class="display">shared value sets</h1>
+      <p class="lead">
+        Find, build and share SNOMED CT value sets with the community. Sign in with your SNOMED
+        International account to continue.
+      </p>
+      <a class="button button-primary" [href]="signInUrl">Sign in</a>
+    </main>
+  }
+  @case ('error') {
+    <main class="page">
+      <div class="error-panel" role="alert">
+        <h1>We could not reach the service</h1>
+        <p>Check your connection and reload the page.</p>
+      </div>
+    </main>
+  }
+  @case ('signedIn') {
+    <router-outlet />
+  }
+}

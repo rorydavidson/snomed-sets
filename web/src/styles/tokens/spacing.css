@@ -1,0 +1,60 @@
+/* ============================================================
+   SNOMED International — Spacing, radii, shadow, layout tokens
+   The brand is squared & confident (the logo is a hard square),
+   so radii stay small and shadows stay restrained.
+   ============================================================ */
+:root {
+  /* Spacing — 4px base unit */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Radii — squared brand: tight corners */
+  --radius-none: 0px;
+  --radius-sm:  2px;
+  --radius-md:  4px;
+  --radius-lg:  8px;
+  --radius-xl:  12px;
+  --radius-pill: 999px;
+
+  /* Borders */
+  --border-width: 1px;        /* @kind other */
+  --border-width-strong: 2px; /* @kind other */
+
+  /* Shadows — soft, cool, restrained */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 32, 0.06);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 32, 0.08), 0 1px 2px rgba(16, 24, 32, 0.04);
+  --shadow-md: 0 4px 12px rgba(16, 24, 32, 0.10);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 32, 0.14);
+  --shadow-focus: 0 0 0 3px var(--focus-ring);
+
+  /* Layout */
+  --container-sm: 640px;
+  --container-md: 960px;
+  --container-lg: 1200px;
+  --container-xl: 1320px;
+
+  /* Motion — calm, professional; no bounce */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);        /* @kind other */
+  --dur-fast: 120ms; /* @kind other */
+  --dur-base: 200ms; /* @kind other */
+  --dur-slow: 320ms; /* @kind other */
+
+  /* Z-index */
+  --z-sticky: 100;   /* @kind other */
+  --z-overlay: 1000; /* @kind other */
+  --z-modal: 1100;   /* @kind other */
+  --z-toast: 1200;   /* @kind other */
+  --z-tooltip: 1300; /* @kind other */
+}

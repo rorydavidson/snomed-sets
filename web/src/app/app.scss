@@ -1,0 +1,58 @@
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-8);
+  background: var(--snomed-navy);
+  color: var(--snomed-white);
+
+  a {
+    color: var(--snomed-white);
+    text-decoration: none;
+  }
+
+  nav {
+    display: flex;
+    flex-grow: 1;
+    gap: var(--space-6);
+    font-size: var(--fs-body-sm);
+    font-weight: var(--fw-semibold);
+
+    a {
+      padding: var(--space-3) 0;
+      border-bottom: 2px solid var(--snomed-cyan);
+    }
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: var(--fs-body-lg);
+  font-weight: var(--fw-bold);
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  background: var(--snomed-cyan);
+}
+
+.brand-light {
+  font-weight: var(--fw-extralight);
+}
+
+.who {
+  font-size: var(--fs-body-sm);
+}
+
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding-top: var(--space-16);
+}

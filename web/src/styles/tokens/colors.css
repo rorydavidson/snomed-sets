@@ -1,0 +1,74 @@
+/* ============================================================
+   SNOMED International — Colour tokens
+   Source: SNOMED International Brand Guidelines 2025 (Draft V2)
+   Styling principle: COLOUR BLOCKING — solid, confident blocks of
+   brand colour, often paired with imagery.
+   ============================================================ */
+:root {
+  /* ---- Brand palette (raw) -------------------------------- */
+  --snomed-cyan:    #0DA9E0; /* logo light-blue / signature brand accent */
+  --snomed-navy:    #003865; /* PRIMARY deep navy */
+  --snomed-blue:    #0067B9; /* clinical (PMS 2995) */
+  --snomed-green:   #009B77; /* research (PMS 3278) */
+  --snomed-teal:    #0097A9; /* tooling  (PMS 7711) */
+  --snomed-purple:  #654EA3; /* education (PMS 2096) */
+  --snomed-maroon:  #722257; /* adoption (PMS 7650) */
+  --snomed-yellow:  #FFC600; /* ACCENT */
+  --snomed-warmgrey:#CFCDC9; /* warm grey */
+  --snomed-ink:     #101820; /* near-black */
+  --snomed-white:   #FFFFFF;
+
+  /* ---- Domain associations (colour = subject area) --------- */
+  --theme-education: var(--snomed-purple);
+  --theme-clinical:  var(--snomed-blue);
+  --theme-research:  var(--snomed-green);
+  --theme-adoption:  var(--snomed-maroon);
+  --theme-tooling:   var(--snomed-teal);
+
+  /* ---- Cool neutral ramp (navy-tinted) -------------------- */
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #F4F7FA;
+  --neutral-100: #E8EEF4;
+  --neutral-200: #D3DEE8;
+  --neutral-300: #B3C2D1;
+  --neutral-400: #7E91A4;
+  --neutral-500: #566576;
+  --neutral-600: #3C4856;
+  --neutral-700: #26313C;
+  --neutral-800: #18222C;
+  --neutral-900: var(--snomed-ink);
+
+  /* ---- Functional / status -------------------------------- */
+  --success: var(--snomed-green);
+  --warning: var(--snomed-yellow);
+  --info:    var(--snomed-blue);
+  /* Danger: brand has no pure red; this functional red is added for
+     destructive UI states and is NOT a brand colour. */
+  --danger:  #C8102E;
+
+  /* ---- Semantic aliases ----------------------------------- */
+  --color-primary:        var(--snomed-blue);
+  --color-primary-hover:  var(--snomed-navy);
+  --color-primary-active: #002A4D;
+  --color-accent:         var(--snomed-cyan);
+
+  --text-strong:   var(--snomed-ink);
+  --text-body:     var(--neutral-700);
+  --text-muted:    var(--neutral-500);
+  --text-inverse:  var(--snomed-white);
+  --text-link:     var(--snomed-blue);
+  --text-on-brand: var(--snomed-white);
+
+  --surface-page:   var(--snomed-white);
+  --surface-subtle: var(--neutral-50);
+  --surface-card:   var(--snomed-white);
+  --surface-inset:  var(--neutral-100);
+  --surface-ink:    var(--snomed-ink);
+  --surface-navy:   var(--snomed-navy);
+
+  --border-subtle:  var(--neutral-200);
+  --border-default: var(--neutral-300);
+  --border-strong:  var(--neutral-400);
+
+  --focus-ring: color-mix(in srgb, var(--snomed-cyan) 55%, transparent);
+}

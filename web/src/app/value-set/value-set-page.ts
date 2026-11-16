@@ -73,8 +73,13 @@ const PAGE_SIZE = 50;
         <div class="columns">
           <section aria-labelledby="definition-heading">
             <h2 id="definition-heading" class="overline">Definition</h2>
-            <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
-            <p class="meta">{{ definitionLabel() }} Evaluated against {{ definition().branch }}.</p>
+            @if (set.type === 'MANUAL') {
+              <p>A list of concepts picked by hand.</p>
+              <p class="meta">{{ definitionLabel() }} Terms are as they were on {{ definition().branch }} when each concept was added.</p>
+            } @else {
+              <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
+              <p class="meta">{{ definitionLabel() }} Evaluated against {{ definition().branch }}.</p>
+            }
 
             <h2 id="versions-heading" class="overline">Versions</h2>
             @if (versions(); as list) {
@@ -153,7 +158,9 @@ const PAGE_SIZE = 50;
                 </button>
               </div>
             } @else {
-              <p class="muted" role="status">Expanding against Snowstorm…</p>
+              <p class="muted" role="status">
+                {{ set.type === 'MANUAL' ? 'Loading concepts…' : 'Expanding against Snowstorm…' }}
+              </p>
             }
           </section>
         </div>
@@ -210,7 +217,7 @@ export class ValueSetPage implements OnInit {
   protected readonly rangeLabel = computed(() => {
     const page = this.expansion();
     if (page === null || page.total === 0) {
-      return 'No concepts match this definition.';
+      return this.valueSet()?.type === 'MANUAL' ? 'No concepts have been added.' : 'No concepts match this definition.';
     }
     return `Showing ${page.offset + 1} to ${page.offset + page.items.length} of ${page.total} concepts`;
   });

@@ -41,7 +41,11 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                 </span>
               </div>
               <p>{{ set.description }}</p>
-              <code class="ecl">{{ set.ecl }}</code>
+              @if (set.type === 'MANUAL') {
+                <p class="meta">A list of concepts picked by hand.</p>
+              } @else {
+                <code class="ecl">{{ set.ecl }}</code>
+              }
               <p class="meta">{{ set.ownedByMe ? 'Yours' : set.ownerName }} · {{ set.branch }}</p>
             </li>
           }

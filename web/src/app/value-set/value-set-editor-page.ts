@@ -1,12 +1,15 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable, catchError, debounceTime, distinctUntilChanged, map, of, startWith, switchMap } from 'rxjs';
-import { ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
+import { Concept, ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
+import { ConceptPicker } from './concept-picker';
 
 const PREVIEW_SIZE = 20;
 const PREVIEW_DELAY_MS = 500;
+// The same limit the backend applies to a hand-picked list.
+const MAX_MEMBERS = 2000;
 // The same shape the backend accepts for a Snowstorm branch path.
 const BRANCH_PATTERN = /^MAIN(\/[A-Za-z0-9][A-Za-z0-9_.-]*)*$/;
 
@@ -18,7 +21,7 @@ type Preview =
 
 @Component({
   selector: 'app-value-set-editor-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, ConceptPicker],
   template: `
     <main class="page">
       <p><a [routerLink]="backLink">{{ id === null ? 'Back to the library' : 'Back to the value set' }}</a></p>
@@ -47,13 +50,30 @@ type Preview =
                 <textarea id="description" formControlName="description" rows="3" maxlength="2000"></textarea>
               </div>
 
-              <div class="field">
-                <label for="ecl">Definition (ECL)</label>
-                <textarea id="ecl" class="mono" formControlName="ecl" rows="6" maxlength="4000" spellcheck="false"></textarea>
-                @if (showError('ecl')) {
-                  <p class="field-error">Enter an ECL expression, for example &lt;&lt; 195967001 |Asthma|.</p>
-                }
-              </div>
+              @if (id === null) {
+                <fieldset class="field">
+                  <legend>How is it defined?</legend>
+                  <label class="checkbox">
+                    <input type="radio" formControlName="type" value="ECL" />
+                    <span>By an ECL expression</span>
+                  </label>
+                  <label class="checkbox">
+                    <input type="radio" formControlName="type" value="MANUAL" />
+                    <span>By a list of concepts I pick</span>
+                  </label>
+                  <p class="meta">This cannot be changed after the value set is created.</p>
+                </fieldset>
+              }
+
+              @if (!manual()) {
+                <div class="field">
+                  <label for="ecl">Definition (ECL)</label>
+                  <textarea id="ecl" class="mono" formControlName="ecl" rows="6" maxlength="4000" spellcheck="false"></textarea>
+                  @if (showError('ecl')) {
+                    <p class="field-error">Enter an ECL expression, for example &lt;&lt; 195967001 |Asthma|.</p>
+                  }
+                </div>
+              }
 
               <div class="field">
                 <label for="branch">Snowstorm branch</label>
@@ -87,6 +107,49 @@ type Preview =
             </form>
           </section>
 
+          @if (manual()) {
+            <section class="wide" aria-labelledby="members-heading">
+              <h2 class="overline">Find concepts</h2>
+              <app-concept-picker [branch]="branchForSearch()" [inList]="memberIds()" (add)="addMembers($event)" />
+
+              <h2 id="members-heading" class="overline">Concepts in this value set</h2>
+              @if (memberMessage(); as message) {
+                <p class="meta" role="status">{{ message }}</p>
+              }
+              @if (members().length === 0) {
+                <p class="muted">Nothing has been added yet.</p>
+              } @else {
+                <div class="actions">
+                  <span>{{ members().length }} {{ members().length === 1 ? 'concept' : 'concepts' }}</span>
+                  <button type="button" class="button button-secondary" (click)="removeAllMembers()">Remove all</button>
+                </div>
+                <div class="table-scroll table-tall">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">Concept ID</th>
+                        <th scope="col">Preferred term</th>
+                        <th scope="col"><span class="visually-hidden">Remove</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (concept of members(); track concept.conceptId) {
+                        <tr>
+                          <td class="mono">{{ concept.conceptId }}</td>
+                          <td>{{ concept.preferredTerm }}</td>
+                          <td>
+                            <button type="button" class="link-button" (click)="removeMember(concept.conceptId)" [attr.aria-label]="'Remove ' + concept.preferredTerm">
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </section>
+          } @else {
           <section class="wide" aria-labelledby="preview-heading">
             <h2 id="preview-heading" class="overline">Preview</h2>
             @switch (preview().status) {
@@ -130,6 +193,7 @@ type Preview =
               }
             }
           </section>
+          }
         </div>
       } @else {
         <p class="muted" role="status">Loading value set…</p>
@@ -147,6 +211,7 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly backLink = this.id === null ? ['/'] : ['/value-sets', this.id];
 
   protected readonly form = inject(NonNullableFormBuilder).group({
+    type: ['ECL' as ValueSet['type']],
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
     description: [''],
     ecl: ['', [Validators.required, Validators.pattern(/\S/)]],
@@ -160,8 +225,22 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly saveError = signal<string | null>(null);
   protected readonly preview = signal<Preview>({ status: 'empty' });
 
+  /** True when the value set is a hand-picked list of concepts instead of an ECL expression. */
+  protected readonly manual = signal(false);
+  protected readonly members = signal<Concept[]>([]);
+  protected readonly memberIds = computed<ReadonlySet<string>>(() => new Set(this.members().map((c) => c.conceptId)));
+  protected readonly memberMessage = signal<string | null>(null);
+  protected readonly branchForSearch = signal('MAIN');
+
   constructor() {
-    const { ecl, branch } = this.form.controls;
+    const { ecl, branch, type } = this.form.controls;
+    type.valueChanges.pipe(takeUntilDestroyed()).subscribe((chosen) => this.useType(chosen));
+    // Concept search needs a usable branch, so it keeps the last valid one while the field is being edited.
+    branch.valueChanges.pipe(takeUntilDestroyed()).subscribe((value) => {
+      if (branch.valid) {
+        this.branchForSearch.set(value.trim());
+      }
+    });
     // Wait for a pause in typing, and drop the answer to an earlier definition if a newer one is pending.
     this.form.valueChanges
       .pipe(
@@ -216,11 +295,13 @@ export class ValueSetEditorPage implements OnInit {
     }
     const value = this.form.getRawValue();
     const draft: ValueSetDraft = {
+      type: value.type,
       name: value.name.trim(),
       description: value.description.trim(),
-      ecl: value.ecl.trim(),
+      ecl: this.manual() ? '' : value.ecl.trim(),
       branch: value.branch.trim(),
       visibility: value.shared ? 'COMMUNITY' : 'PRIVATE',
+      conceptIds: this.manual() ? this.members().map((concept) => concept.conceptId) : [],
     };
     this.saving.set(true);
     this.saveError.set(null);
@@ -240,13 +321,61 @@ export class ValueSetEditorPage implements OnInit {
       return;
     }
     this.form.setValue({
+      type: set.type,
       name: set.name,
       description: set.description,
       ecl: set.ecl,
       branch: set.branch,
       shared: set.visibility === 'COMMUNITY',
     });
-    this.loaded.set(true);
+    if (set.type === 'ECL') {
+      this.loaded.set(true);
+      return;
+    }
+    this.api.members(set.id).subscribe({
+      next: (members) => {
+        this.members.set(members);
+        this.loaded.set(true);
+      },
+      error: (error: unknown) => this.loadError.set(describeError(error)),
+    });
+  }
+
+  protected addMembers(concepts: Concept[]): void {
+    const byId = new Map(this.members().map((concept) => [concept.conceptId, concept]));
+    const before = byId.size;
+    concepts.forEach((concept) => byId.set(concept.conceptId, concept));
+    if (byId.size > MAX_MEMBERS) {
+      this.memberMessage.set(`Nothing was added: a value set can hold at most ${MAX_MEMBERS} concepts.`);
+      return;
+    }
+    const added = byId.size - before;
+    const skipped = concepts.length - added;
+    this.members.set([...byId.values()]);
+    this.memberMessage.set(
+      skipped === 0 ? `Added ${added}.` : `Added ${added}. ${skipped} already in the list or listed twice.`,
+    );
+  }
+
+  protected removeMember(conceptId: string): void {
+    this.members.set(this.members().filter((concept) => concept.conceptId !== conceptId));
+    this.memberMessage.set(null);
+  }
+
+  protected removeAllMembers(): void {
+    this.members.set([]);
+    this.memberMessage.set(null);
+  }
+
+  private useType(type: ValueSet['type']): void {
+    this.manual.set(type === 'MANUAL');
+    // A disabled field is left out of validation, so a hand-picked set does not need ECL.
+    const { ecl } = this.form.controls;
+    if (type === 'MANUAL') {
+      ecl.disable();
+    } else {
+      ecl.enable();
+    }
   }
 
   private expand(ecl: string, branch: string): Observable<Preview> {

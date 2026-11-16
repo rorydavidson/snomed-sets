@@ -7,6 +7,7 @@ import { ValueSetEditorPage } from './value-set-editor-page';
 
 const MINE: ValueSet = {
   id: 7,
+  type: 'ECL',
   name: 'Asthma diagnoses',
   description: 'All asthma disorders.',
   ecl: '<< 195967001',
@@ -74,11 +75,13 @@ describe('ValueSetEditorPage', () => {
     submit(page);
     const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
     expect(request.request.body).toEqual({
+      type: 'ECL',
       name: 'Childhood asthma',
       description: '',
       ecl: '<< 233678006',
       branch: 'MAIN',
       visibility: 'PRIVATE',
+      conceptIds: [],
     });
     request.flush({ ...MINE, id: 12 });
 
@@ -128,6 +131,82 @@ describe('ValueSetEditorPage', () => {
     request.flush({ ...MINE, visibility: 'COMMUNITY' });
 
     expect(navigate).toHaveBeenCalledWith(['/value-sets', 7]);
+  });
+
+  const ASTHMA = { conceptId: '195967001', preferredTerm: 'Asthma', fullySpecifiedName: 'Asthma (disorder)' };
+  const CHILDHOOD = { conceptId: '233678006', preferredTerm: 'Childhood asthma', fullySpecifiedName: 'Childhood asthma (disorder)' };
+  const ALLERGIC = { conceptId: '389145006', preferredTerm: 'Allergic asthma', fullySpecifiedName: 'Allergic asthma (disorder)' };
+
+  function button(page: HTMLElement, label: string): HTMLButtonElement {
+    return Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.includes(label))!;
+  }
+
+  function searchFor(fixture: ComponentFixture<ValueSetEditorPage>, term: string, results: object[]): void {
+    type(fixture.nativeElement as HTMLElement, '#concept-search', term);
+    vi.advanceTimersByTime(400);
+    http
+      .expectOne(`/api/concepts?term=${term}&branch=MAIN`)
+      .flush({ items: results, total: results.length, offset: 0, limit: 25 });
+    fixture.detectChanges();
+  }
+
+  it('builds a hand-picked list from ticked search results and from their children', () => {
+    const fixture = create({});
+    const page = fixture.nativeElement as HTMLElement;
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    page.querySelector<HTMLInputElement>('input[type="radio"][value="MANUAL"]')!.click();
+    fixture.detectChanges();
+    expect(page.querySelector('#ecl')).toBeNull();
+    type(page, '#name', 'Picked asthma codes');
+
+    searchFor(fixture, 'asthma', [ASTHMA, CHILDHOOD]);
+    const boxes = page.querySelectorAll<HTMLInputElement>('.pick-list input[type="checkbox"]');
+    boxes[0].click();
+    boxes[1].click();
+    fixture.detectChanges();
+    button(page, 'Add selected (2)').click();
+    fixture.detectChanges();
+    expect(page.textContent).toContain('2 concepts');
+
+    // Tick the first result again and add its children: one new, one already in the list.
+    page.querySelectorAll<HTMLInputElement>('.pick-list input[type="checkbox"]')[0].click();
+    fixture.detectChanges();
+    button(page, 'Add children of selected').click();
+    http.expectOne('/api/concepts/195967001/children?branch=MAIN').flush({ items: [CHILDHOOD, ALLERGIC], total: 2 });
+    fixture.detectChanges();
+    expect(page.textContent).toContain('Added 1. 1 already in the list or listed twice.');
+    expect(page.textContent).toContain('3 concepts');
+
+    page.querySelector<HTMLButtonElement>('button[aria-label="Remove Asthma"]')!.click();
+    fixture.detectChanges();
+
+    submit(page);
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
+    expect(request.request.body).toEqual({
+      type: 'MANUAL',
+      name: 'Picked asthma codes',
+      description: '',
+      ecl: '',
+      branch: 'MAIN',
+      visibility: 'PRIVATE',
+      conceptIds: ['233678006', '389145006'],
+    });
+    request.flush({ ...MINE, id: 12, type: 'MANUAL' });
+  });
+
+  it('loads the existing list when editing a hand-picked value set', () => {
+    const fixture = create({ id: '7' });
+    const page = fixture.nativeElement as HTMLElement;
+
+    http.expectOne('/api/value-sets/7').flush({ ...MINE, type: 'MANUAL', ecl: '' });
+    http.expectOne('/api/value-sets/7/members').flush([ASTHMA, CHILDHOOD]);
+    fixture.detectChanges();
+
+    expect(page.querySelector('input[type="radio"]')).toBeNull();
+    expect(page.querySelector('#ecl')).toBeNull();
+    expect(page.textContent).toContain('2 concepts');
+    expect(page.textContent).toContain('Childhood asthma');
   });
 
   it('refuses to edit a value set owned by someone else', () => {

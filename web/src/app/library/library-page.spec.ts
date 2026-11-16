@@ -7,6 +7,7 @@ import { LibraryPage } from './library-page';
 
 const ASTHMA: ValueSet = {
   id: 1,
+  type: 'ECL',
   name: 'Asthma diagnoses',
   description: 'All asthma disorders.',
   ecl: '<< 195967001 |Asthma|',

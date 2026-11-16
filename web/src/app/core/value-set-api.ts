@@ -4,6 +4,8 @@ import { Observable } from 'rxjs';
 
 export interface ValueSet {
   id: number;
+  /** Defined by an ECL expression, or by a hand-picked list of concepts. Fixed when created. */
+  type: 'ECL' | 'MANUAL';
   name: string;
   description: string;
   ecl: string;
@@ -30,7 +32,10 @@ export interface ValueSetVersion {
 }
 
 /** The fields a person can set when creating or editing a value set. */
-export type ValueSetDraft = Pick<ValueSet, 'name' | 'description' | 'ecl' | 'branch' | 'visibility'>;
+export type ValueSetDraft = Pick<ValueSet, 'type' | 'name' | 'description' | 'ecl' | 'branch' | 'visibility'> & {
+  /** The whole list of a hand-picked value set. Empty for an ECL one. */
+  conceptIds: string[];
+};
 
 export interface Concept {
   conceptId: string;
@@ -71,6 +76,22 @@ export class ValueSetApi {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`/api/value-sets/${id}`);
+  }
+
+  /** The hand-picked list as it is being edited. Owner only. */
+  members(id: number): Observable<Concept[]> {
+    return this.http.get<Concept[]>(`/api/value-sets/${id}/members`);
+  }
+
+  searchConcepts(term: string, branch: string): Observable<ExpansionPage> {
+    return this.http.get<ExpansionPage>('/api/concepts', { params: { term, branch } });
+  }
+
+  /** The direct children of a concept. The total is larger than the list when it was cut short. */
+  children(conceptId: string, branch: string): Observable<{ items: Concept[]; total: number }> {
+    return this.http.get<{ items: Concept[]; total: number }>(`/api/concepts/${conceptId}/children`, {
+      params: { branch },
+    });
   }
 
   versions(id: number): Observable<ValueSetVersion[]> {

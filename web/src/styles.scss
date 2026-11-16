@@ -372,3 +372,77 @@ tbody tr {
   font-weight: var(--fw-bold);
   color: var(--snomed-navy);
 }
+
+fieldset.field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  legend {
+    padding: 0;
+    font-weight: var(--fw-semibold);
+    color: var(--snomed-navy);
+  }
+}
+
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-4);
+    border-top: 1px solid var(--neutral-100);
+
+    &:first-child {
+      border-top: 0;
+    }
+  }
+
+  .checkbox {
+    flex-grow: 1;
+    font-weight: var(--fw-regular, 400);
+    color: var(--text-body);
+
+    > span {
+      display: flex;
+      flex-direction: column;
+    }
+  }
+}
+
+.table-tall {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.link-button {
+  min-height: 32px;
+  padding: 0;
+  font: inherit;
+  color: var(--text-link);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

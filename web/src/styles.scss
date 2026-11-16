@@ -334,3 +334,41 @@ tbody tr {
   color: var(--snomed-white);
   background: var(--danger);
 }
+
+.grow {
+  flex: 1 1 100%;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  text-align: left;
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &[aria-pressed='true'] {
+    border-left-color: var(--color-primary);
+  }
+}
+
+.version-name {
+  font-weight: var(--fw-bold);
+  color: var(--snomed-navy);
+}

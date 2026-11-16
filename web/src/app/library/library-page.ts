@@ -36,8 +36,8 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                 @if (set.visibility === 'PRIVATE') {
                   <span class="badge">Private</span>
                 }
-                <span class="badge" [class.badge-success]="set.status === 'PUBLISHED'">
-                  {{ set.status === 'PUBLISHED' ? 'Published' : 'Draft' }}
+                <span class="badge" [class.badge-success]="set.latestVersion !== null">
+                  {{ set.latestVersion !== null ? 'Published · v' + set.latestVersion : 'Draft' }}
                 </span>
               </div>
               <p>{{ set.description }}</p>

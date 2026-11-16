@@ -13,6 +13,20 @@ export interface ValueSet {
   ownerName: string;
   ownedByMe: boolean;
   updatedAt: string;
+  /** The newest published version number, or null if never published. */
+  latestVersion: number | null;
+  /** True only for the owner, when the definition differs from the latest published version. */
+  unpublishedChanges: boolean;
+}
+
+/** A definition frozen at the moment it was published. */
+export interface ValueSetVersion {
+  number: number;
+  ecl: string;
+  branch: string;
+  conceptCount: number;
+  note: string;
+  publishedAt: string;
 }
 
 /** The fields a person can set when creating or editing a value set. */
@@ -57,6 +71,20 @@ export class ValueSetApi {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`/api/value-sets/${id}`);
+  }
+
+  versions(id: number): Observable<ValueSetVersion[]> {
+    return this.http.get<ValueSetVersion[]>(`/api/value-sets/${id}/versions`);
+  }
+
+  publish(id: number, note: string): Observable<ValueSetVersion> {
+    return this.http.post<ValueSetVersion>(`/api/value-sets/${id}/versions`, { note });
+  }
+
+  versionExpansion(id: number, version: number, offset: number, limit: number): Observable<ExpansionPage> {
+    return this.http.get<ExpansionPage>(`/api/value-sets/${id}/versions/${version}/expansion`, {
+      params: { offset, limit },
+    });
   }
 
   /** Expands a definition that has not been saved yet. */

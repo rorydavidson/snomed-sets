@@ -16,6 +16,8 @@ const MINE: ValueSet = {
   ownerName: 'Me',
   ownedByMe: true,
   updatedAt: '2026-11-16T12:00:00Z',
+  latestVersion: null,
+  unpublishedChanges: false,
 };
 
 function type(page: HTMLElement, selector: string, value: string): void {

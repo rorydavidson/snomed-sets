@@ -38,6 +38,15 @@ const PAGE_SIZE = 50;
           </ul>
         }
 
+        @if (set.visibility === 'COMMUNITY' && set.latestVersion !== null) {
+          <div class="actions">
+            <a class="button button-secondary" [href]="'/api/value-sets/' + set.id + '/download'" download>
+              Download version {{ set.latestVersion }} (TSV)
+            </a>
+            <span class="meta">Global Patient Set layout: SNOMED CT ID, FSN, PT and active flag, in US English.</span>
+          </div>
+        }
+
         @if (set.ownedByMe) {
           @if (actionError(); as message) {
             <div class="error-panel" role="alert">

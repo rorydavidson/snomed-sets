@@ -210,6 +210,24 @@ describe('ValueSetPage', () => {
     expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('was not found');
   });
 
+  it('offers a download only for a published set that is shared with the community', async () => {
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    const link = page.querySelector<HTMLAnchorElement>('a[download]');
+    expect(link?.getAttribute('href')).toBe('/api/value-sets/7/download');
+    expect(link?.textContent).toContain('Download version 2 (TSV)');
+  });
+
+  it('offers no download for a private or unpublished set', async () => {
+    open({ ...SET, status: 'PUBLISHED', latestVersion: 1 }, [VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('a[download]')).toBeNull();
+  });
+
   it('explains why publishing was refused', async () => {
     open({ ...SET, status: 'PUBLISHED', latestVersion: 1, unpublishedChanges: true }, [VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);

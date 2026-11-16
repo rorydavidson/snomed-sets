@@ -1,5 +1,6 @@
 package org.snomed.valuesets.valueset;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import jakarta.validation.Valid;
@@ -13,7 +14,11 @@ import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.user.CurrentUser;
 import org.snomed.valuesets.valueset.ValueSetView.VersionView;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -87,6 +92,17 @@ public class ValueSetController {
 			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit,
 			CurrentUser user) {
 		return service.expansion(id, user, offset, limit);
+	}
+
+	/** The latest published version of a shared value set, in the Global Patient Set file layout. */
+	@GetMapping("/value-sets/{id}/download")
+	public ResponseEntity<String> download(@PathVariable long id, CurrentUser user) {
+		GpsFile file = service.download(id, user);
+		return ResponseEntity.ok()
+				.contentType(new MediaType("text", "tab-separated-values", StandardCharsets.UTF_8))
+				.header(HttpHeaders.CONTENT_DISPOSITION,
+						ContentDisposition.attachment().filename(file.fileName()).build().toString())
+				.body(file.content());
 	}
 
 	@GetMapping("/value-sets/{id}/versions")

@@ -14,6 +14,10 @@ import org.springframework.web.client.RestClientResponseException;
 public class SnowstormClient {
 
 	// Branch paths are placed in the request URL, so only the shape Snowstorm uses is accepted.
+	// Terms are asked for in US English, by its language reference set. Plain "en" makes
+	// Snowstorm prefer British terms, and the GPS download format is defined as en-US.
+	private static final String US_ENGLISH = "en-X-900000000000509007,en";
+
 	public static final String BRANCH_PATH_REGEX = "MAIN(/[A-Za-z0-9][A-Za-z0-9_.-]*)*";
 
 	private static final Pattern BRANCH_PATH = Pattern.compile(BRANCH_PATH_REGEX);
@@ -25,7 +29,7 @@ public class SnowstormClient {
 				.baseUrl(properties.baseUrl())
 				.defaultHeader(HttpHeaders.USER_AGENT, properties.userAgent())
 				.defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-				.defaultHeader(HttpHeaders.ACCEPT_LANGUAGE, "en")
+				.defaultHeader(HttpHeaders.ACCEPT_LANGUAGE, US_ENGLISH)
 				.build();
 	}
 

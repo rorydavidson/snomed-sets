@@ -14,7 +14,9 @@ import org.springframework.web.client.RestClientResponseException;
 public class SnowstormClient {
 
 	// Branch paths are placed in the request URL, so only the shape Snowstorm uses is accepted.
-	private static final Pattern BRANCH_PATH = Pattern.compile("MAIN(/[A-Za-z0-9][A-Za-z0-9_.-]*)*");
+	public static final String BRANCH_PATH_REGEX = "MAIN(/[A-Za-z0-9][A-Za-z0-9_.-]*)*";
+
+	private static final Pattern BRANCH_PATH = Pattern.compile(BRANCH_PATH_REGEX);
 
 	private final RestClient restClient;
 

@@ -1,11 +1,10 @@
 package org.snomed.valuesets.valueset;
 
-import java.time.Instant;
 import java.util.List;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -13,6 +12,7 @@ import jakarta.validation.constraints.Size;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.user.CurrentUser;
+import org.snomed.valuesets.valueset.ValueSetView.VersionView;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,8 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
+/** Access rules live in {@link ValueSetService}; this class only maps HTTP to it. */
 @Validated
 @RestController
 @RequestMapping("/api")
@@ -34,49 +34,40 @@ public class ValueSetController {
 
 	private static final int MAX_PAGE_SIZE = 100;
 
-	private final ValueSetRepository valueSets;
+	private final ValueSetService service;
 	private final SnowstormClient snowstorm;
 
-	public ValueSetController(ValueSetRepository valueSets, SnowstormClient snowstorm) {
-		this.valueSets = valueSets;
+	public ValueSetController(ValueSetService service, SnowstormClient snowstorm) {
+		this.service = service;
 		this.snowstorm = snowstorm;
 	}
 
 	@GetMapping("/value-sets")
 	public List<ValueSetView> list(CurrentUser user) {
-		return valueSets.findAllVisibleTo(user.subject()).stream()
-				.map(valueSet -> ValueSetView.of(valueSet, user))
-				.toList();
+		return service.list(user);
 	}
 
 	@GetMapping("/value-sets/{id}")
 	public ValueSetView get(@PathVariable long id, CurrentUser user) {
-		return ValueSetView.of(findVisible(id, user), user);
+		return service.get(id, user);
 	}
 
 	@PostMapping("/value-sets")
 	@ResponseStatus(HttpStatus.CREATED)
-	public ValueSetView create(@Valid @RequestBody ValueSetRequest request, CurrentUser user) {
-		requireValidBranch(request.branch());
-		ValueSet valueSet = new ValueSet(request.name(), request.description(), request.ecl(), request.branch(),
-				request.visibility(), user.subject(), user.name());
-		return ValueSetView.of(valueSets.save(valueSet), user);
+	public ValueSetView create(@Valid @RequestBody ValueSetDefinition definition, CurrentUser user) {
+		return service.create(definition, user);
 	}
 
 	@PutMapping("/value-sets/{id}")
-	public ValueSetView update(@PathVariable long id, @Valid @RequestBody ValueSetRequest request,
+	public ValueSetView update(@PathVariable long id, @Valid @RequestBody ValueSetDefinition definition,
 			CurrentUser user) {
-		requireValidBranch(request.branch());
-		ValueSet valueSet = findOwned(id, user);
-		valueSet.update(request.name(), request.description(), request.ecl(), request.branch(),
-				request.visibility());
-		return ValueSetView.of(valueSets.save(valueSet), user);
+		return service.update(id, definition, user);
 	}
 
 	@DeleteMapping("/value-sets/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void delete(@PathVariable long id, CurrentUser user) {
-		valueSets.delete(findOwned(id, user));
+		service.delete(id, user);
 	}
 
 	@GetMapping("/value-sets/{id}/expansion")
@@ -84,8 +75,27 @@ public class ValueSetController {
 			@RequestParam(defaultValue = "0") @Min(0) int offset,
 			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit,
 			CurrentUser user) {
-		ValueSet valueSet = findVisible(id, user);
-		return snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, limit);
+		return service.expansion(id, user, offset, limit);
+	}
+
+	@GetMapping("/value-sets/{id}/versions")
+	public List<VersionView> versions(@PathVariable long id, CurrentUser user) {
+		return service.versions(id, user);
+	}
+
+	@PostMapping("/value-sets/{id}/versions")
+	@ResponseStatus(HttpStatus.CREATED)
+	public VersionView publish(@PathVariable long id, @Valid @RequestBody PublishRequest request,
+			CurrentUser user) {
+		return service.publish(id, request.note().trim(), user);
+	}
+
+	@GetMapping("/value-sets/{id}/versions/{number}/expansion")
+	public ExpansionPage versionExpansion(@PathVariable long id, @PathVariable int number,
+			@RequestParam(defaultValue = "0") @Min(0) int offset,
+			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit,
+			CurrentUser user) {
+		return service.versionExpansion(id, number, user, offset, limit);
 	}
 
 	/** Expands an ECL expression that has not been saved, for the live preview in the editor. */
@@ -97,47 +107,7 @@ public class ValueSetController {
 		return snowstorm.expand(ecl, branch, offset, limit);
 	}
 
-	private ValueSet findVisible(long id, CurrentUser user) {
-		// A set the caller may not see is reported as missing, so its existence is not revealed.
-		return valueSets.findVisibleById(id, user.subject())
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Value set not found"));
-	}
-
-	/** Only the owner may change or delete a set, even one that everybody can see. */
-	private ValueSet findOwned(long id, CurrentUser user) {
-		ValueSet valueSet = findVisible(id, user);
-		if (!valueSet.isOwnedBy(user.subject())) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change this value set.");
-		}
-		return valueSet;
-	}
-
-	private static void requireValidBranch(String branch) {
-		if (!SnowstormClient.isValidBranch(branch)) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Branch path is not valid.");
-		}
-	}
-
-	/**
-	 * The ECL is not checked against Snowstorm on save, so a draft can be kept while
-	 * it is still being worked on, or while Snowstorm is unavailable.
-	 */
-	public record ValueSetRequest(@NotBlank @Size(max = 200) String name,
-			@NotNull @Size(max = 2000) String description,
-			@NotBlank @Size(max = 4000) String ecl,
-			@NotBlank @Size(max = 200) String branch,
-			@NotNull ValueSet.Visibility visibility) {
-	}
-
-	public record ValueSetView(long id, String name, String description, String ecl, String branch,
-			ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownedByMe,
-			Instant updatedAt) {
-
-		static ValueSetView of(ValueSet valueSet, CurrentUser user) {
-			return new ValueSetView(valueSet.getId(), valueSet.getName(), valueSet.getDescription(),
-					valueSet.getEcl(), valueSet.getBranch(), valueSet.getStatus(), valueSet.getVisibility(),
-					valueSet.getOwnerName(), valueSet.isOwnedBy(user.subject()),
-					valueSet.getUpdatedAt());
-		}
+	/** @param note what changed in this version; may be empty */
+	public record PublishRequest(@NotNull @Size(max = 500) String note) {
 	}
 }

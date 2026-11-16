@@ -80,6 +80,10 @@ public class ValueSet {
 		this.updatedAt = Instant.now();
 	}
 
+	public void markPublished() {
+		this.status = Status.PUBLISHED;
+	}
+
 	public boolean isOwnedBy(String subject) {
 		return ownerSubject.equals(subject);
 	}

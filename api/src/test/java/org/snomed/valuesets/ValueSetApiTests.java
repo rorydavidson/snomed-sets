@@ -21,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
+import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -116,8 +117,7 @@ class ValueSetApiTests {
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
 				.content(NEW_SET.replace("MAIN", "../admin"))
 				.with(signedInAs("alice")).with(csrf()))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.detail").value("Branch path is not valid."));
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test
@@ -169,6 +169,127 @@ class ValueSetApiTests {
 		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isNoContent());
 		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice"))).andExpect(status().isNotFound());
+	}
+
+	private void publish(long id, String subject, String note) throws Exception {
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"" + note + "\"}").with(signedInAs(subject)).with(csrf()))
+				.andExpect(status().isCreated());
+	}
+
+	private static ExpansionPage pageWithTotal(long total) {
+		return new ExpansionPage(List.of(), total, 0, 1);
+	}
+
+	@Test
+	void publishingFreezesTheDefinitionForEveryoneElseUntilTheOwnerPublishesAgain() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		given(snowstorm.expand("<< 233678006", "MAIN", 0, 1)).willReturn(pageWithTotal(9));
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"First release\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.number").value(1))
+				.andExpect(jsonPath("$.conceptCount").value(121));
+
+		// The owner changes the definition but has not published it yet.
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(NEW_SET.replace("PRIVATE", "COMMUNITY")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.ecl").value("<< 233678006"))
+				.andExpect(jsonPath("$.status").value("PUBLISHED"))
+				.andExpect(jsonPath("$.unpublishedChanges").value(true));
+
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.ecl").value("<< 195967001"))
+				.andExpect(jsonPath("$.latestVersion").value(1))
+				.andExpect(jsonPath("$.unpublishedChanges").value(false));
+
+		publish(id, "alice", "Narrowed to childhood asthma");
+
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.ecl").value("<< 233678006"))
+				.andExpect(jsonPath("$.latestVersion").value(2));
+		mvc.perform(get("/api/value-sets/{id}/versions", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].number").value(2))
+				.andExpect(jsonPath("$[0].note").value("Narrowed to childhood asthma"))
+				.andExpect(jsonPath("$[1].ecl").value("<< 195967001"));
+	}
+
+	@Test
+	void anOlderVersionCanStillBeExpanded() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		publish(id, "alice", "");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 50)).willReturn(new ExpansionPage(
+				List.of(new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)")), 121, 0, 50));
+
+		mvc.perform(get("/api/value-sets/{id}/versions/1/expansion", id).with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.total").value(121));
+		mvc.perform(get("/api/value-sets/{id}/versions/7/expansion", id).with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void publishingAgainWithoutChangesIsRefused() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		publish(id, "alice", "");
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.detail").value("Nothing has changed since version 1."));
+	}
+
+	@Test
+	void aDefinitionSnowstormRejectsCannotBePublished() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1))
+				.willThrow(new SnowstormException("Snowstorm rejected the request.", true, null));
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.status").value("DRAFT"))
+				.andExpect(jsonPath("$.latestVersion").doesNotExist());
+	}
+
+	@Test
+	void onlyTheOwnerCanPublish() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void aPublishedSharedSetMustBeWithdrawnBeforeItCanBeDeleted() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		publish(id, "alice", "");
+
+		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict());
+
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"name": "Owned set", "description": "", "ecl": "<< 195967001",
+						 "branch": "MAIN", "visibility": "PRIVATE"}
+						""").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk());
+		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void sampleSetsComeWithAPublishedVersion() throws Exception {
+		mvc.perform(get("/api/value-sets").with(oidcLogin()))
+				.andExpect(jsonPath("$[*].latestVersion", org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is(1))));
 	}
 
 	@Test

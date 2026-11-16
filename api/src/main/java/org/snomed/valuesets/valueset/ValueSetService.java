@@ -67,6 +67,11 @@ public class ValueSetService {
 				.toList();
 	}
 
+	/** Tags already in use, to choose from when tagging a value set. */
+	public List<String> tags(CurrentUser user) {
+		return valueSets.findTagsVisibleTo(user.subject());
+	}
+
 	public ValueSetView get(long id, CurrentUser user) {
 		ValueSet valueSet = findVisible(id, user);
 		return view(valueSet, latestVersionOf(valueSet), user);
@@ -82,7 +87,7 @@ public class ValueSetService {
 		ValueSet created = transaction.execute(status -> {
 			ValueSet valueSet = valueSets.save(new ValueSet(definition.type(), definition.codeSystem(), branch,
 					definition.name(), definition.description(), ecl,
-					definition.visibility(), user.subject(), user.name()));
+					definition.visibility(), definition.tags(), user.subject(), user.name()));
 			saveWorkingList(valueSet, concepts);
 			return valueSet;
 		});
@@ -107,7 +112,8 @@ public class ValueSetService {
 		String ecl = valueSet.isManual() ? "" : withTerms(definition.ecl(), valueSet.getBranch());
 
 		transaction.executeWithoutResult(status -> {
-			valueSet.update(definition.name(), definition.description(), ecl, definition.visibility());
+			valueSet.update(definition.name(), definition.description(), ecl, definition.visibility(),
+					definition.tags());
 			valueSets.save(valueSet);
 			if (valueSet.isManual()) {
 				members.deleteWorkingList(valueSet.getId());

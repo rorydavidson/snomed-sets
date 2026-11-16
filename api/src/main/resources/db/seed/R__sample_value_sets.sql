@@ -13,3 +13,16 @@ SELECT id, 1, ecl, branch,
        'First published version.', NOW(6)
 FROM value_set
 WHERE owner_subject = 'sample-data' AND status = 'PUBLISHED';
+
+INSERT INTO value_set_tag (value_set_id, tag)
+SELECT id, 'respiratory' FROM value_set WHERE owner_subject = 'sample-data' AND name = 'Asthma diagnoses'
+UNION ALL
+SELECT id, 'registry' FROM value_set WHERE owner_subject = 'sample-data' AND name = 'Asthma diagnoses'
+UNION ALL
+SELECT id, 'endocrine' FROM value_set WHERE owner_subject = 'sample-data' AND name = 'Type 2 diabetes mellitus'
+UNION ALL
+SELECT id, 'trauma' FROM value_set WHERE owner_subject = 'sample-data' AND name = 'Fracture of femur'
+UNION ALL
+SELECT id, 'audit' FROM value_set WHERE owner_subject = 'sample-data' AND name = 'Fracture of femur'
+UNION ALL
+SELECT id, 'cardiovascular' FROM value_set WHERE owner_subject = 'sample-data' AND name = 'Hypertension excluding pregnancy-related';

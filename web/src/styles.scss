@@ -447,3 +447,39 @@ fieldset.field {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  font-size: var(--fs-caption);
+  color: var(--snomed-navy);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.tag-remove {
+  padding: 0 2px;
+  font: inherit;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.grow-input {
+  flex: 1 1 160px;
+  width: auto !important;
+}

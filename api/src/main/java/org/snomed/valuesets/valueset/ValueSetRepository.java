@@ -29,6 +29,15 @@ public interface ValueSetRepository extends Repository<ValueSet, Long> {
 			""")
 	Optional<ValueSet> findVisibleById(@Param("id") long id, @Param("subject") String subject);
 
+	/** Tags in use on the value sets the caller may see, so private sets do not leak their tags. */
+	@Query("""
+			select distinct tag from ValueSet v join v.tags tag
+			where v.visibility = org.snomed.valuesets.valueset.ValueSet.Visibility.COMMUNITY
+			   or v.ownerSubject = :subject
+			order by tag
+			""")
+	List<String> findTagsVisibleTo(@Param("subject") String subject);
+
 	ValueSet save(ValueSet valueSet);
 
 	void delete(ValueSet valueSet);

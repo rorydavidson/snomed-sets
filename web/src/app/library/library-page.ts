@@ -46,6 +46,13 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
               } @else {
                 <code class="ecl">{{ set.ecl }}</code>
               }
+              @if (set.tags.length > 0) {
+                <ul class="tags" aria-label="Tags">
+                  @for (tag of set.tags; track tag) {
+                    <li class="tag">{{ tag }}</li>
+                  }
+                </ul>
+              }
               <p class="meta">{{ set.ownedByMe ? 'Yours' : set.ownerName }} · {{ set.codeSystem }}</p>
             </li>
           }

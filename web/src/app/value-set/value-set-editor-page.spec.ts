@@ -20,6 +20,7 @@ const MINE: ValueSet = {
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
+  tags: [],
 };
 
 function type(page: HTMLElement, selector: string, value: string): void {
@@ -48,6 +49,7 @@ describe('ValueSetEditorPage', () => {
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(ValueSetEditorPage);
     fixture.detectChanges();
+    http.expectOne('/api/tags').flush(['respiratory', 'registry']);
     if (!('id' in params)) {
       // A new value set starts by asking which code systems Snowstorm has.
       http.expectOne('/api/code-systems').flush([
@@ -90,6 +92,7 @@ describe('ValueSetEditorPage', () => {
       description: '',
       ecl: '<< 233678006',
       visibility: 'PRIVATE',
+      tags: [],
       conceptIds: [],
     });
     request.flush({ ...MINE, id: 12 });
@@ -120,6 +123,36 @@ describe('ValueSetEditorPage', () => {
     const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
     expect(request.request.body.codeSystem).toBe('SNOMEDCT-BE');
     request.flush({ ...MINE, id: 12 });
+  });
+
+  it('adds typed and suggested tags, tidied up, and sends them when saving', () => {
+    const fixture = create({});
+    const page = fixture.nativeElement as HTMLElement;
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const entry = page.querySelector<HTMLInputElement>('#tag-entry')!;
+    const addTag = Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.includes('Add tag'))!;
+
+    expect(Array.from(page.querySelectorAll('#known-tags option')).map((o) => o.getAttribute('value'))).toEqual([
+      'respiratory',
+      'registry',
+    ]);
+    entry.value = '  Primary   Care ';
+    addTag.click();
+    entry.value = 'respiratory';
+    entry.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    entry.value = '<script>';
+    addTag.click();
+    fixture.detectChanges();
+    expect(page.querySelector('[role="alert"]')?.textContent).toContain('A tag can use letters');
+
+    type(page, '#name', 'Tagged');
+    type(page, '#ecl', '<< 195967001 |Asthma|');
+    submit(page);
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
+    expect(request.request.body.tags).toEqual(['primary care', 'respiratory']);
+    request.flush({ ...MINE, id: 12 });
+    vi.advanceTimersByTime(500);
+    http.expectOne((r) => r.url === '/api/ecl/expansion').flush({ items: [], total: 0, offset: 0, limit: 20 });
   });
 
   it('does not save while required fields are empty', () => {
@@ -224,6 +257,7 @@ describe('ValueSetEditorPage', () => {
       description: '',
       ecl: '',
       visibility: 'PRIVATE',
+      tags: [],
       conceptIds: ['233678006', '389145006'],
     });
     request.flush({ ...MINE, id: 12, type: 'MANUAL' });

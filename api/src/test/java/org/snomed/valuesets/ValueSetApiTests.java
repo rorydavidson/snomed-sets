@@ -1,5 +1,6 @@
 package org.snomed.valuesets;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
@@ -359,6 +360,51 @@ class ValueSetApiTests {
 				.with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.ecl").value("<< 233678006"));
+	}
+
+	private static String tagged(String visibility, String tags) {
+		return """
+				{"name": "Tagged set", "description": "", "ecl": "<< 195967001 |Asthma|",
+				 "visibility": "%s", "tags": [%s]}
+				""".formatted(visibility, tags);
+	}
+
+	@Test
+	void tagsAreStoredInLowerCaseWithoutDuplicatesAndCanBeReplaced() throws Exception {
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(tagged("PRIVATE", "\" Respiratory \", \"primary  care\", \"respiratory\""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.tags", contains("primary care", "respiratory")));
+		long id = jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = 'alice'", Long.class);
+
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(tagged("PRIVATE", "\"asthma\"")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.tags", contains("asthma")));
+		mvc.perform(get("/api/value-sets").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[0].tags", contains("asthma")));
+	}
+
+	@Test
+	void aTagWithUnusableCharactersIsRefused() throws Exception {
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(tagged("PRIVATE", "\"<script>\"")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void tagSuggestionsLeaveOutTagsOfOtherPeoplesPrivateSets() throws Exception {
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(tagged("PRIVATE", "\"alice-only\"")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated());
+
+		mvc.perform(get("/api/tags").with(signedInAs("alice")))
+				.andExpect(jsonPath("$", hasItem("alice-only")))
+				.andExpect(jsonPath("$", hasItem("respiratory")));
+		mvc.perform(get("/api/tags").with(signedInAs("bob")))
+				.andExpect(jsonPath("$", not(hasItem("alice-only"))))
+				.andExpect(jsonPath("$", not(hasItem("cardiovascular"))))
+				.andExpect(jsonPath("$", hasItem("respiratory")));
 	}
 
 	@Test

@@ -20,6 +20,7 @@ const SET: ValueSet = {
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
+  tags: [],
 };
 
 const VERSION_1: ValueSetVersion = {

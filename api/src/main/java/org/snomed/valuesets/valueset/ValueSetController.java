@@ -47,6 +47,11 @@ public class ValueSetController {
 		return service.list(user);
 	}
 
+	@GetMapping("/tags")
+	public List<String> tags(CurrentUser user) {
+		return service.tags(user);
+	}
+
 	@GetMapping("/value-sets/{id}")
 	public ValueSetView get(@PathVariable long id, CurrentUser user) {
 		return service.get(id, user);

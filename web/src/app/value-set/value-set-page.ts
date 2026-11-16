@@ -28,6 +28,13 @@ const PAGE_SIZE = 50;
           }
         </div>
         <p class="lead">{{ set.description }}</p>
+        @if (set.tags.length > 0) {
+          <ul class="tags" aria-label="Tags">
+            @for (tag of set.tags; track tag) {
+              <li class="tag">{{ tag }}</li>
+            }
+          </ul>
+        }
 
         @if (set.ownedByMe) {
           @if (actionError(); as message) {

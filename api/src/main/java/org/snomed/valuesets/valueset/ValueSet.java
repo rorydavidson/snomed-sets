@@ -1,15 +1,25 @@
 package org.snomed.valuesets.valueset;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "value_set")
@@ -57,6 +67,13 @@ public class ValueSet {
 	@Column(nullable = false, length = 20)
 	private Visibility visibility;
 
+	/** Loaded with the value set, in batches, because every list and page shows them. */
+	@ElementCollection(fetch = FetchType.EAGER)
+	@CollectionTable(name = "value_set_tag", joinColumns = @JoinColumn(name = "value_set_id"))
+	@Column(name = "tag", nullable = false, length = 40)
+	@BatchSize(size = 100)
+	private Set<String> tags = new HashSet<>();
+
 	/** The Keycloak subject of the owner. Used for access decisions, never shown. */
 	@Column(name = "owner_subject", nullable = false)
 	private String ownerSubject;
@@ -76,7 +93,8 @@ public class ValueSet {
 
 	/** A new value set always starts as a draft. */
 	public ValueSet(DefinitionType definitionType, String codeSystem, String branch, String name,
-			String description, String ecl, Visibility visibility, String ownerSubject, String ownerName) {
+			String description, String ecl, Visibility visibility, Collection<String> tags, String ownerSubject,
+			String ownerName) {
 		this.definitionType = definitionType;
 		this.codeSystem = codeSystem;
 		this.branch = branch;
@@ -84,10 +102,13 @@ public class ValueSet {
 		this.ownerSubject = ownerSubject;
 		this.ownerName = ownerName;
 		this.createdAt = Instant.now();
-		update(name, description, ecl, visibility);
+		update(name, description, ecl, visibility, tags);
 	}
 
-	public void update(String name, String description, String ecl, Visibility visibility) {
+	public void update(String name, String description, String ecl, Visibility visibility,
+			Collection<String> tags) {
+		this.tags.clear();
+		this.tags.addAll(tags);
 		this.name = name;
 		this.description = description;
 		this.ecl = ecl;
@@ -141,6 +162,10 @@ public class ValueSet {
 
 	public Visibility getVisibility() {
 		return visibility;
+	}
+
+	public List<String> getTags() {
+		return tags.stream().sorted().toList();
 	}
 
 	public String getOwnerSubject() {

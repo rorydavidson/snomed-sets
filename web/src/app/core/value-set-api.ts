@@ -21,6 +21,8 @@ export interface ValueSet {
   latestVersion: number | null;
   /** True only for the owner, when the definition differs from the latest published version. */
   unpublishedChanges: boolean;
+  /** Free-text labels, in lower case. */
+  tags: string[];
 }
 
 /** A definition frozen at the moment it was published. */
@@ -36,7 +38,10 @@ export interface ValueSetVersion {
 }
 
 /** The fields a person can set when creating or editing a value set. */
-export type ValueSetDraft = Pick<ValueSet, 'type' | 'codeSystem' | 'name' | 'description' | 'ecl' | 'visibility'> & {
+export type ValueSetDraft = Pick<
+  ValueSet,
+  'type' | 'codeSystem' | 'name' | 'description' | 'ecl' | 'visibility' | 'tags'
+> & {
   /** The whole list of a hand-picked value set. Empty for an ECL one. */
   conceptIds: string[];
 };
@@ -88,6 +93,11 @@ export class ValueSetApi {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`/api/value-sets/${id}`);
+  }
+
+  /** Tags already in use on value sets the signed-in person can see. */
+  tags(): Observable<string[]> {
+    return this.http.get<string[]>('/api/tags');
   }
 
   codeSystems(): Observable<CodeSystem[]> {

@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable, catchError, debounceTime, distinctUntilChanged, map, of, startWith, switchMap } from 'rxjs';
 import { CodeSystem, Concept, ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
 import { ConceptPicker } from './concept-picker';
+import { TagInput } from './tag-input';
 
 const PREVIEW_SIZE = 20;
 const PREVIEW_DELAY_MS = 500;
@@ -19,7 +20,7 @@ type Preview =
 
 @Component({
   selector: 'app-value-set-editor-page',
-  imports: [ReactiveFormsModule, RouterLink, ConceptPicker],
+  imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput],
   template: `
     <main class="page">
       <p><a [routerLink]="backLink">{{ id === null ? 'Back to the library' : 'Back to the value set' }}</a></p>
@@ -88,6 +89,8 @@ type Preview =
                   <p class="meta">Fixed when the value set was created.</p>
                 }
               </div>
+
+              <app-tag-input [(tags)]="tags" [known]="knownTags()" />
 
               <div class="field">
                 <label class="checkbox">
@@ -236,6 +239,8 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly members = signal<Concept[]>([]);
   protected readonly memberIds = computed<ReadonlySet<string>>(() => new Set(this.members().map((c) => c.conceptId)));
   protected readonly memberMessage = signal<string | null>(null);
+  protected readonly tags = signal<string[]>([]);
+  protected readonly knownTags = signal<string[]>([]);
   protected readonly codeSystems = signal<CodeSystem[]>([]);
   /** The Snowstorm branch of the chosen code system, used for the preview and for concept search. */
   protected readonly branch = signal('MAIN');
@@ -262,6 +267,8 @@ export class ValueSetEditorPage implements OnInit {
   }
 
   ngOnInit(): void {
+    // Suggestions only: the form works without them, so a failure here is not shown.
+    this.api.tags().subscribe({ next: (tags) => this.knownTags.set(tags), error: () => undefined });
     if (this.id === null) {
       this.api.codeSystems().subscribe({
         next: (codeSystems) => this.startCreating(codeSystems),
@@ -320,6 +327,7 @@ export class ValueSetEditorPage implements OnInit {
       description: value.description.trim(),
       ecl: this.manual() ? '' : value.ecl.trim(),
       visibility: value.shared ? 'COMMUNITY' : 'PRIVATE',
+      tags: this.tags(),
       conceptIds: this.manual() ? this.members().map((concept) => concept.conceptId) : [],
     };
     this.saving.set(true);
@@ -351,6 +359,7 @@ export class ValueSetEditorPage implements OnInit {
       return;
     }
     this.branch.set(set.branch);
+    this.tags.set(set.tags);
     this.form.setValue({
       type: set.type,
       codeSystem: set.codeSystem,

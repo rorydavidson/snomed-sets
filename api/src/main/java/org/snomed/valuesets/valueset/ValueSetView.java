@@ -1,6 +1,7 @@
 package org.snomed.valuesets.valueset;
 
 import java.time.Instant;
+import java.util.List;
 
 import org.snomed.valuesets.user.CurrentUser;
 
@@ -14,7 +15,7 @@ import org.snomed.valuesets.user.CurrentUser;
 public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSystem, String name,
 		String description, String ecl, String branch,
 		ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownedByMe,
-		Instant updatedAt, Integer latestVersion, boolean unpublishedChanges) {
+		Instant updatedAt, Integer latestVersion, boolean unpublishedChanges, List<String> tags) {
 
 	/**
 	 * The owner sees the definition they are working on. Everyone else sees the latest
@@ -30,7 +31,7 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 				showPublished ? latest.getBranch() : valueSet.getBranch(),
 				valueSet.getStatus(), valueSet.getVisibility(), valueSet.getOwnerName(), owner,
 				valueSet.getUpdatedAt(), latest == null ? null : latest.getVersionNumber(),
-				owner && unpublishedChanges);
+				owner && unpublishedChanges, valueSet.getTags());
 	}
 
 	/** @param frozen false for an old version whose concept list was not stored when it was published */

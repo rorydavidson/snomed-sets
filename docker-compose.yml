@@ -1,0 +1,79 @@
+services:
+  db:
+    image: mariadb:11.8
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-valuesets}
+      MARIADB_USER: ${DB_USER:?set DB_USER in .env}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./api
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      DB_URL: jdbc:mariadb://db:3306/${DB_NAME:-valuesets}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:?set KEYCLOAK_ISSUER_URI in .env}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:?set KEYCLOAK_CLIENT_ID in .env}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?set KEYCLOAK_CLIENT_SECRET in .env}
+      SNOWSTORM_BASE_URL: ${SNOWSTORM_BASE_URL:-https://snomedbrowser.org/snowstorm/snomed-ct}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  web:
+    build: ./web
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Optional local Snowstorm. Start with: docker compose --profile local-snowstorm up
+  # and set SNOWSTORM_BASE_URL=http://snowstorm:8080 in .env.
+  # It starts empty: a SNOMED CT release must be imported before it returns concepts.
+  elasticsearch:
+    profiles: ["local-snowstorm"]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms4g -Xmx4g
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  snowstorm:
+    profiles: ["local-snowstorm"]
+    image: snomedinternational/snowstorm:latest
+    entrypoint: >
+      java -Xms2g -Xmx4g
+      --add-opens java.base/java.lang=ALL-UNNAMED
+      --add-opens=java.base/java.util=ALL-UNNAMED
+      -cp @/app/jib-classpath-file org.snomed.snowstorm.SnowstormApplication
+      --elasticsearch.urls=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  es-data:

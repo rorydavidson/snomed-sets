@@ -8,6 +8,7 @@ import { ValueSetEditorPage } from './value-set-editor-page';
 const MINE: ValueSet = {
   id: 7,
   type: 'ECL',
+  codeSystem: 'SNOMEDCT',
   name: 'Asthma diagnoses',
   description: 'All asthma disorders.',
   ecl: '<< 195967001',
@@ -47,6 +48,14 @@ describe('ValueSetEditorPage', () => {
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(ValueSetEditorPage);
     fixture.detectChanges();
+    if (!('id' in params)) {
+      // A new value set starts by asking which code systems Snowstorm has.
+      http.expectOne('/api/code-systems').flush([
+        { shortName: 'SNOMEDCT', name: 'SNOMEDCT', branchPath: 'MAIN', latestVersion: '2026-01-01' },
+        { shortName: 'SNOMEDCT-BE', name: 'Belgian Edition', branchPath: 'MAIN/SNOMEDCT-BE', latestVersion: null },
+      ]);
+      fixture.detectChanges();
+    }
     return fixture;
   }
 
@@ -76,16 +85,41 @@ describe('ValueSetEditorPage', () => {
     const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
     expect(request.request.body).toEqual({
       type: 'ECL',
+      codeSystem: 'SNOMEDCT',
       name: 'Childhood asthma',
       description: '',
       ecl: '<< 233678006',
-      branch: 'MAIN',
       visibility: 'PRIVATE',
       conceptIds: [],
     });
     request.flush({ ...MINE, id: 12 });
 
     expect(navigate).toHaveBeenCalledWith(['/value-sets', 12]);
+  });
+
+  it('builds against the chosen code system and searches on its branch', () => {
+    const fixture = create({});
+    const page = fixture.nativeElement as HTMLElement;
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    const select = page.querySelector<HTMLSelectElement>('#code-system')!;
+    expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
+      'SNOMEDCT, version 2026-01-01',
+      'Belgian Edition (SNOMEDCT-BE)',
+    ]);
+    select.value = 'SNOMEDCT-BE';
+    select.dispatchEvent(new Event('change'));
+    type(page, '#name', 'Belgian asthma');
+    type(page, '#ecl', '<< 195967001');
+    vi.advanceTimersByTime(500);
+    http
+      .expectOne('/api/ecl/expansion?ecl=%3C%3C%20195967001&branch=MAIN/SNOMEDCT-BE&limit=20')
+      .flush({ items: [], total: 0, offset: 0, limit: 20 });
+
+    submit(page);
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
+    expect(request.request.body.codeSystem).toBe('SNOMEDCT-BE');
+    request.flush({ ...MINE, id: 12 });
   });
 
   it('does not save while required fields are empty', () => {
@@ -185,10 +219,10 @@ describe('ValueSetEditorPage', () => {
     const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
     expect(request.request.body).toEqual({
       type: 'MANUAL',
+      codeSystem: 'SNOMEDCT',
       name: 'Picked asthma codes',
       description: '',
       ecl: '',
-      branch: 'MAIN',
       visibility: 'PRIVATE',
       conceptIds: ['233678006', '389145006'],
     });

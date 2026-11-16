@@ -37,11 +37,15 @@ public class ValueSet {
 	@Column(name = "definition_type", nullable = false, length = 20)
 	private DefinitionType definitionType;
 
+	/** Short name of the Snowstorm code system, for example SNOMEDCT. Fixed when the value set is created. */
+	@Column(name = "code_system", nullable = false, length = 100)
+	private String codeSystem;
+
 	/** Empty for a hand-picked value set, whose concepts are stored as members. */
 	@Column(nullable = false, length = 4000)
 	private String ecl;
 
-	/** Snowstorm branch path the definition is evaluated against, for example MAIN. */
+	/** Branch path of the code system, taken from Snowstorm when the value set is created. */
 	@Column(nullable = false, length = 200)
 	private String branch;
 
@@ -71,21 +75,22 @@ public class ValueSet {
 	}
 
 	/** A new value set always starts as a draft. */
-	public ValueSet(DefinitionType definitionType, String name, String description, String ecl, String branch,
-			Visibility visibility, String ownerSubject, String ownerName) {
+	public ValueSet(DefinitionType definitionType, String codeSystem, String branch, String name,
+			String description, String ecl, Visibility visibility, String ownerSubject, String ownerName) {
 		this.definitionType = definitionType;
+		this.codeSystem = codeSystem;
+		this.branch = branch;
 		this.status = Status.DRAFT;
 		this.ownerSubject = ownerSubject;
 		this.ownerName = ownerName;
 		this.createdAt = Instant.now();
-		update(name, description, ecl, branch, visibility);
+		update(name, description, ecl, visibility);
 	}
 
-	public void update(String name, String description, String ecl, String branch, Visibility visibility) {
+	public void update(String name, String description, String ecl, Visibility visibility) {
 		this.name = name;
 		this.description = description;
 		this.ecl = ecl;
-		this.branch = branch;
 		this.visibility = visibility;
 		this.updatedAt = Instant.now();
 	}
@@ -120,6 +125,10 @@ public class ValueSet {
 
 	public String getEcl() {
 		return ecl;
+	}
+
+	public String getCodeSystem() {
+		return codeSystem;
 	}
 
 	public String getBranch() {

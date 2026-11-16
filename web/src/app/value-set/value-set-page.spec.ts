@@ -8,6 +8,7 @@ import { ValueSetPage } from './value-set-page';
 const SET: ValueSet = {
   id: 7,
   type: 'ECL',
+  codeSystem: 'SNOMEDCT',
   name: 'Asthma diagnoses',
   description: 'All asthma disorders.',
   ecl: '<< 195967001 |Asthma|',

@@ -74,4 +74,17 @@ class SnowstormClientTests {
 		assertThat(SnowstormClient.isValidBranch("MAIN/SNOMEDCT-BE/2026-03-15")).isTrue();
 		assertThat(SnowstormClient.isValidBranch("OTHER")).isFalse();
 	}
+
+	@Test
+	void listsCodeSystemsWithTheirBranchAndLatestVersion() {
+		server.expect(requestTo("https://snowstorm.test/codesystems")).andRespond(withSuccess("""
+				{"items":[
+				  {"shortName":"SNOMEDCT","branchPath":"MAIN","latestVersion":{"version":"2026-01-01"}},
+				  {"shortName":"SNOMEDCT-BE","name":"Belgian Edition","branchPath":"MAIN/SNOMEDCT-BE"}]}
+				""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.codeSystems()).containsExactly(
+				new CodeSystem("SNOMEDCT", "SNOMEDCT", "MAIN", "2026-01-01"),
+				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", null));
+	}
 }

@@ -33,6 +33,24 @@ public class SnowstormClient {
 		return branch != null && BRANCH_PATH.matcher(branch).matches();
 	}
 
+	public List<CodeSystem> codeSystems() {
+		SnowstormCodeSystems response;
+		try {
+			response = restClient.get().uri("/codesystems").retrieve().body(SnowstormCodeSystems.class);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not list its code systems.", false, e);
+		}
+		if (response == null || response.items() == null) {
+			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
+		}
+		return response.items().stream()
+				.filter(item -> isValidBranch(item.branchPath()))
+				.map(item -> new CodeSystem(item.shortName(), item.name() == null ? item.shortName() : item.name(),
+						item.branchPath(), item.latestVersion() == null ? null : item.latestVersion().version()))
+				.toList();
+	}
+
 	/** The active concepts matching an ECL expression. */
 	public ExpansionPage expand(String ecl, String branch, int offset, int limit) {
 		return concepts("ecl", ecl, branch, offset, limit);
@@ -91,5 +109,14 @@ public class SnowstormClient {
 	}
 
 	record SnowstormTerm(String term) {
+	}
+
+	record SnowstormCodeSystems(List<SnowstormCodeSystem> items) {
+	}
+
+	record SnowstormCodeSystem(String shortName, String name, String branchPath, SnowstormCodeSystemVersion latestVersion) {
+	}
+
+	record SnowstormCodeSystemVersion(String version) {
 	}
 }

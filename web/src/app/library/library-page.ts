@@ -46,7 +46,7 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
               } @else {
                 <code class="ecl">{{ set.ecl }}</code>
               }
-              <p class="meta">{{ set.ownedByMe ? 'Yours' : set.ownerName }} · {{ set.branch }}</p>
+              <p class="meta">{{ set.ownedByMe ? 'Yours' : set.ownerName }} · {{ set.codeSystem }}</p>
             </li>
           }
         </ul>

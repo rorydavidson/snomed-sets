@@ -3,15 +3,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable, catchError, debounceTime, distinctUntilChanged, map, of, startWith, switchMap } from 'rxjs';
-import { Concept, ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
+import { CodeSystem, Concept, ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
 import { ConceptPicker } from './concept-picker';
 
 const PREVIEW_SIZE = 20;
 const PREVIEW_DELAY_MS = 500;
 // The same limit the backend applies to a hand-picked list.
 const MAX_MEMBERS = 2000;
-// The same shape the backend accepts for a Snowstorm branch path.
-const BRANCH_PATTERN = /^MAIN(\/[A-Za-z0-9][A-Za-z0-9_.-]*)*$/;
 
 type Preview =
   | { status: 'empty' }
@@ -28,7 +26,7 @@ type Preview =
 
       @if (loadError(); as message) {
         <div class="error-panel" role="alert">
-          <h1>This value set cannot be edited</h1>
+          <h1>{{ id === null ? 'A value set cannot be created right now' : 'This value set cannot be edited' }}</h1>
           <p>{{ message }}</p>
         </div>
       } @else if (loaded()) {
@@ -76,10 +74,17 @@ type Preview =
               }
 
               <div class="field">
-                <label for="branch">Snowstorm branch</label>
-                <input id="branch" type="text" class="mono" formControlName="branch" maxlength="200" autocomplete="off" />
-                @if (showError('branch')) {
-                  <p class="field-error">Enter a branch path that starts with MAIN, for example MAIN or MAIN/SNOMEDCT-GB.</p>
+                <label for="code-system">Code system</label>
+                @if (id === null) {
+                  <select id="code-system" formControlName="codeSystem">
+                    @for (codeSystem of codeSystems(); track codeSystem.shortName) {
+                      <option [value]="codeSystem.shortName">{{ describe(codeSystem) }}</option>
+                    }
+                  </select>
+                  <p class="meta">This cannot be changed after the value set is created.</p>
+                } @else {
+                  <p id="code-system">{{ form.controls.codeSystem.value }}</p>
+                  <p class="meta">Fixed when the value set was created.</p>
                 }
               </div>
 
@@ -110,7 +115,7 @@ type Preview =
           @if (manual()) {
             <section class="wide" aria-labelledby="members-heading">
               <h2 class="overline">Find concepts</h2>
-              <app-concept-picker [branch]="branchForSearch()" [inList]="memberIds()" (add)="addMembers($event)" />
+              <app-concept-picker [branch]="branch()" [inList]="memberIds()" (add)="addMembers($event)" />
 
               <h2 id="members-heading" class="overline">Concepts in this value set</h2>
               @if (memberMessage(); as message) {
@@ -215,11 +220,11 @@ export class ValueSetEditorPage implements OnInit {
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
     description: [''],
     ecl: ['', [Validators.required, Validators.pattern(/\S/)]],
-    branch: ['MAIN', [Validators.required, Validators.pattern(BRANCH_PATTERN)]],
+    codeSystem: ['SNOMEDCT'],
     shared: [false],
   });
 
-  protected readonly loaded = signal(this.id === null);
+  protected readonly loaded = signal(false);
   protected readonly loadError = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
@@ -230,22 +235,24 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly members = signal<Concept[]>([]);
   protected readonly memberIds = computed<ReadonlySet<string>>(() => new Set(this.members().map((c) => c.conceptId)));
   protected readonly memberMessage = signal<string | null>(null);
-  protected readonly branchForSearch = signal('MAIN');
+  protected readonly codeSystems = signal<CodeSystem[]>([]);
+  /** The Snowstorm branch of the chosen code system, used for the preview and for concept search. */
+  protected readonly branch = signal('MAIN');
 
   constructor() {
-    const { ecl, branch, type } = this.form.controls;
+    const { ecl, codeSystem, type } = this.form.controls;
     type.valueChanges.pipe(takeUntilDestroyed()).subscribe((chosen) => this.useType(chosen));
-    // Concept search needs a usable branch, so it keeps the last valid one while the field is being edited.
-    branch.valueChanges.pipe(takeUntilDestroyed()).subscribe((value) => {
-      if (branch.valid) {
-        this.branchForSearch.set(value.trim());
+    codeSystem.valueChanges.pipe(takeUntilDestroyed()).subscribe((chosen) => {
+      const match = this.codeSystems().find((candidate) => candidate.shortName === chosen);
+      if (match) {
+        this.branch.set(match.branchPath);
       }
     });
     // Wait for a pause in typing, and drop the answer to an earlier definition if a newer one is pending.
     this.form.valueChanges
       .pipe(
         debounceTime(PREVIEW_DELAY_MS),
-        map(() => ({ ecl: ecl.value.trim(), branch: branch.value.trim(), valid: ecl.valid && branch.valid })),
+        map(() => ({ ecl: ecl.value.trim(), branch: this.branch(), valid: ecl.valid })),
         distinctUntilChanged((a, b) => a.ecl === b.ecl && a.branch === b.branch),
         switchMap((definition) => (definition.valid ? this.expand(definition.ecl, definition.branch) : of<Preview>({ status: 'empty' }))),
         takeUntilDestroyed(),
@@ -255,6 +262,10 @@ export class ValueSetEditorPage implements OnInit {
 
   ngOnInit(): void {
     if (this.id === null) {
+      this.api.codeSystems().subscribe({
+        next: (codeSystems) => this.startCreating(codeSystems),
+        error: (error: unknown) => this.loadError.set(describeError(error)),
+      });
       return;
     }
     this.api.get(this.id).subscribe({
@@ -263,7 +274,14 @@ export class ValueSetEditorPage implements OnInit {
     });
   }
 
-  protected showError(control: 'name' | 'ecl' | 'branch'): boolean {
+  protected describe(codeSystem: CodeSystem): string {
+    const version = codeSystem.latestVersion ? `, version ${codeSystem.latestVersion}` : '';
+    return codeSystem.name === codeSystem.shortName
+      ? `${codeSystem.shortName}${version}`
+      : `${codeSystem.name} (${codeSystem.shortName}${version})`;
+  }
+
+  protected showError(control: 'name' | 'ecl'): boolean {
     const field = this.form.controls[control];
     return field.invalid && field.touched;
   }
@@ -296,10 +314,10 @@ export class ValueSetEditorPage implements OnInit {
     const value = this.form.getRawValue();
     const draft: ValueSetDraft = {
       type: value.type,
+      codeSystem: value.codeSystem,
       name: value.name.trim(),
       description: value.description.trim(),
       ecl: this.manual() ? '' : value.ecl.trim(),
-      branch: value.branch.trim(),
       visibility: value.shared ? 'COMMUNITY' : 'PRIVATE',
       conceptIds: this.manual() ? this.members().map((concept) => concept.conceptId) : [],
     };
@@ -315,17 +333,29 @@ export class ValueSetEditorPage implements OnInit {
     });
   }
 
+  private startCreating(codeSystems: CodeSystem[]): void {
+    if (codeSystems.length === 0) {
+      this.loadError.set('Snowstorm has no code systems to build a value set against.');
+      return;
+    }
+    this.codeSystems.set(codeSystems);
+    const preferred = codeSystems.find((candidate) => candidate.shortName === 'SNOMEDCT') ?? codeSystems[0];
+    this.form.controls.codeSystem.setValue(preferred.shortName);
+    this.loaded.set(true);
+  }
+
   private startEditing(set: ValueSet): void {
     if (!set.ownedByMe) {
       this.loadError.set('Only the owner can edit this value set.');
       return;
     }
+    this.branch.set(set.branch);
     this.form.setValue({
       type: set.type,
+      codeSystem: set.codeSystem,
       name: set.name,
       description: set.description,
       ecl: set.ecl,
-      branch: set.branch,
       shared: set.visibility === 'COMMUNITY',
     });
     if (set.type === 'ECL') {

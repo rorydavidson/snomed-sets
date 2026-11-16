@@ -75,10 +75,10 @@ const PAGE_SIZE = 50;
             <h2 id="definition-heading" class="overline">Definition</h2>
             @if (set.type === 'MANUAL') {
               <p>A list of concepts picked by hand.</p>
-              <p class="meta">{{ definitionLabel() }} Terms are as they were on {{ definition().branch }} when each concept was added.</p>
+              <p class="meta">{{ definitionLabel() }} Terms are as they were in {{ set.codeSystem }} when each concept was added.</p>
             } @else {
               <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
-              <p class="meta">{{ definitionLabel() }} Evaluated against {{ definition().branch }}.</p>
+              <p class="meta">{{ definitionLabel() }} Code system {{ set.codeSystem }}, branch {{ definition().branch }}.</p>
             }
 
             <h2 id="versions-heading" class="overline">Versions</h2>

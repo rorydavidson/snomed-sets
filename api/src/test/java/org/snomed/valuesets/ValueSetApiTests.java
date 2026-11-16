@@ -18,7 +18,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
@@ -69,6 +71,13 @@ class ValueSetApiTests {
 			 "ecl": "<< 233678006", "branch": "MAIN", "visibility": "PRIVATE"}
 			""";
 
+	@BeforeEach
+	void snowstormHasTwoCodeSystems() {
+		given(snowstorm.codeSystems()).willReturn(List.of(
+				new CodeSystem("SNOMEDCT", "International Edition", "MAIN", "2026-01-01"),
+				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", "2026-03-15")));
+	}
+
 	@AfterEach
 	void removeSetsCreatedByTests() {
 		jdbc.update("DELETE FROM value_set WHERE owner_subject <> 'sample-data'");
@@ -109,16 +118,17 @@ class ValueSetApiTests {
 	}
 
 	@Test
-	void createRejectsMissingFieldsAndBadBranch() throws Exception {
+	void createRejectsMissingFieldsAndUnknownCodeSystem() throws Exception {
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
 				.content(NEW_SET.replace("Childhood asthma", " "))
 				.with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest());
 
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
-				.content(NEW_SET.replace("MAIN", "../admin"))
+				.content(NEW_SET.replace("\"branch\": \"MAIN\"", "\"codeSystem\": \"SNOMEDCT-XX\""))
 				.with(signedInAs("alice")).with(csrf()))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("Snowstorm has no code system called SNOMEDCT-XX."));
 	}
 
 	@Test
@@ -220,7 +230,7 @@ class ValueSetApiTests {
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
 				.content(handPicked("PRIVATE", "195967001", "999999999")).with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.detail").value("These concepts are not active concepts on MAIN: 999999999"));
+				.andExpect(jsonPath("$.detail").value("These concepts are not active concepts in SNOMEDCT: 999999999"));
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
 				.content(handPicked("PRIVATE", "not-a-concept-id")).with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest());
@@ -290,6 +300,35 @@ class ValueSetApiTests {
 				.andExpect(status().isBadRequest());
 		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("bob")))
 				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void theCodeSystemIsChosenOnCreationAndCannotBeChangedAfterwards() throws Exception {
+		String belgian = NEW_SET.replace("\"branch\": \"MAIN\"", "\"codeSystem\": \"SNOMEDCT-BE\"");
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON).content(belgian)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.codeSystem").value("SNOMEDCT-BE"))
+				.andExpect(jsonPath("$.branch").value("MAIN/SNOMEDCT-BE"));
+		long id = jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = 'alice'", Long.class);
+
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("The code system of a value set cannot be changed."));
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(belgian.replace("Childhood asthma", "Renamed"))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.branch").value("MAIN/SNOMEDCT-BE"));
+	}
+
+	@Test
+	void codeSystemsComeFromSnowstorm() throws Exception {
+		mvc.perform(get("/api/code-systems").with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[1].shortName").value("SNOMEDCT-BE"));
 	}
 
 	@Test

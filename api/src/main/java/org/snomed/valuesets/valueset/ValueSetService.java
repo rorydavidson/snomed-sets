@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
@@ -71,11 +72,12 @@ public class ValueSetService {
 	public ValueSetView create(ValueSetDefinition definition, CurrentUser user) {
 		requireEclIfNeeded(definition);
 		boolean manual = definition.type() == ValueSet.DefinitionType.MANUAL;
-		List<Concept> concepts = manual ? resolveConcepts(definition, List.of()) : List.of();
+		String branch = branchOf(definition.codeSystem());
+		List<Concept> concepts = manual ? resolveConcepts(definition, branch, List.of()) : List.of();
 
 		ValueSet created = transaction.execute(status -> {
-			ValueSet valueSet = valueSets.save(new ValueSet(definition.type(), definition.name(),
-					definition.description(), manual ? "" : definition.ecl(), definition.branch(),
+			ValueSet valueSet = valueSets.save(new ValueSet(definition.type(), definition.codeSystem(), branch,
+					definition.name(), definition.description(), manual ? "" : definition.ecl(),
 					definition.visibility(), user.subject(), user.name()));
 			saveWorkingList(valueSet, concepts);
 			return valueSet;
@@ -89,12 +91,18 @@ public class ValueSetService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
 					"A value set cannot be changed between an ECL definition and a hand-picked list.");
 		}
+		if (!definition.codeSystem().equals(valueSet.getCodeSystem())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+					"The code system of a value set cannot be changed.");
+		}
 		requireEclIfNeeded(definition);
-		List<Concept> concepts = valueSet.isManual() ? resolveConcepts(definition, workingList(valueSet)) : List.of();
+		List<Concept> concepts = valueSet.isManual()
+				? resolveConcepts(definition, valueSet.getBranch(), workingList(valueSet))
+				: List.of();
 
 		transaction.executeWithoutResult(status -> {
 			valueSet.update(definition.name(), definition.description(), valueSet.isManual() ? "" : definition.ecl(),
-					definition.branch(), definition.visibility());
+					definition.visibility());
 			valueSets.save(valueSet);
 			if (valueSet.isManual()) {
 				members.deleteWorkingList(valueSet.getId());
@@ -241,6 +249,16 @@ public class ValueSetService {
 		return !version.getEcl().equals(valueSet.getEcl()) || !version.getBranch().equals(valueSet.getBranch());
 	}
 
+	/** The branch a code system's content is on, according to Snowstorm. */
+	private String branchOf(String codeSystem) {
+		return snowstorm.codeSystems().stream()
+				.filter(candidate -> candidate.shortName().equals(codeSystem))
+				.map(CodeSystem::branchPath)
+				.findFirst()
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+						"Snowstorm has no code system called " + codeSystem + "."));
+	}
+
 	private static void requireEclIfNeeded(ValueSetDefinition definition) {
 		if (definition.type() == ValueSet.DefinitionType.ECL && definition.ecl().isBlank()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An ECL expression is required.");
@@ -252,7 +270,7 @@ public class ValueSetService {
 	 * in the list keep their terms; new ones are looked up in Snowstorm, which also
 	 * confirms that they exist and are active.
 	 */
-	private List<Concept> resolveConcepts(ValueSetDefinition definition, List<Concept> alreadyInList) {
+	private List<Concept> resolveConcepts(ValueSetDefinition definition, String branch, List<Concept> alreadyInList) {
 		Map<String, Concept> known = alreadyInList.stream()
 				.collect(Collectors.toMap(Concept::conceptId, Function.identity()));
 		Set<String> requested = new LinkedHashSet<>(definition.conceptIds());
@@ -260,14 +278,14 @@ public class ValueSetService {
 
 		for (int start = 0; start < unknown.size(); start += SNOWSTORM_BATCH_SIZE) {
 			List<String> batch = unknown.subList(start, Math.min(start + SNOWSTORM_BATCH_SIZE, unknown.size()));
-			snowstorm.expand(String.join(" OR ", batch), definition.branch(), 0, SNOWSTORM_BATCH_SIZE).items()
+			snowstorm.expand(String.join(" OR ", batch), branch, 0, SNOWSTORM_BATCH_SIZE).items()
 					.forEach(concept -> known.put(concept.conceptId(), concept));
 		}
 
 		List<String> notFound = requested.stream().filter(conceptId -> !known.containsKey(conceptId)).toList();
 		if (!notFound.isEmpty()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-					"These concepts are not active concepts on " + definition.branch() + ": "
+					"These concepts are not active concepts in " + definition.codeSystem() + ": "
 							+ String.join(", ", notFound.subList(0, Math.min(5, notFound.size()))));
 		}
 		return requested.stream().map(known::get).toList();

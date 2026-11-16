@@ -11,8 +11,8 @@ import org.snomed.valuesets.user.CurrentUser;
  * @param latestVersion the newest published version number, or null if never published
  * @param unpublishedChanges true only for the owner, when the definition differs from the latest version
  */
-public record ValueSetView(long id, ValueSet.DefinitionType type, String name, String description, String ecl,
-		String branch,
+public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSystem, String name,
+		String description, String ecl, String branch,
 		ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownedByMe,
 		Instant updatedAt, Integer latestVersion, boolean unpublishedChanges) {
 
@@ -23,7 +23,8 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String name, S
 	static ValueSetView of(ValueSet valueSet, ValueSetVersion latest, boolean unpublishedChanges, CurrentUser user) {
 		boolean owner = valueSet.isOwnedBy(user.subject());
 		boolean showPublished = latest != null && !owner;
-		return new ValueSetView(valueSet.getId(), valueSet.getDefinitionType(), valueSet.getName(),
+		return new ValueSetView(valueSet.getId(), valueSet.getDefinitionType(), valueSet.getCodeSystem(),
+				valueSet.getName(),
 				valueSet.getDescription(),
 				showPublished ? latest.getEcl() : valueSet.getEcl(),
 				showPublished ? latest.getBranch() : valueSet.getBranch(),

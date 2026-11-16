@@ -86,6 +86,8 @@ class LocalLoginTests {
 	@Test
 	void localUserCanUseTheApiAndOwnsWhatTheyCreate() throws Exception {
 		MockHttpSession session = signIn();
+		org.mockito.BDDMockito.given(snowstorm.codeSystems()).willReturn(java.util.List.of(
+				new org.snomed.valuesets.snowstorm.CodeSystem("SNOMEDCT", "International Edition", "MAIN", null)));
 
 		mvc.perform(get("/api/me").session(session))
 				.andExpect(status().isOk())

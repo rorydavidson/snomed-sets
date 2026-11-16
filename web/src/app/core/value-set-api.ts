@@ -6,6 +6,8 @@ export interface ValueSet {
   id: number;
   /** Defined by an ECL expression, or by a hand-picked list of concepts. Fixed when created. */
   type: 'ECL' | 'MANUAL';
+  /** Short name of the code system the set is built against, for example SNOMEDCT. Fixed when created. */
+  codeSystem: string;
   name: string;
   description: string;
   ecl: string;
@@ -34,10 +36,18 @@ export interface ValueSetVersion {
 }
 
 /** The fields a person can set when creating or editing a value set. */
-export type ValueSetDraft = Pick<ValueSet, 'type' | 'name' | 'description' | 'ecl' | 'branch' | 'visibility'> & {
+export type ValueSetDraft = Pick<ValueSet, 'type' | 'codeSystem' | 'name' | 'description' | 'ecl' | 'visibility'> & {
   /** The whole list of a hand-picked value set. Empty for an ECL one. */
   conceptIds: string[];
 };
+
+/** A SNOMED CT edition or extension held by Snowstorm. */
+export interface CodeSystem {
+  shortName: string;
+  name: string;
+  branchPath: string;
+  latestVersion: string | null;
+}
 
 export interface Concept {
   conceptId: string;
@@ -78,6 +88,10 @@ export class ValueSetApi {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`/api/value-sets/${id}`);
+  }
+
+  codeSystems(): Observable<CodeSystem[]> {
+    return this.http.get<CodeSystem[]>('/api/code-systems');
   }
 
   /** The hand-picked list as it is being edited. Owner only. */

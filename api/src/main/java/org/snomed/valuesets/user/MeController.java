@@ -11,8 +11,7 @@ public class MeController {
 	/** Only the display name is sent to the browser; no email, subject or token claims. */
 	@GetMapping("/api/me")
 	public Me me(@AuthenticationPrincipal OidcUser user) {
-		String name = user.getFullName() != null ? user.getFullName() : user.getPreferredUsername();
-		return new Me(name);
+		return new Me(DisplayName.of(user));
 	}
 
 	public record Me(String name) {

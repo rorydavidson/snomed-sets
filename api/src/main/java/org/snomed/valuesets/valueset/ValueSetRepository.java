@@ -28,4 +28,8 @@ public interface ValueSetRepository extends Repository<ValueSet, Long> {
 			       or v.ownerSubject = :subject)
 			""")
 	Optional<ValueSet> findVisibleById(@Param("id") long id, @Param("subject") String subject);
+
+	ValueSet save(ValueSet valueSet);
+
+	void delete(ValueSet valueSet);
 }

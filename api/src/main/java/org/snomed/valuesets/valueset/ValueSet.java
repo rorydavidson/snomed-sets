@@ -61,6 +61,29 @@ public class ValueSet {
 		// for JPA
 	}
 
+	/** A new value set always starts as a draft. */
+	public ValueSet(String name, String description, String ecl, String branch, Visibility visibility,
+			String ownerSubject, String ownerName) {
+		this.status = Status.DRAFT;
+		this.ownerSubject = ownerSubject;
+		this.ownerName = ownerName;
+		this.createdAt = Instant.now();
+		update(name, description, ecl, branch, visibility);
+	}
+
+	public void update(String name, String description, String ecl, String branch, Visibility visibility) {
+		this.name = name;
+		this.description = description;
+		this.ecl = ecl;
+		this.branch = branch;
+		this.visibility = visibility;
+		this.updatedAt = Instant.now();
+	}
+
+	public boolean isOwnedBy(String subject) {
+		return ownerSubject.equals(subject);
+	}
+
 	public Long getId() {
 		return id;
 	}

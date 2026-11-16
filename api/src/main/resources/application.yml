@@ -11,6 +11,10 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration
+  mvc:
+    # Errors are sent as problem details, whose "detail" field the frontend shows to the user.
+    problemdetails:
+      enabled: true
   http:
     clients:
       # Applies to the Snowstorm client: fail fast rather than hold a request thread.

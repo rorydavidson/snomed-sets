@@ -40,7 +40,8 @@ server:
         same-site: lax
 
 snowstorm:
-  base-url: ${SNOWSTORM_BASE_URL:https://snomedbrowser.org/snowstorm/snomed-ct}
+  # No default: the public Snowstorm refuses server-side calls, so an instance must be chosen.
+  base-url: ${SNOWSTORM_BASE_URL}
   user-agent: ${SNOWSTORM_USER_AGENT:snomed-value-sets-bff}
 
 management:

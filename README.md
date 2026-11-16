@@ -20,28 +20,29 @@ the backend. Tokens stay on the server; the browser holds a session cookie.
    docker compose up --build
    ```
 
-3. Open http://localhost:8080.
+3. Open http://localhost:8090.
 
 ### Keycloak client
 
 Create a confidential OpenID Connect client with the standard (authorisation code) flow and:
 
-- Valid redirect URI: `http://localhost:8080/login/oauth2/code/keycloak`
-- Valid post-logout redirect URI: `http://localhost:8080/`
+- Valid redirect URI: `http://localhost:8090/login/oauth2/code/keycloak`
+- Valid post-logout redirect URI: `http://localhost:8090/`
 
 The backend reads the Keycloak configuration from the issuer when it starts, so it will not start
 if `KEYCLOAK_ISSUER_URI` cannot be reached from inside the `api` container.
 
 ### Snowstorm
 
-`SNOWSTORM_BASE_URL` selects the Snowstorm instance. To run one locally:
+`SNOWSTORM_BASE_URL` selects the Snowstorm instance. The public server refuses server-side calls,
+so use one of your own:
 
-```bash
-docker compose --profile local-snowstorm up --build
-```
-
-and set `SNOWSTORM_BASE_URL=http://snowstorm:8080`. A local Snowstorm starts empty and needs a
-SNOMED CT release imported before it returns concepts. It also needs several gigabytes of memory.
+- **Already running on this machine** (the default in `.env.example`):
+  `SNOWSTORM_BASE_URL=http://host.docker.internal:8080`
+- **Started with this stack**: run `docker compose --profile local-snowstorm up --build` and set
+  `SNOWSTORM_BASE_URL=http://snowstorm:8080`. This one starts empty and needs a SNOMED CT release
+  imported before it returns concepts. It is published on `localhost:8081` for that, and needs
+  several gigabytes of memory.
 
 ## Tests
 
@@ -49,6 +50,12 @@ Backend (needs Docker running, and JDK 25 or later):
 
 ```bash
 cd api && mvn test
+```
+
+To also run the tests that call a real Snowstorm with a release loaded:
+
+```bash
+cd api && SNOWSTORM_LIVE_URL=http://localhost:8080 mvn test
 ```
 
 Frontend:

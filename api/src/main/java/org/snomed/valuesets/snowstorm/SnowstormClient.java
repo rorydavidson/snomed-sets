@@ -127,7 +127,8 @@ public class SnowstormClient {
 			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
 		}
 		List<ExpansionPage.Concept> concepts = page.items().stream()
-				.map(item -> new ExpansionPage.Concept(item.conceptId(), termOf(item.pt()), termOf(item.fsn())))
+				.map(item -> new ExpansionPage.Concept(item.conceptId(), termOf(item.pt()), termOf(item.fsn()),
+						item.pt() == null ? null : item.pt().lang()))
 				.toList();
 		return new ExpansionPage(concepts, page.total(), offset, limit);
 	}
@@ -142,7 +143,7 @@ public class SnowstormClient {
 	record SnowstormConcept(String conceptId, SnowstormTerm pt, SnowstormTerm fsn) {
 	}
 
-	record SnowstormTerm(String term) {
+	record SnowstormTerm(String term, String lang) {
 	}
 
 	record BrowserConcept(String conceptId, SnowstormTerm fsn, SnowstormTerm pt, boolean active,

@@ -39,6 +39,7 @@ function concepts(count: number, startAt: number): Concept[] {
   return Array.from({ length: count }, (_, index) => ({
     conceptId: String(startAt + index),
     preferredTerm: `Concept ${startAt + index}`,
+    language: 'en',
     fullySpecifiedName: `Concept ${startAt + index} (disorder)`,
   }));
 }
@@ -85,6 +86,7 @@ describe('ValueSetPage', () => {
 
     expect(page.querySelector('pre')?.textContent).toContain('<< 195967001 |Asthma|');
     expect(page.textContent).toContain('Showing 1 to 50 of 120 concepts');
+    expect(page.querySelector('tbody .lang')?.textContent).toBe('en');
 
     button(page, 'Next')?.click();
     http

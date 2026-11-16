@@ -58,6 +58,8 @@ export interface Concept {
   conceptId: string;
   preferredTerm: string | null;
   fullySpecifiedName: string | null;
+  /** Language of the preferred term, for example "en". Missing only in old data. */
+  language?: string | null;
 }
 
 export interface ConceptRelationship {

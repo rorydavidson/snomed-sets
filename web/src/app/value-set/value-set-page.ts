@@ -150,6 +150,9 @@ const PAGE_SIZE = 50;
               </div>
             } @else if (expansion(); as page) {
               <p class="meta">{{ rangeLabel() }}</p>
+              <p class="meta">
+                Preferred terms are the US English ones where a concept has one. The tag after each term is its language.
+              </p>
               <div class="table-scroll">
                 <table>
                   <thead>
@@ -167,6 +170,9 @@ const PAGE_SIZE = 50;
                           <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
                             {{ concept.preferredTerm }}
                           </button>
+                          @if (concept.language) {
+                            <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
+                          }
                         </td>
                         <td>{{ concept.fullySpecifiedName }}</td>
                       </tr>

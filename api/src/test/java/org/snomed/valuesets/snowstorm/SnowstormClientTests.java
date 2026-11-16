@@ -44,7 +44,7 @@ class SnowstormClientTests {
 		assertThat(page.total()).isEqualTo(120);
 		assertThat(page.offset()).isEqualTo(50);
 		assertThat(page.items()).containsExactly(
-				new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)"));
+				new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)", "en"));
 		server.verify();
 	}
 

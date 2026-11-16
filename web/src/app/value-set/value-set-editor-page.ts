@@ -150,6 +150,9 @@ type Preview =
                             <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
                               {{ concept.preferredTerm }}
                             </button>
+                            @if (concept.language) {
+                              <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
+                            }
                           </td>
                           <td>
                             <button type="button" class="link-button" (click)="removeMember(concept.conceptId)" [attr.aria-label]="'Remove ' + concept.preferredTerm">
@@ -200,6 +203,9 @@ type Preview =
                                 <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
                                   {{ concept.preferredTerm }}
                                 </button>
+                                @if (concept.language) {
+                                  <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
+                                }
                               </td>
                             </tr>
                           }

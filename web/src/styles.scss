@@ -581,3 +581,15 @@ fieldset.field {
   font-family: inherit;
   cursor: pointer;
 }
+
+/* The language of the term it follows, for example "en". */
+.lang {
+  margin-left: var(--space-1);
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}

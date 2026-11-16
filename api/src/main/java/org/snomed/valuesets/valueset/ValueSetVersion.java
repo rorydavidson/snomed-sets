@@ -54,10 +54,6 @@ public class ValueSetVersion {
 		this.publishedAt = Instant.now();
 	}
 
-	public boolean hasSameDefinitionAs(ValueSet valueSet) {
-		return ecl.equals(valueSet.getEcl()) && branch.equals(valueSet.getBranch());
-	}
-
 	public Long getValueSetId() {
 		return valueSetId;
 	}

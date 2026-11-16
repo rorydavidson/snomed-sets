@@ -33,7 +33,17 @@ public class SnowstormClient {
 		return branch != null && BRANCH_PATH.matcher(branch).matches();
 	}
 
+	/** The active concepts matching an ECL expression. */
 	public ExpansionPage expand(String ecl, String branch, int offset, int limit) {
+		return concepts("ecl", ecl, branch, offset, limit);
+	}
+
+	/** The active concepts whose descriptions match the words in a search term. */
+	public ExpansionPage search(String term, String branch, int limit) {
+		return concepts("term", term, branch, 0, limit);
+	}
+
+	private ExpansionPage concepts(String filterName, String filterValue, String branch, int offset, int limit) {
 		if (!isValidBranch(branch)) {
 			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
 		}
@@ -43,11 +53,11 @@ public class SnowstormClient {
 					.uri(uriBuilder -> uriBuilder
 							.pathSegment(branch.split("/"))
 							.pathSegment("concepts")
-							.queryParam("ecl", "{ecl}")
+							.queryParam(filterName, "{value}")
 							.queryParam("activeFilter", true)
 							.queryParam("offset", offset)
 							.queryParam("limit", limit)
-							.build(ecl))
+							.build(filterValue))
 					.retrieve()
 					.body(SnowstormConceptPage.class);
 		}

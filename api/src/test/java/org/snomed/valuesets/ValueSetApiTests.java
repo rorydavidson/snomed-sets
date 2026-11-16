@@ -20,6 +20,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
+import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -169,6 +170,160 @@ class ValueSetApiTests {
 		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isNoContent());
 		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice"))).andExpect(status().isNotFound());
+	}
+
+	private static final Concept ASTHMA = new Concept("195967001", "Asthma", "Asthma (disorder)");
+	private static final Concept CHILDHOOD_ASTHMA = new Concept("233678006", "Childhood asthma",
+			"Childhood asthma (disorder)");
+	private static final Concept ALLERGIC_ASTHMA = new Concept("389145006", "Allergic asthma",
+			"Allergic asthma (disorder)");
+
+	private static String handPicked(String visibility, String... conceptIds) {
+		return """
+				{"type": "MANUAL", "name": "Picked asthma codes", "description": "", "branch": "MAIN",
+				 "visibility": "%s", "conceptIds": ["%s"]}
+				""".formatted(visibility, String.join("\", \"", conceptIds));
+	}
+
+	private long createHandPicked(String subject, String visibility) throws Exception {
+		given(snowstorm.expand("195967001 OR 233678006", "MAIN", 0, 100))
+				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA, ASTHMA), 2, 0, 100));
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(handPicked(visibility, "195967001", "233678006")).with(signedInAs(subject)).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.type").value("MANUAL"))
+				.andExpect(jsonPath("$.ecl").value(""));
+		return jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = ?", Long.class, subject);
+	}
+
+	@Test
+	void handPickedSetStoresTermsFromSnowstormAndListsThemWithoutCallingItAgain() throws Exception {
+		long id = createHandPicked("alice", "PRIVATE");
+		org.mockito.Mockito.clearInvocations(snowstorm);
+
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.total").value(2))
+				.andExpect(jsonPath("$.items[0].preferredTerm").value("Asthma"))
+				.andExpect(jsonPath("$.items[1].conceptId").value("233678006"));
+		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$", hasSize(2)));
+
+		org.mockito.Mockito.verifyNoInteractions(snowstorm);
+	}
+
+	@Test
+	void handPickedSetRejectsAConceptSnowstormDoesNotKnow() throws Exception {
+		given(snowstorm.expand("195967001 OR 999999999", "MAIN", 0, 100))
+				.willReturn(new ExpansionPage(List.of(ASTHMA), 1, 0, 100));
+
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(handPicked("PRIVATE", "195967001", "999999999")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("These concepts are not active concepts on MAIN: 999999999"));
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(handPicked("PRIVATE", "not-a-concept-id")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void editingAHandPickedListOnlyLooksUpTheNewConcepts() throws Exception {
+		long id = createHandPicked("alice", "PRIVATE");
+		given(snowstorm.expand("389145006", "MAIN", 0, 100))
+				.willReturn(new ExpansionPage(List.of(ALLERGIC_ASTHMA), 1, 0, 100));
+
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(handPicked("PRIVATE", "233678006", "389145006")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk());
+
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.total").value(2))
+				.andExpect(jsonPath("$.items[0].preferredTerm").value("Allergic asthma"))
+				.andExpect(jsonPath("$.items[1].preferredTerm").value("Childhood asthma"));
+	}
+
+	@Test
+	void publishingAHandPickedSetFreezesItsListForEveryoneElse() throws Exception {
+		long id = createHandPicked("alice", "COMMUNITY");
+		publish(id, "alice", "First list");
+
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(handPicked("COMMUNITY", "233678006")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.unpublishedChanges").value(true));
+
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.total").value(1));
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.total").value(2));
+		mvc.perform(get("/api/value-sets/{id}/versions", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$[0].conceptCount").value(2));
+
+		publish(id, "alice", "Removed the parent concept");
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.total").value(1));
+		mvc.perform(get("/api/value-sets/{id}/versions/1/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.total").value(2));
+	}
+
+	@Test
+	void anEmptyHandPickedSetCanBeSavedButNotPublished() throws Exception {
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"type": "MANUAL", "name": "Empty", "description": "", "branch": "MAIN",
+						 "visibility": "PRIVATE", "conceptIds": []}
+						""").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated());
+		long id = jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = 'alice'", Long.class);
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("Add at least one concept before publishing."));
+	}
+
+	@Test
+	void theKindOfDefinitionCannotBeChangedAndTheWorkingListIsForTheOwnerOnly() throws Exception {
+		long id = createHandPicked("alice", "COMMUNITY");
+
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("bob")))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void anEclSetNeedsAnExpression() throws Exception {
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(NEW_SET.replace("<< 233678006", " ")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void conceptSearchPassesTheTermToSnowstorm() throws Exception {
+		given(snowstorm.search("childhood asthma", "MAIN", 25))
+				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA), 5, 0, 25));
+
+		mvc.perform(get("/api/concepts").param("term", "childhood asthma").with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.total").value(5))
+				.andExpect(jsonPath("$.items[0].conceptId").value("233678006"));
+		mvc.perform(get("/api/concepts").param("term", "as").with(signedInAs("alice")))
+				.andExpect(status().isBadRequest());
+		mvc.perform(get("/api/concepts").param("term", "asthma")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void childrenOfAConceptAreTheDirectChildrenOnly() throws Exception {
+		given(snowstorm.expand("<! 195967001", "MAIN", 0, 100))
+				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA), 2, 0, 100));
+
+		mvc.perform(get("/api/concepts/195967001/children").with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.total").value(2))
+				.andExpect(jsonPath("$.items", hasSize(2)));
+		mvc.perform(get("/api/concepts/195967001%20OR%20*/children").with(signedInAs("alice")))
+				.andExpect(status().isBadRequest());
 	}
 
 	private void publish(long id, String subject, String note) throws Exception {

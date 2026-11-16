@@ -1,5 +1,7 @@
 package org.snomed.valuesets.valueset;
 
+import java.util.List;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -12,11 +14,28 @@ import org.snomed.valuesets.snowstorm.SnowstormClient;
  *
  * The ECL is not checked against Snowstorm on save, so a draft can be kept while it is
  * still being worked on, or while Snowstorm is unavailable. It is checked on publishing.
+ *
+ * @param type ECL when left out
+ * @param ecl the definition of an ECL value set; ignored for a hand-picked one
+ * @param conceptIds the full list of a hand-picked value set; ignored for an ECL one.
+ *        Only identifiers are accepted. The terms are looked up in Snowstorm, so a
+ *        person cannot attach a made-up term to a concept.
  */
-public record ValueSetDefinition(@NotBlank @Size(max = 200) String name,
+public record ValueSetDefinition(ValueSet.DefinitionType type,
+		@NotBlank @Size(max = 200) String name,
 		@NotNull @Size(max = 2000) String description,
-		@NotBlank @Size(max = 4000) String ecl,
+		@Size(max = 4000) String ecl,
 		@NotBlank @Size(max = 200) @Pattern(regexp = SnowstormClient.BRANCH_PATH_REGEX,
 				message = "Branch path is not valid.") String branch,
-		@NotNull ValueSet.Visibility visibility) {
+		@NotNull ValueSet.Visibility visibility,
+		@Size(max = MAX_MEMBERS) List<@NotNull @Pattern(regexp = CONCEPT_ID_REGEX) String> conceptIds) {
+
+	public static final int MAX_MEMBERS = 2000;
+	public static final String CONCEPT_ID_REGEX = "\\d{6,18}";
+
+	public ValueSetDefinition {
+		type = type == null ? ValueSet.DefinitionType.ECL : type;
+		ecl = ecl == null ? "" : ecl;
+		conceptIds = conceptIds == null ? List.of() : conceptIds;
+	}
 }

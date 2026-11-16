@@ -70,6 +70,12 @@ public class ValueSetController {
 		service.delete(id, user);
 	}
 
+	/** The hand-picked list as it is being edited, for the editor. Owner only. */
+	@GetMapping("/value-sets/{id}/members")
+	public List<ExpansionPage.Concept> members(@PathVariable long id, CurrentUser user) {
+		return service.workingMembers(id, user);
+	}
+
 	@GetMapping("/value-sets/{id}/expansion")
 	public ExpansionPage expansion(@PathVariable long id,
 			@RequestParam(defaultValue = "0") @Min(0) int offset,

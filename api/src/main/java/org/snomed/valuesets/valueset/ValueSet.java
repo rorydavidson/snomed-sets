@@ -19,6 +19,9 @@ public class ValueSet {
 
 	public enum Visibility { PRIVATE, COMMUNITY }
 
+	/** How the content is defined: by an ECL expression, or by a hand-picked list of concepts. */
+	public enum DefinitionType { ECL, MANUAL }
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -29,6 +32,12 @@ public class ValueSet {
 	@Column(nullable = false, length = 2000)
 	private String description;
 
+	/** Fixed when the value set is created. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "definition_type", nullable = false, length = 20)
+	private DefinitionType definitionType;
+
+	/** Empty for a hand-picked value set, whose concepts are stored as members. */
 	@Column(nullable = false, length = 4000)
 	private String ecl;
 
@@ -62,8 +71,9 @@ public class ValueSet {
 	}
 
 	/** A new value set always starts as a draft. */
-	public ValueSet(String name, String description, String ecl, String branch, Visibility visibility,
-			String ownerSubject, String ownerName) {
+	public ValueSet(DefinitionType definitionType, String name, String description, String ecl, String branch,
+			Visibility visibility, String ownerSubject, String ownerName) {
+		this.definitionType = definitionType;
 		this.status = Status.DRAFT;
 		this.ownerSubject = ownerSubject;
 		this.ownerName = ownerName;
@@ -98,6 +108,14 @@ public class ValueSet {
 
 	public String getDescription() {
 		return description;
+	}
+
+	public DefinitionType getDefinitionType() {
+		return definitionType;
+	}
+
+	public boolean isManual() {
+		return definitionType == DefinitionType.MANUAL;
 	}
 
 	public String getEcl() {

@@ -4,8 +4,11 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -104,5 +107,17 @@ class ValueSetApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.name").value("Sample Person"))
 				.andExpect(jsonPath("$.length()").value(1));
+	}
+
+	@Test
+	void signOutReturnsWhereToGoNextInsteadOfRedirecting() throws Exception {
+		mvc.perform(post("/logout").with(oidcLogin()).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(content().string("/"));
+	}
+
+	@Test
+	void signOutWithoutCsrfTokenIsRefused() throws Exception {
+		mvc.perform(post("/logout").with(oidcLogin())).andExpect(status().isForbidden());
 	}
 }

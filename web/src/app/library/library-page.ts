@@ -1,23 +1,18 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 
 @Component({
   selector: 'app-library-page',
-  imports: [RouterLink],
+  imports: [RouterLink, DatePipe],
   template: `
-    <section class="hero">
-      <div class="page">
-        <p class="overline">Community library</p>
-        <h1 class="display">shared value sets</h1>
-        <p class="lead">Sets shared with the community, and your own.</p>
-        <div class="actions">
-          <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
-        </div>
-      </div>
-    </section>
-
     <main class="page">
+      <div class="card-heading">
+        <h1 class="grow-heading">Library</h1>
+        <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
+      </div>
+
       @if (error(); as message) {
         <div class="error-panel" role="alert">
           <h2>The library could not be loaded</h2>
@@ -25,38 +20,71 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
           <button type="button" class="button button-secondary" (click)="load()">Try again</button>
         </div>
       } @else if (valueSets(); as sets) {
-        @if (sets.length === 0) {
-          <p class="muted">No value sets have been shared yet.</p>
-        }
-        <ul class="card-list">
-          @for (set of sets; track set.id) {
-            <li class="card">
-              <div class="card-heading">
-                <a class="card-title" [routerLink]="['/value-sets', set.id]">{{ set.name }}</a>
-                @if (set.visibility === 'PRIVATE') {
-                  <span class="badge">Private</span>
+        <div class="filters">
+          <div class="field">
+            <label for="library-search">Search by name or tag</label>
+            <input id="library-search" type="text" autocomplete="off" [value]="query()" (input)="query.set($any($event.target).value)" />
+          </div>
+          <div class="field">
+            <label for="concept-search-placeholder">Find sets containing a concept</label>
+            <input id="concept-search-placeholder" type="text" disabled placeholder="Coming soon" aria-describedby="concept-search-note" />
+            <span id="concept-search-note" class="visually-hidden">This search is not available yet.</span>
+          </div>
+        </div>
+
+        <p class="meta" role="status">{{ countLabel() }}</p>
+
+        @if (shown().length > 0) {
+          <div class="table-scroll">
+            <table class="library-table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Tags</th>
+                  <th scope="col">Defined by</th>
+                  <th scope="col">Code system</th>
+                  <th scope="col">Owner</th>
+                  <th scope="col">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (set of shown(); track set.id) {
+                  <tr>
+                    <td>
+                      <div class="set-heading">
+                        <a class="set-name" [routerLink]="['/value-sets', set.id]">{{ set.name }}</a>
+                        <span class="badge" [class.badge-success]="set.latestVersion !== null">
+                          {{ set.latestVersion !== null ? 'v' + set.latestVersion : 'Draft' }}
+                        </span>
+                        @if (set.visibility === 'PRIVATE') {
+                          <span class="badge">Private</span>
+                        }
+                      </div>
+                      @if (set.description) {
+                        <p class="meta one-line" [title]="set.description">{{ set.description }}</p>
+                      }
+                    </td>
+                    <td>
+                      <ul class="tags">
+                        @for (tag of set.tags; track tag) {
+                          <li>
+                            <button type="button" class="tag tag-button" (click)="query.set(tag)" [attr.aria-label]="'Show sets tagged ' + tag">
+                              {{ tag }}
+                            </button>
+                          </li>
+                        }
+                      </ul>
+                    </td>
+                    <td>{{ set.type === 'MANUAL' ? 'Picked list' : 'ECL' }}</td>
+                    <td>{{ set.codeSystem }}</td>
+                    <td>{{ set.ownedByMe ? 'You' : set.ownerName }}</td>
+                    <td class="no-wrap">{{ set.updatedAt | date: 'd MMM y' }}</td>
+                  </tr>
                 }
-                <span class="badge" [class.badge-success]="set.latestVersion !== null">
-                  {{ set.latestVersion !== null ? 'Published · v' + set.latestVersion : 'Draft' }}
-                </span>
-              </div>
-              <p>{{ set.description }}</p>
-              @if (set.type === 'MANUAL') {
-                <p class="meta">A list of concepts picked by hand.</p>
-              } @else {
-                <code class="ecl">{{ set.ecl }}</code>
-              }
-              @if (set.tags.length > 0) {
-                <ul class="tags" aria-label="Tags">
-                  @for (tag of set.tags; track tag) {
-                    <li class="tag">{{ tag }}</li>
-                  }
-                </ul>
-              }
-              <p class="meta">{{ set.ownedByMe ? 'Yours' : set.ownerName }} · {{ set.codeSystem }}</p>
-            </li>
-          }
-        </ul>
+              </tbody>
+            </table>
+          </div>
+        }
       } @else {
         <p class="muted" role="status">Loading value sets…</p>
       }
@@ -68,6 +96,27 @@ export class LibraryPage implements OnInit {
 
   protected readonly valueSets = signal<ValueSet[] | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly query = signal('');
+
+  /** Value sets whose name or one of whose tags contains every word that was typed. */
+  protected readonly shown = computed(() => {
+    const words = this.query().toLowerCase().split(/\s+/).filter((word) => word !== '');
+    return (this.valueSets() ?? []).filter((set) => {
+      const searchable = [set.name, ...set.tags].join(' ').toLowerCase();
+      return words.every((word) => searchable.includes(word));
+    });
+  });
+
+  protected readonly countLabel = computed(() => {
+    const total = this.valueSets()?.length ?? 0;
+    if (total === 0) {
+      return 'No value sets yet.';
+    }
+    if (this.query().trim() === '') {
+      return total === 1 ? '1 value set' : `${total} value sets`;
+    }
+    return this.shown().length === 0 ? `None of the ${total} value sets match.` : `${this.shown().length} of ${total} value sets`;
+  });
 
   ngOnInit(): void {
     this.load();

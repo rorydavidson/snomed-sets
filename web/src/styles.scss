@@ -520,3 +520,56 @@ fieldset.field {
   padding: 0;
   list-style: none;
 }
+
+.grow-heading {
+  flex-grow: 1;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+
+  .field {
+    flex: 1 1 260px;
+  }
+
+  input:disabled {
+    background: var(--surface-subtle);
+    cursor: not-allowed;
+  }
+}
+
+.library-table {
+  td {
+    vertical-align: top;
+  }
+}
+
+.set-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.set-name {
+  font-weight: var(--fw-bold);
+  text-decoration: none;
+}
+
+.one-line {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.no-wrap {
+  white-space: nowrap;
+}
+
+.tag-button {
+  font-family: inherit;
+  cursor: pointer;
+}

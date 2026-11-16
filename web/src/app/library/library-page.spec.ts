@@ -40,9 +40,40 @@ describe('LibraryPage', () => {
     http.expectOne('/api/value-sets').flush([ASTHMA]);
     await fixture.whenStable();
 
-    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.card-title');
+    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.set-name');
     expect(link?.textContent).toContain('Asthma diagnoses');
     expect(link?.getAttribute('href')).toBe('/value-sets/1');
+  });
+
+  it('filters by name and by tag, and a tag can be clicked to filter on it', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([
+      { ...ASTHMA, tags: ['respiratory'] },
+      { ...ASTHMA, id: 2, name: 'Fracture of femur', tags: ['trauma'] },
+      { ...ASTHMA, id: 3, name: 'Childhood asthma', tags: ['paediatric', 'respiratory'] },
+    ]);
+    await fixture.whenStable();
+    const names = () => Array.from(page.querySelectorAll('a.set-name')).map((a) => a.textContent?.trim());
+    const search = page.querySelector<HTMLInputElement>('#library-search')!;
+    expect(names()).toHaveLength(3);
+
+    search.value = 'ASTHMA child';
+    search.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(names()).toEqual(['Childhood asthma']);
+    expect(page.textContent).toContain('1 of 3 value sets');
+
+    Array.from(page.querySelectorAll<HTMLButtonElement>('button.tag')).find((b) => b.textContent?.trim() === 'respiratory')!.click();
+    await fixture.whenStable();
+    expect(names()).toEqual(['Asthma diagnoses', 'Childhood asthma']);
+
+    search.value = 'nothing like this';
+    search.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(page.textContent).toContain('None of the 3 value sets match.');
+    expect(page.querySelector<HTMLInputElement>('#concept-search-placeholder')?.disabled).toBe(true);
   });
 
   it('shows the backend explanation and a retry when loading fails', async () => {

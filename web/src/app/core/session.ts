@@ -8,8 +8,8 @@ export type SessionState =
   | { status: 'signedIn'; name: string }
   | { status: 'error' };
 
-/** Where the backend starts the Keycloak sign-in. The browser navigates here; it is not an API call. */
-export const SIGN_IN_URL = '/oauth2/authorization/keycloak';
+/** The backend sends the browser from here to whichever sign-in is configured. It is not an API call. */
+export const SIGN_IN_URL = '/sign-in';
 
 @Injectable({ providedIn: 'root' })
 export class Session {

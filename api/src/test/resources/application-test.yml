@@ -1,20 +1,9 @@
-# Placeholder values only. The database comes from Testcontainers and the
-# Keycloak registration from TestKeycloakConfig, so nothing here is contacted.
+# Placeholder values only. The database comes from Testcontainers, so nothing here is contacted.
 spring:
   datasource:
     url: jdbc:mariadb://replaced-by-testcontainers/test
     username: test
     password: test
-  security:
-    oauth2:
-      client:
-        registration:
-          keycloak:
-            client-id: test-client
-            client-secret: test-secret
-        provider:
-          keycloak:
-            issuer-uri: http://keycloak.test
 
 snowstorm:
   base-url: https://snowstorm.test

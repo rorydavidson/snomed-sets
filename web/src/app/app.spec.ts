@@ -23,7 +23,7 @@ describe('App', () => {
 
     const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.button-primary');
     expect(link?.textContent).toContain('Sign in');
-    expect(link?.getAttribute('href')).toBe('/oauth2/authorization/keycloak');
+    expect(link?.getAttribute('href')).toBe('/sign-in');
   });
 
   it('shows the signed-in name and a sign-out button', async () => {

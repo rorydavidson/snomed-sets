@@ -12,10 +12,8 @@ import jakarta.validation.constraints.Size;
 
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
-import org.snomed.valuesets.user.DisplayName;
+import org.snomed.valuesets.user.CurrentUser;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,29 +43,29 @@ public class ValueSetController {
 	}
 
 	@GetMapping("/value-sets")
-	public List<ValueSetView> list(@AuthenticationPrincipal OidcUser user) {
-		return valueSets.findAllVisibleTo(user.getSubject()).stream()
+	public List<ValueSetView> list(CurrentUser user) {
+		return valueSets.findAllVisibleTo(user.subject()).stream()
 				.map(valueSet -> ValueSetView.of(valueSet, user))
 				.toList();
 	}
 
 	@GetMapping("/value-sets/{id}")
-	public ValueSetView get(@PathVariable long id, @AuthenticationPrincipal OidcUser user) {
+	public ValueSetView get(@PathVariable long id, CurrentUser user) {
 		return ValueSetView.of(findVisible(id, user), user);
 	}
 
 	@PostMapping("/value-sets")
 	@ResponseStatus(HttpStatus.CREATED)
-	public ValueSetView create(@Valid @RequestBody ValueSetRequest request, @AuthenticationPrincipal OidcUser user) {
+	public ValueSetView create(@Valid @RequestBody ValueSetRequest request, CurrentUser user) {
 		requireValidBranch(request.branch());
 		ValueSet valueSet = new ValueSet(request.name(), request.description(), request.ecl(), request.branch(),
-				request.visibility(), user.getSubject(), DisplayName.of(user));
+				request.visibility(), user.subject(), user.name());
 		return ValueSetView.of(valueSets.save(valueSet), user);
 	}
 
 	@PutMapping("/value-sets/{id}")
 	public ValueSetView update(@PathVariable long id, @Valid @RequestBody ValueSetRequest request,
-			@AuthenticationPrincipal OidcUser user) {
+			CurrentUser user) {
 		requireValidBranch(request.branch());
 		ValueSet valueSet = findOwned(id, user);
 		valueSet.update(request.name(), request.description(), request.ecl(), request.branch(),
@@ -77,7 +75,7 @@ public class ValueSetController {
 
 	@DeleteMapping("/value-sets/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void delete(@PathVariable long id, @AuthenticationPrincipal OidcUser user) {
+	public void delete(@PathVariable long id, CurrentUser user) {
 		valueSets.delete(findOwned(id, user));
 	}
 
@@ -85,7 +83,7 @@ public class ValueSetController {
 	public ExpansionPage expansion(@PathVariable long id,
 			@RequestParam(defaultValue = "0") @Min(0) int offset,
 			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit,
-			@AuthenticationPrincipal OidcUser user) {
+			CurrentUser user) {
 		ValueSet valueSet = findVisible(id, user);
 		return snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, limit);
 	}
@@ -99,16 +97,16 @@ public class ValueSetController {
 		return snowstorm.expand(ecl, branch, offset, limit);
 	}
 
-	private ValueSet findVisible(long id, OidcUser user) {
+	private ValueSet findVisible(long id, CurrentUser user) {
 		// A set the caller may not see is reported as missing, so its existence is not revealed.
-		return valueSets.findVisibleById(id, user.getSubject())
+		return valueSets.findVisibleById(id, user.subject())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Value set not found"));
 	}
 
 	/** Only the owner may change or delete a set, even one that everybody can see. */
-	private ValueSet findOwned(long id, OidcUser user) {
+	private ValueSet findOwned(long id, CurrentUser user) {
 		ValueSet valueSet = findVisible(id, user);
-		if (!valueSet.isOwnedBy(user.getSubject())) {
+		if (!valueSet.isOwnedBy(user.subject())) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change this value set.");
 		}
 		return valueSet;
@@ -135,10 +133,10 @@ public class ValueSetController {
 			ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownedByMe,
 			Instant updatedAt) {
 
-		static ValueSetView of(ValueSet valueSet, OidcUser user) {
+		static ValueSetView of(ValueSet valueSet, CurrentUser user) {
 			return new ValueSetView(valueSet.getId(), valueSet.getName(), valueSet.getDescription(),
 					valueSet.getEcl(), valueSet.getBranch(), valueSet.getStatus(), valueSet.getVisibility(),
-					valueSet.getOwnerName(), valueSet.isOwnedBy(user.getSubject()),
+					valueSet.getOwnerName(), valueSet.isOwnedBy(user.subject()),
 					valueSet.getUpdatedAt());
 		}
 	}

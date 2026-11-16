@@ -32,6 +32,19 @@ Create a confidential OpenID Connect client with the standard (authorisation cod
 The backend reads the Keycloak configuration from the issuer when it starts, so it will not start
 if `KEYCLOAK_ISSUER_URI` cannot be reached from inside the `api` container.
 
+### Signing in without Keycloak (development only)
+
+To run without an identity provider, set `LOCAL_LOGIN_USERNAME` and `LOCAL_LOGIN_PASSWORD` in
+`.env` and add `local-login` to the profiles:
+
+```
+SPRING_PROFILES_ACTIVE=dev,local-login
+```
+
+The sign-in link then leads to a username and password form, and the Keycloak settings are
+ignored. There is one local user and no default password. Do not switch this profile on for a
+shared or deployed environment.
+
 ### Snowstorm
 
 `SNOWSTORM_BASE_URL` selects the Snowstorm instance. The public server refuses server-side calls,

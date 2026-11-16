@@ -2,7 +2,9 @@ package org.snomed.valuesets.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
@@ -10,29 +12,51 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 /**
- * The browser never holds tokens. Keycloak sign-in happens here, on the server,
- * and the browser is given only an HTTP-only session cookie.
+ * The browser never holds tokens. Sign-in happens here, on the server, and the
+ * browser is given only an HTTP-only session cookie.
  */
 @Configuration
 public class SecurityConfig {
 
+	/** The normal sign-in: SNOMED International accounts through Keycloak. */
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http, ClientRegistrationRepository clientRegistrations)
+	@Profile("!" + LocalLoginConfig.PROFILE)
+	SecurityFilterChain keycloakSecurity(HttpSecurity http, ClientRegistrationRepository clientRegistrations)
 			throws Exception {
+		applySharedRules(http);
+		http
+			// Always land on the app root after sign-in, never on a saved API request.
+			.oauth2Login(login -> login.defaultSuccessUrl("/", true))
+			.logout(logout -> logout.logoutSuccessHandler(new SpaLogoutSuccessHandler(clientRegistrations)));
+		return http.build();
+	}
+
+	/** Development only: a username and password form instead of Keycloak. */
+	@Bean
+	@Profile(LocalLoginConfig.PROFILE)
+	SecurityFilterChain localLoginSecurity(HttpSecurity http) throws Exception {
+		applySharedRules(http);
+		http
+			.formLogin(form -> form.defaultSuccessUrl("/", true))
+			// Same contract as the Keycloak sign-out: reply with the address to go to next.
+			.logout(logout -> logout.logoutSuccessHandler((request, response, authentication) -> {
+				response.setStatus(HttpStatus.OK.value());
+				response.setContentType(MediaType.TEXT_PLAIN_VALUE);
+				response.getWriter().write("/");
+			}));
+		return http.build();
+	}
+
+	private static void applySharedRules(HttpSecurity http) throws Exception {
 		http
 			.authorizeHttpRequests(requests -> requests
 				.requestMatchers("/actuator/health/**").permitAll()
 				.anyRequest().authenticated())
-			// Always land on the app root after sign-in, never on a saved API request.
-			.oauth2Login(login -> login.defaultSuccessUrl("/", true))
-			.logout(logout -> logout.logoutSuccessHandler(new SpaLogoutSuccessHandler(clientRegistrations)))
 			// Cookie-based CSRF token that the Angular HttpClient echoes back as a header.
 			.csrf(csrf -> csrf.spa())
-			// API calls get a 401 for the frontend to handle, not a redirect to Keycloak.
+			// API calls get a 401 for the frontend to handle, not a redirect to the sign-in page.
 			.exceptionHandling(handling -> handling.defaultAuthenticationEntryPointFor(
 				new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
 				PathPatternRequestMatcher.withDefaults().matcher("/api/**")));
-
-		return http.build();
 	}
 }

@@ -21,9 +21,12 @@ services:
       DB_URL: jdbc:mariadb://db:3306/${DB_NAME:-valuesets}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:?set KEYCLOAK_ISSUER_URI in .env}
-      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:?set KEYCLOAK_CLIENT_ID in .env}
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?set KEYCLOAK_CLIENT_SECRET in .env}
+      # Keycloak is needed unless the development-only local-login profile is on.
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      LOCAL_LOGIN_USERNAME: ${LOCAL_LOGIN_USERNAME:-}
+      LOCAL_LOGIN_PASSWORD: ${LOCAL_LOGIN_PASSWORD:-}
       SNOWSTORM_BASE_URL: ${SNOWSTORM_BASE_URL:-http://host.docker.internal:8080}
     # Lets the container reach a Snowstorm running on this machine as host.docker.internal,
     # on Linux as well as on Docker Desktop.

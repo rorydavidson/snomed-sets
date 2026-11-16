@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -28,6 +29,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -40,6 +42,9 @@ import org.testcontainers.mariadb.MariaDBContainer;
 @Testcontainers
 @ActiveProfiles({ "dev", "test" })
 @Import(TestKeycloakConfig.class)
+// Placeholders: the registration itself comes from TestKeycloakConfig, so no issuer is contacted.
+@TestPropertySource(properties = { "KEYCLOAK_CLIENT_ID=test-client", "KEYCLOAK_CLIENT_SECRET=test-secret",
+		"KEYCLOAK_ISSUER_URI=http://keycloak.test" })
 class ValueSetApiTests {
 
 	private static final String PRIVATE_SAMPLE = "Hypertension excluding pregnancy-related";
@@ -221,6 +226,19 @@ class ValueSetApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.name").value("Sample Person"))
 				.andExpect(jsonPath("$.length()").value(1));
+	}
+
+	@Test
+	void signInLinkSendsASignedOutBrowserToKeycloak() throws Exception {
+		mvc.perform(get("/sign-in").accept(MediaType.TEXT_HTML))
+				.andExpect(status().isFound())
+				.andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/oauth2/authorization/keycloak")));
+	}
+
+	@Test
+	void thereIsNoPasswordSignInUnlessLocalLoginIsSwitchedOn() throws Exception {
+		mvc.perform(post("/login").param("username", "anyone").param("password", "anything").with(csrf()))
+				.andExpect(status().is4xxClientError());
 	}
 
 	@Test

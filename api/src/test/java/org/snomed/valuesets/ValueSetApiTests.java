@@ -332,21 +332,22 @@ class ValueSetApiTests {
 				.andExpect(status().isCreated());
 	}
 
-	private static ExpansionPage pageWithTotal(long total) {
-		return new ExpansionPage(List.of(), total, 0, 1);
+	private static ExpansionPage pageOf(Concept... concepts) {
+		return new ExpansionPage(List.of(concepts), concepts.length, 0, 1000);
 	}
 
 	@Test
 	void publishingFreezesTheDefinitionForEveryoneElseUntilTheOwnerPublishesAgain() throws Exception {
 		long id = createSetOwnedBy("alice", "COMMUNITY");
-		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
-		given(snowstorm.expand("<< 233678006", "MAIN", 0, 1)).willReturn(pageWithTotal(9));
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		given(snowstorm.expand("<< 233678006", "MAIN", 0, 1000)).willReturn(pageOf(CHILDHOOD_ASTHMA));
 
 		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"note\": \"First release\"}").with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.number").value(1))
-				.andExpect(jsonPath("$.conceptCount").value(121));
+				.andExpect(jsonPath("$.frozen").value(true))
+				.andExpect(jsonPath("$.conceptCount").value(2));
 
 		// The owner changes the definition but has not published it yet.
 		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
@@ -373,24 +374,55 @@ class ValueSetApiTests {
 	}
 
 	@Test
-	void anOlderVersionCanStillBeExpanded() throws Exception {
+	void aPublishedVersionKeepsItsConceptListWhateverSnowstormSaysLater() throws Exception {
 		long id = createSetOwnedBy("alice", "COMMUNITY");
-		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
 		publish(id, "alice", "");
-		given(snowstorm.expand("<< 195967001", "MAIN", 0, 50)).willReturn(new ExpansionPage(
-				List.of(new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)")), 121, 0, 50));
+		org.mockito.Mockito.reset(snowstorm);
 
-		mvc.perform(get("/api/value-sets/{id}/versions/1/expansion", id).with(signedInAs("bob")))
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("bob")))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.total").value(121));
+				.andExpect(jsonPath("$.total").value(2))
+				.andExpect(jsonPath("$.items[0].preferredTerm").value("Asthma"));
+		mvc.perform(get("/api/value-sets/{id}/versions/1/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.total").value(2));
 		mvc.perform(get("/api/value-sets/{id}/versions/7/expansion", id).with(signedInAs("bob")))
 				.andExpect(status().isNotFound());
+
+		org.mockito.Mockito.verifyNoInteractions(snowstorm);
+	}
+
+	@Test
+	void publishingCollectsEveryPageOfTheExpansion() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000))
+				.willReturn(new ExpansionPage(List.of(ASTHMA, CHILDHOOD_ASTHMA), 1001, 0, 1000));
+		given(snowstorm.expand("<< 195967001", "MAIN", 1000, 1000))
+				.willReturn(new ExpansionPage(List.of(ALLERGIC_ASTHMA), 1001, 1000, 1000));
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.conceptCount").value(3));
+	}
+
+	@Test
+	void aDefinitionThatMatchesTooManyConceptsCannotBePublished() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000))
+				.willReturn(new ExpansionPage(List.of(ASTHMA), 250_000, 0, 1000));
+
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail")
+						.value("This definition matches 250000 concepts. At most 10000 can be published."));
 	}
 
 	@Test
 	void publishingAgainWithoutChangesIsRefused() throws Exception {
 		long id = createSetOwnedBy("alice", "PRIVATE");
-		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
 		publish(id, "alice", "");
 
 		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
@@ -402,7 +434,7 @@ class ValueSetApiTests {
 	@Test
 	void aDefinitionSnowstormRejectsCannotBePublished() throws Exception {
 		long id = createSetOwnedBy("alice", "PRIVATE");
-		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1))
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000))
 				.willThrow(new SnowstormException("Snowstorm rejected the request.", true, null));
 
 		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
@@ -425,7 +457,7 @@ class ValueSetApiTests {
 	@Test
 	void aPublishedSharedSetMustBeWithdrawnBeforeItCanBeDeleted() throws Exception {
 		long id = createSetOwnedBy("alice", "COMMUNITY");
-		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1)).willReturn(pageWithTotal(121));
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
 		publish(id, "alice", "");
 
 		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))

@@ -28,6 +28,7 @@ const VERSION_1: ValueSetVersion = {
   conceptCount: 121,
   note: 'First release',
   publishedAt: '2026-11-10T09:00:00Z',
+  frozen: true,
 };
 
 const EMPTY_PAGE = { items: [], total: 0, offset: 0, limit: 50 };

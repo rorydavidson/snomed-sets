@@ -32,12 +32,13 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String name, S
 				owner && unpublishedChanges);
 	}
 
+	/** @param frozen false for an old version whose concept list was not stored when it was published */
 	public record VersionView(int number, String ecl, String branch, long conceptCount, String note,
-			Instant publishedAt) {
+			Instant publishedAt, boolean frozen) {
 
 		static VersionView of(ValueSetVersion version) {
 			return new VersionView(version.getVersionNumber(), version.getEcl(), version.getBranch(),
-					version.getConceptCount(), version.getNote(), version.getPublishedAt());
+					version.getConceptCount(), version.getNote(), version.getPublishedAt(), version.isContentFrozen());
 		}
 	}
 }

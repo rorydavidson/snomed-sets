@@ -37,6 +37,13 @@ public class ValueSetVersion {
 	@Column(nullable = false, length = 500)
 	private String note;
 
+	/**
+	 * True when the concept list was stored at publishing. Versions published before
+	 * that was introduced have no stored list and are expanded live instead.
+	 */
+	@Column(name = "content_frozen", nullable = false)
+	private boolean contentFrozen;
+
 	@Column(name = "published_at", nullable = false)
 	private Instant publishedAt;
 
@@ -51,6 +58,7 @@ public class ValueSetVersion {
 		this.branch = valueSet.getBranch();
 		this.conceptCount = conceptCount;
 		this.note = note;
+		this.contentFrozen = true;
 		this.publishedAt = Instant.now();
 	}
 
@@ -72,6 +80,10 @@ public class ValueSetVersion {
 
 	public long getConceptCount() {
 		return conceptCount;
+	}
+
+	public boolean isContentFrozen() {
+		return contentFrozen;
 	}
 
 	public String getNote() {

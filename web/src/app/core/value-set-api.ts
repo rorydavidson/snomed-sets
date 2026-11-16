@@ -29,6 +29,8 @@ export interface ValueSetVersion {
   conceptCount: number;
   note: string;
   publishedAt: string;
+  /** False for an old version whose concept list was not stored when it was published. */
+  frozen: boolean;
 }
 
 /** The fields a person can set when creating or editing a value set. */

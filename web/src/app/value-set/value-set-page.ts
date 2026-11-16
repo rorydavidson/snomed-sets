@@ -50,8 +50,8 @@ const PAGE_SIZE = 50;
                   <label for="publish-note">What changed in version {{ nextVersion() }}? (optional)</label>
                   <input id="publish-note" type="text" maxlength="500" autocomplete="off" #note />
                   <p class="meta">
-                    Publishing freezes this definition as version {{ nextVersion() }}. Other people see it
-                    until you publish again.
+                    Publishing stores the concepts this value set has now as version {{ nextVersion() }}.
+                    That is what other people see until you publish again.
                   </p>
                 </div>
                 <button type="button" class="button button-primary" [disabled]="busy()" (click)="publish(note.value)">
@@ -104,6 +104,9 @@ const PAGE_SIZE = 50;
                         </span>
                         @if (version.note) {
                           <span>{{ version.note }}</span>
+                        }
+                        @if (!version.frozen) {
+                          <span class="meta">Concept list not stored; shown as Snowstorm evaluates it now.</span>
                         }
                       </button>
                     </li>

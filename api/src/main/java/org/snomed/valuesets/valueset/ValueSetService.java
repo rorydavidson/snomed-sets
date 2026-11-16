@@ -1,6 +1,8 @@
 package org.snomed.valuesets.valueset;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +16,7 @@ import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.user.CurrentUser;
 import org.snomed.valuesets.valueset.ValueSetView.VersionView;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,15 +31,21 @@ import org.springframework.web.server.ResponseStatusException;
 public class ValueSetService {
 
 	private static final int SNOWSTORM_BATCH_SIZE = 100;
+	private static final int PUBLISH_PAGE_SIZE = 1000;
+	/** Snowstorm does not page past 10,000 results without a different paging method. */
+	static final int MAX_PUBLISHED_CONCEPTS = 10_000;
 
 	private final ValueSetRepository valueSets;
 	private final ValueSetVersionRepository versions;
 	private final ValueSetMemberRepository members;
 	private final SnowstormClient snowstorm;
 	private final TransactionTemplate transaction;
+	private final JdbcTemplate jdbc;
 
 	public ValueSetService(ValueSetRepository valueSets, ValueSetVersionRepository versions,
-			ValueSetMemberRepository members, SnowstormClient snowstorm, TransactionTemplate transaction) {
+			ValueSetMemberRepository members, SnowstormClient snowstorm, TransactionTemplate transaction,
+			JdbcTemplate jdbc) {
+		this.jdbc = jdbc;
 		this.valueSets = valueSets;
 		this.versions = versions;
 		this.members = members;
@@ -120,13 +129,19 @@ public class ValueSetService {
 		ValueSet valueSet = findVisible(id, user);
 		ValueSetVersion latest = latestVersionOf(valueSet);
 		boolean showPublished = latest != null && !valueSet.isOwnedBy(user.subject());
-		if (valueSet.isManual()) {
-			int versionNumber = showPublished ? latest.getVersionNumber() : ValueSetMember.WORKING_LIST;
-			return memberPage(valueSet, versionNumber, offset, limit);
+		if (showPublished) {
+			return versionContent(valueSet, latest, offset, limit);
 		}
-		return showPublished
-				? snowstorm.expand(latest.getEcl(), latest.getBranch(), offset, limit)
+		return valueSet.isManual()
+				? memberPage(valueSet, ValueSetMember.WORKING_LIST, offset, limit)
 				: snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, limit);
+	}
+
+	/** A published version is read from its stored concept list, so it never changes. */
+	private ExpansionPage versionContent(ValueSet valueSet, ValueSetVersion version, int offset, int limit) {
+		return version.isContentFrozen()
+				? memberPage(valueSet, version.getVersionNumber(), offset, limit)
+				: snowstorm.expand(version.getEcl(), version.getBranch(), offset, limit);
 	}
 
 	public List<VersionView> versions(long id, CurrentUser user) {
@@ -140,9 +155,7 @@ public class ValueSetService {
 		ValueSet valueSet = findVisible(id, user);
 		ValueSetVersion version = versions.findByValueSetIdAndVersionNumber(valueSet.getId(), versionNumber)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
-		return valueSet.isManual()
-				? memberPage(valueSet, version.getVersionNumber(), offset, limit)
-				: snowstorm.expand(version.getEcl(), version.getBranch(), offset, limit);
+		return versionContent(valueSet, version, offset, limit);
 	}
 
 	public VersionView publish(long id, String note, CurrentUser user) {
@@ -152,31 +165,65 @@ public class ValueSetService {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
 					"Nothing has changed since version " + latest.getVersionNumber() + ".");
 		}
-		long conceptCount = countForPublishing(valueSet);
 		int number = latest == null ? 1 : latest.getVersionNumber() + 1;
+		if (valueSet.isManual()) {
+			return publishHandPicked(valueSet, number, note);
+		}
+		// Only an ECL definition that Snowstorm can expand may be published.
+		Collection<Concept> concepts = expandFully(valueSet);
 
 		ValueSetVersion published = transaction.execute(status -> {
 			valueSet.markPublished();
 			valueSets.save(valueSet);
-			if (valueSet.isManual()) {
-				members.copyWorkingListToVersion(valueSet.getId(), number);
-			}
-			return versions.save(new ValueSetVersion(valueSet, number, conceptCount, note));
+			storeVersionContent(valueSet, number, concepts);
+			return versions.save(new ValueSetVersion(valueSet, number, concepts.size(), note));
 		});
 		return VersionView.of(published);
 	}
 
-	private long countForPublishing(ValueSet valueSet) {
-		if (valueSet.isManual()) {
-			long count = members.countByValueSetIdAndVersionNumber(valueSet.getId(), ValueSetMember.WORKING_LIST);
-			if (count == 0) {
-				throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-						"Add at least one concept before publishing.");
-			}
-			return count;
+	private VersionView publishHandPicked(ValueSet valueSet, int number, String note) {
+		long count = members.countByValueSetIdAndVersionNumber(valueSet.getId(), ValueSetMember.WORKING_LIST);
+		if (count == 0) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Add at least one concept before publishing.");
 		}
-		// Only an ECL definition that Snowstorm can expand may be published.
-		return snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), 0, 1).total();
+		ValueSetVersion published = transaction.execute(status -> {
+			valueSet.markPublished();
+			valueSets.save(valueSet);
+			members.copyWorkingListToVersion(valueSet.getId(), number);
+			return versions.save(new ValueSetVersion(valueSet, number, count, note));
+		});
+		return VersionView.of(published);
+	}
+
+	/** Every concept the ECL definition matches right now, to be stored with the version. */
+	private Collection<Concept> expandFully(ValueSet valueSet) {
+		// Keyed by concept so a concept that shows up on two pages is stored once.
+		Map<String, Concept> concepts = new LinkedHashMap<>();
+		ExpansionPage page;
+		int offset = 0;
+		do {
+			page = snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, PUBLISH_PAGE_SIZE);
+			if (page.total() > MAX_PUBLISHED_CONCEPTS) {
+				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This definition matches " + page.total()
+						+ " concepts. At most " + MAX_PUBLISHED_CONCEPTS + " can be published.");
+			}
+			page.items().forEach(concept -> concepts.put(concept.conceptId(), concept));
+			offset += PUBLISH_PAGE_SIZE;
+		}
+		while (!page.items().isEmpty() && offset < page.total());
+		return concepts.values();
+	}
+
+	private void storeVersionContent(ValueSet valueSet, int versionNumber, Collection<Concept> concepts) {
+		// Plain JDBC batching: a version can hold thousands of rows.
+		jdbc.batchUpdate("""
+				INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term, fully_specified_name)
+				VALUES (?, ?, ?, ?, ?)
+				""", concepts.stream()
+				.map(concept -> new Object[] { valueSet.getId(), versionNumber, concept.conceptId(),
+						concept.preferredTerm() == null ? "" : concept.preferredTerm(),
+						concept.fullySpecifiedName() == null ? "" : concept.fullySpecifiedName() })
+				.toList());
 	}
 
 	private ValueSetView view(ValueSet valueSet, ValueSetVersion latest, CurrentUser user) {

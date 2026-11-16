@@ -408,6 +408,51 @@ class ValueSetApiTests {
 	}
 
 	@Test
+	void aSharedPublishedSetDownloadsAsAGpsFileOfItsLatestVersion() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		jdbc.update("UPDATE value_set SET name = 'Asthma: réf / v2!' WHERE id = ?", id);
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(CHILDHOOD_ASTHMA, ASTHMA));
+		publish(id, "alice", "");
+		org.mockito.Mockito.reset(snowstorm);
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Type", "text/tab-separated-values;charset=UTF-8"))
+				.andExpect(header().string("Content-Disposition", "attachment; filename=\"asthma-re-f-v2-v1.tsv\""))
+				.andExpect(content().string("""
+						SNOMED CT ID\tFSN (en-us)\tPT (en-us)\tActive
+						195967001\tAsthma (disorder)\tAsthma\t1
+						233678006\tChildhood asthma (disorder)\tChildhood asthma\t1
+						"""));
+		org.mockito.Mockito.verifyNoInteractions(snowstorm);
+	}
+
+	@Test
+	void aHandPickedSharedSetDownloadsItsPublishedList() throws Exception {
+		long id = createHandPicked("alice", "COMMUNITY");
+		publish(id, "alice", "");
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(content().string(org.hamcrest.Matchers.containsString("233678006\tChildhood asthma (disorder)")));
+	}
+
+	@Test
+	void onlySharedPublishedSetsCanBeDownloadedAndOnlyWhenSignedIn() throws Exception {
+		long unpublished = createSetOwnedBy("alice", "COMMUNITY");
+		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("bob")))
+				.andExpect(status().isConflict());
+		mvc.perform(get("/api/value-sets/{id}/download", unpublished)).andExpect(status().isUnauthorized());
+
+		jdbc.update("UPDATE value_set SET visibility = 'PRIVATE' WHERE id = ?", unpublished);
+		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("alice")))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.detail").value("Only value sets shared with the community can be downloaded."));
+		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	void anEclSetNeedsAnExpression() throws Exception {
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
 				.content(NEW_SET.replace("<< 233678006", " ")).with(signedInAs("alice")).with(csrf()))
@@ -544,7 +589,7 @@ class ValueSetApiTests {
 				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.detail")
-						.value("This definition matches 250000 concepts. At most 10000 can be published."));
+						.value("This definition matches 250000 concepts. At most 10000 can be published or downloaded."));
 	}
 
 	@Test

@@ -177,6 +177,29 @@ public class ValueSetService {
 		return versionContent(valueSet, version, offset, limit);
 	}
 
+	/**
+	 * The latest published version as a file. Only value sets shared with the community
+	 * can be downloaded, and only what has been published: a download should be something
+	 * stable that can be referred to, not a draft.
+	 */
+	public GpsFile download(long id, CurrentUser user) {
+		ValueSet valueSet = findVisible(id, user);
+		if (valueSet.getVisibility() != ValueSet.Visibility.COMMUNITY) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+					"Only value sets shared with the community can be downloaded.");
+		}
+		ValueSetVersion latest = latestVersionOf(valueSet);
+		if (latest == null) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"This value set has not been published yet, so there is nothing to download.");
+		}
+		Collection<Concept> concepts = latest.isContentFrozen()
+				? members.findByValueSetIdAndVersionNumberOrderByPreferredTermAscConceptIdAsc(valueSet.getId(),
+						latest.getVersionNumber()).stream().map(ValueSetMember::toConcept).toList()
+				: expandFully(latest.getEcl(), latest.getBranch());
+		return GpsFile.of(valueSet, latest.getVersionNumber(), concepts);
+	}
+
 	public VersionView publish(long id, String note, CurrentUser user) {
 		ValueSet valueSet = findOwned(id, user);
 		ValueSetVersion latest = latestVersionOf(valueSet);
@@ -189,7 +212,7 @@ public class ValueSetService {
 			return publishHandPicked(valueSet, number, note);
 		}
 		// Only an ECL definition that Snowstorm can expand may be published.
-		Collection<Concept> concepts = expandFully(valueSet);
+		Collection<Concept> concepts = expandFully(valueSet.getEcl(), valueSet.getBranch());
 
 		ValueSetVersion published = transaction.execute(status -> {
 			valueSet.markPublished();
@@ -214,17 +237,17 @@ public class ValueSetService {
 		return VersionView.of(published);
 	}
 
-	/** Every concept the ECL definition matches right now, to be stored with the version. */
-	private Collection<Concept> expandFully(ValueSet valueSet) {
+	/** Every concept an ECL expression matches right now. */
+	private Collection<Concept> expandFully(String ecl, String branch) {
 		// Keyed by concept so a concept that shows up on two pages is stored once.
 		Map<String, Concept> concepts = new LinkedHashMap<>();
 		ExpansionPage page;
 		int offset = 0;
 		do {
-			page = snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, PUBLISH_PAGE_SIZE);
+			page = snowstorm.expand(ecl, branch, offset, PUBLISH_PAGE_SIZE);
 			if (page.total() > MAX_PUBLISHED_CONCEPTS) {
 				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This definition matches " + page.total()
-						+ " concepts. At most " + MAX_PUBLISHED_CONCEPTS + " can be published.");
+						+ " concepts. At most " + MAX_PUBLISHED_CONCEPTS + " can be published or downloaded.");
 			}
 			page.items().forEach(concept -> concepts.put(concept.conceptId(), concept));
 			offset += PUBLISH_PAGE_SIZE;

@@ -259,11 +259,13 @@ public class ValueSetService {
 	private void storeVersionContent(ValueSet valueSet, int versionNumber, Collection<Concept> concepts) {
 		// Plain JDBC batching: a version can hold thousands of rows.
 		jdbc.batchUpdate("""
-				INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term, fully_specified_name)
-				VALUES (?, ?, ?, ?, ?)
+				INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term,
+				                              preferred_term_language, fully_specified_name)
+				VALUES (?, ?, ?, ?, ?, ?)
 				""", concepts.stream()
 				.map(concept -> new Object[] { valueSet.getId(), versionNumber, concept.conceptId(),
 						concept.preferredTerm() == null ? "" : concept.preferredTerm(),
+						ValueSetMember.languageOf(concept),
 						concept.fullySpecifiedName() == null ? "" : concept.fullySpecifiedName() })
 				.toList());
 	}

@@ -1,0 +1,300 @@
+/* Colours for concepts and attributes follow the SNOMED CT diagramming convention:
+   blue for a primitive concept, purple with a double border for a fully defined one,
+   yellow for an attribute. */
+$primitive: #99ccff;
+$defined: #ccccff;
+$attribute: #ffffcc;
+$line: var(--neutral-400);
+
+.concept-view {
+  width: min(1080px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-6));
+  padding: 0;
+  overflow-y: auto;
+  color: var(--text-body);
+  background: var(--surface-subtle);
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 64px rgb(0 56 101 / 35%);
+
+  &::backdrop {
+    background: rgb(0 56 101 / 55%);
+  }
+}
+
+.cv-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  color: var(--snomed-white);
+  background: linear-gradient(135deg, var(--snomed-navy), var(--snomed-blue));
+
+  h2 {
+    font-size: var(--fs-h2);
+    color: inherit;
+  }
+}
+
+.cv-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cv-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  font-size: var(--fs-caption);
+}
+
+.cv-step {
+  padding: 2px var(--space-2);
+  font: inherit;
+  color: inherit;
+  background: rgb(255 255 255 / 14%);
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: rgb(255 255 255 / 28%);
+  }
+}
+
+.cv-tag {
+  font-size: var(--fs-overline);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-overline);
+  text-transform: uppercase;
+  color: var(--snomed-cyan);
+}
+
+.cv-fsn {
+  opacity: 0.85;
+}
+
+.cv-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 2px var(--space-2);
+    font-size: var(--fs-caption);
+    border: 1px solid rgb(255 255 255 / 40%);
+    border-radius: var(--radius-sm);
+  }
+}
+
+.cv-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  animation: cv-arrive 220ms ease-out;
+
+  > section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+}
+
+@keyframes cv-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-body {
+    animation: none;
+  }
+}
+
+/* The map: parents in a bracket above, the concept in the middle, its kinds in a bracket below. */
+.cv-map {
+  align-items: center;
+  text-align: center;
+}
+
+.cv-caption {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+.cv-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  border: 2px solid $line;
+}
+
+.cv-above {
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.cv-below {
+  border-bottom: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.cv-stem {
+  width: 2px;
+  height: var(--space-5);
+  margin: calc(-1 * var(--space-3)) 0;
+  background: $line;
+}
+
+.cv-node {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 220px;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  font-size: var(--fs-body-sm);
+  color: var(--snomed-navy);
+  background: color-mix(in srgb, #{$primitive} 35%, white);
+  border: 1px solid $primitive;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgb(0 56 101 / 18%);
+  }
+
+  .mono {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+}
+
+.cv-focus {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--fs-body-lg);
+  font-weight: var(--fw-bold);
+  color: var(--snomed-navy);
+  background: $primitive;
+  border: 2px solid var(--snomed-blue);
+  border-radius: var(--radius-md);
+
+  .mono {
+    font-weight: var(--fw-regular, 400);
+  }
+}
+
+.cv-defined {
+  background: $defined;
+  border: 5px double var(--snomed-purple);
+}
+
+/* Attributes: each role group is a card, each attribute a yellow pill pointing at its value. */
+.cv-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.cv-group-label {
+  font-size: var(--fs-overline);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cv-attribute {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cv-type {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-body-sm);
+  color: var(--neutral-800);
+  background: $attribute;
+  border: 1px solid #d9d98c;
+  border-radius: 999px;
+}
+
+.cv-arrow {
+  position: relative;
+  flex: 1 1 24px;
+  min-width: 24px;
+  height: 2px;
+  background: $line;
+
+  &::after {
+    position: absolute;
+    top: -4px;
+    right: -1px;
+    content: '';
+    border: 5px solid transparent;
+    border-left-color: $line;
+    border-right: 0;
+  }
+}
+
+.cv-value {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.cv-expression {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--neutral-100);
+  background: var(--neutral-800);
+  border-radius: var(--radius-sm);
+}
+
+.cv-descriptions {
+  grid-column: 1 / -1;
+
+  ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    flex-direction: column;
+  }
+}

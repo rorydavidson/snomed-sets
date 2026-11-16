@@ -191,11 +191,11 @@ class ValueSetApiTests {
 		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice"))).andExpect(status().isNotFound());
 	}
 
-	private static final Concept ASTHMA = new Concept("195967001", "Asthma", "Asthma (disorder)");
+	private static final Concept ASTHMA = new Concept("195967001", "Asthma", "Asthma (disorder)", "en");
 	private static final Concept CHILDHOOD_ASTHMA = new Concept("233678006", "Childhood asthma",
-			"Childhood asthma (disorder)");
+			"Childhood asthma (disorder)", "en");
 	private static final Concept ALLERGIC_ASTHMA = new Concept("389145006", "Allergic asthma",
-			"Allergic asthma (disorder)");
+			"Allergic asthma (disorder)", "en");
 
 	private static String handPicked(String visibility, String... conceptIds) {
 		return """
@@ -224,6 +224,7 @@ class ValueSetApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.total").value(2))
 				.andExpect(jsonPath("$.items[0].preferredTerm").value("Asthma"))
+				.andExpect(jsonPath("$.items[0].language").value("en"))
 				.andExpect(jsonPath("$.items[1].conceptId").value("233678006"));
 		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("alice")))
 				.andExpect(jsonPath("$", hasSize(2)));
@@ -687,7 +688,7 @@ class ValueSetApiTests {
 	void expansionUsesTheSavedDefinition() throws Exception {
 		Long asthmaId = jdbc.queryForObject("SELECT id FROM value_set WHERE name = 'Asthma diagnoses'", Long.class);
 		given(snowstorm.expand("<< 195967001 |Asthma|", "MAIN", 0, 50)).willReturn(new ExpansionPage(
-				List.of(new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)")), 120, 0, 50));
+				List.of(new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)", "en")), 120, 0, 50));
 
 		mvc.perform(get("/api/value-sets/{id}/expansion", asthmaId).with(oidcLogin()))
 				.andExpect(status().isOk())

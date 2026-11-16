@@ -8,6 +8,8 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.util.List;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -44,7 +46,7 @@ class SnowstormClientTests {
 		assertThat(page.total()).isEqualTo(120);
 		assertThat(page.offset()).isEqualTo(50);
 		assertThat(page.items()).containsExactly(
-				new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)"));
+				new ExpansionPage.Concept("195967001", "Asthma", "Asthma (disorder)", "en"));
 		server.verify();
 	}
 
@@ -97,7 +99,8 @@ class SnowstormClientTests {
 						 "fsn":{"term":"Childhood asthma (disorder)"},"pt":{"term":"Childhood asthma"},
 						 "descriptions":[
 						   {"term":"Childhood asthma","type":"SYNONYM","lang":"en","active":true,
-						    "acceptabilityMap":{"900000000000509007":"PREFERRED"}},
+						    "acceptabilityMap":{"900000000000509007":"PREFERRED","900000000000508004":"ACCEPTABLE",
+						                        "21000172104":"PREFERRED"}},
 						   {"term":"Asthma of childhood","type":"SYNONYM","lang":"en","active":false}],
 						 "relationships":[
 						   {"active":true,"typeId":"116680003","characteristicType":"INFERRED_RELATIONSHIP","groupId":0,
@@ -118,11 +121,12 @@ class SnowstormClientTests {
 
 		assertThat(details.preferredTerm()).isEqualTo("Childhood asthma");
 		assertThat(details.descriptions())
-				.containsExactly(new ConceptDetails.Description("Childhood asthma", "SYNONYM", "en", true));
+				.containsExactly(new ConceptDetails.Description("Childhood asthma", "SYNONYM", "en",
+						List.of("21000172104", "en-US")));
 		assertThat(details.parents())
-				.containsExactly(new ConceptDetails.Relationship("Is a", "195967001", "Asthma", 0));
+				.containsExactly(new ConceptDetails.Relationship("116680003", "Is a", "195967001", "Asthma", 0));
 		assertThat(details.attributes())
-				.containsExactly(new ConceptDetails.Relationship("Occurrence", "255398004", "Childhood", 1));
+				.containsExactly(new ConceptDetails.Relationship("246454002", "Occurrence", "255398004", "Childhood", 1));
 	}
 
 	@Test

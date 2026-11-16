@@ -127,7 +127,8 @@ public class SnowstormClient {
 			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
 		}
 		List<ExpansionPage.Concept> concepts = page.items().stream()
-				.map(item -> new ExpansionPage.Concept(item.conceptId(), termOf(item.pt()), termOf(item.fsn())))
+				.map(item -> new ExpansionPage.Concept(item.conceptId(), termOf(item.pt()), termOf(item.fsn()),
+						item.pt() == null ? null : item.pt().lang()))
 				.toList();
 		return new ExpansionPage(concepts, page.total(), offset, limit);
 	}
@@ -142,7 +143,7 @@ public class SnowstormClient {
 	record SnowstormConcept(String conceptId, SnowstormTerm pt, SnowstormTerm fsn) {
 	}
 
-	record SnowstormTerm(String term) {
+	record SnowstormTerm(String term, String lang) {
 	}
 
 	record BrowserConcept(String conceptId, SnowstormTerm fsn, SnowstormTerm pt, boolean active,
@@ -155,8 +156,7 @@ public class SnowstormClient {
 			List<ConceptDetails.Description> activeDescriptions = orEmpty(descriptions).stream()
 					.filter(BrowserDescription::active)
 					.map(description -> new ConceptDetails.Description(description.term(), description.type(),
-							description.lang(), description.acceptabilityMap() != null
-									&& description.acceptabilityMap().containsValue("PREFERRED")))
+							description.lang(), description.preferredIn()))
 					.toList();
 			List<BrowserRelationship> inferred = orEmpty(relationships).stream()
 					.filter(relationship -> relationship.active()
@@ -176,13 +176,29 @@ public class SnowstormClient {
 
 	record BrowserDescription(String term, String type, String lang, boolean active,
 			java.util.Map<String, String> acceptabilityMap) {
+
+		private static final java.util.Map<String, String> DIALECTS = java.util.Map.of(
+				"900000000000509007", "en-US",
+				"900000000000508004", "en-GB");
+
+		/** The acceptability map is keyed by language reference set identifier. */
+		List<String> preferredIn() {
+			if (acceptabilityMap == null) {
+				return List.of();
+			}
+			return acceptabilityMap.entrySet().stream()
+					.filter(entry -> "PREFERRED".equals(entry.getValue()))
+					.map(entry -> DIALECTS.getOrDefault(entry.getKey(), entry.getKey()))
+					.sorted()
+					.toList();
+		}
 	}
 
 	record BrowserRelationship(boolean active, String typeId, String characteristicType, int groupId,
 			SnowstormConcept type, SnowstormConcept target) {
 
 		ConceptDetails.Relationship toRelationship() {
-			return new ConceptDetails.Relationship(type == null ? null : termOf(type.pt()), target.conceptId(),
+			return new ConceptDetails.Relationship(typeId, type == null ? null : termOf(type.pt()), target.conceptId(),
 					termOf(target.pt()), groupId);
 		}
 	}

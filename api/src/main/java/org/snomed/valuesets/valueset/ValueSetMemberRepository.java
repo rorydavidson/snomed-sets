@@ -18,7 +18,8 @@ public interface ValueSetMemberRepository extends Repository<ValueSetMember, Lon
 			int versionNumber);
 
 	@Query(value = """
-			SELECT id, value_set_id, version_number, concept_id, preferred_term, fully_specified_name
+			SELECT id, value_set_id, version_number, concept_id, preferred_term, preferred_term_language,
+			       fully_specified_name
 			FROM value_set_member
 			WHERE value_set_id = :valueSetId AND version_number = :versionNumber
 			ORDER BY preferred_term, concept_id
@@ -39,8 +40,10 @@ public interface ValueSetMemberRepository extends Repository<ValueSetMember, Lon
 	/** Freezes the list being edited as the content of a published version. */
 	@Modifying
 	@Query(value = """
-			INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term, fully_specified_name)
-			SELECT value_set_id, :versionNumber, concept_id, preferred_term, fully_specified_name
+			INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term,
+			                              preferred_term_language, fully_specified_name)
+			SELECT value_set_id, :versionNumber, concept_id, preferred_term, preferred_term_language,
+			       fully_specified_name
 			FROM value_set_member
 			WHERE value_set_id = :valueSetId AND version_number = 0
 			""", nativeQuery = true)

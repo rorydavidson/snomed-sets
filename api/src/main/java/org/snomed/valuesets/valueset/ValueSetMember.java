@@ -36,6 +36,9 @@ public class ValueSetMember {
 	@Column(name = "preferred_term", nullable = false, length = 500)
 	private String preferredTerm;
 
+	@Column(name = "preferred_term_language", nullable = false, length = 10)
+	private String preferredTermLanguage;
+
 	@Column(name = "fully_specified_name", nullable = false, length = 500)
 	private String fullySpecifiedName;
 
@@ -48,11 +51,17 @@ public class ValueSetMember {
 		this.versionNumber = WORKING_LIST;
 		this.conceptId = concept.conceptId();
 		this.preferredTerm = concept.preferredTerm() == null ? "" : concept.preferredTerm();
+		this.preferredTermLanguage = languageOf(concept);
 		this.fullySpecifiedName = concept.fullySpecifiedName() == null ? "" : concept.fullySpecifiedName();
 	}
 
+	/** Snowstorm's content is English unless it says otherwise. */
+	static String languageOf(ExpansionPage.Concept concept) {
+		return concept.language() == null ? "en" : concept.language();
+	}
+
 	public ExpansionPage.Concept toConcept() {
-		return new ExpansionPage.Concept(conceptId, preferredTerm, fullySpecifiedName);
+		return new ExpansionPage.Concept(conceptId, preferredTerm, fullySpecifiedName, preferredTermLanguage);
 	}
 
 	public String getConceptId() {

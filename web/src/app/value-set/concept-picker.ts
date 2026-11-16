@@ -54,7 +54,12 @@ type Search =
                 <label class="checkbox">
                   <input type="checkbox" [checked]="selected().has(concept.conceptId)" (change)="toggle(concept.conceptId)" />
                   <span>
-                    <span>{{ concept.preferredTerm }}</span>
+                    <span>
+                      {{ concept.preferredTerm }}
+                      @if (concept.language) {
+                        <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
+                      }
+                    </span>
                     <span class="meta mono">{{ concept.conceptId }} · {{ concept.fullySpecifiedName }}</span>
                     @if (childCounts()[concept.conceptId]; as count) {
                       <span class="meta">{{ count }} {{ count === 1 ? 'child' : 'children' }}</span>

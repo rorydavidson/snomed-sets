@@ -134,6 +134,11 @@ export class ValueSetApi {
     return this.http.get<ExpansionPage>('/api/concepts', { params: { term, branch } });
   }
 
+  /** How many direct children each concept has, keyed by concept ID. */
+  childCounts(conceptIds: string[], branch: string): Observable<Record<string, number>> {
+    return this.http.get<Record<string, number>>('/api/concepts/child-counts', { params: { conceptIds, branch } });
+  }
+
   conceptDetails(conceptId: string, branch: string): Observable<ConceptDetails> {
     return this.http.get<ConceptDetails>(`/api/concepts/${conceptId}`, { params: { branch } });
   }

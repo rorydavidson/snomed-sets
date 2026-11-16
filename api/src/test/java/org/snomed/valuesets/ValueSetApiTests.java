@@ -429,6 +429,19 @@ class ValueSetApiTests {
 	}
 
 	@Test
+	void childCountsAreGivenForEachConceptAskedAbout() throws Exception {
+		given(snowstorm.expand("<! 195967001", "MAIN", 0, 1)).willReturn(new ExpansionPage(List.of(), 27, 0, 1));
+
+		mvc.perform(get("/api/concepts/child-counts").param("conceptIds", "195967001", "233678006")
+				.with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$['195967001']").value(27))
+				.andExpect(jsonPath("$['233678006']").value(0));
+		mvc.perform(get("/api/concepts/child-counts").param("conceptIds", "1 OR *").with(signedInAs("alice")))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void childrenOfAConceptAreTheDirectChildrenOnly() throws Exception {
 		given(snowstorm.expand("<! 195967001", "MAIN", 0, 100))
 				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA), 2, 0, 100));

@@ -214,6 +214,9 @@ describe('ValueSetEditorPage', () => {
     http
       .expectOne(`/api/concepts?term=${term}&branch=MAIN`)
       .flush({ items: results, total: results.length, offset: 0, limit: 25 });
+    http
+      .expectOne((request) => request.url === '/api/concepts/child-counts')
+      .flush({ '195967001': 27, '233678006': 0 });
     fixture.detectChanges();
   }
 
@@ -228,6 +231,8 @@ describe('ValueSetEditorPage', () => {
     type(page, '#name', 'Picked asthma codes');
 
     searchFor(fixture, 'asthma', [ASTHMA, CHILDHOOD]);
+    expect(page.querySelector('.pick-list')?.textContent).toContain('27 children');
+    expect(page.querySelector('.pick-list')?.textContent).toContain('No children');
     const boxes = page.querySelectorAll<HTMLInputElement>('.pick-list input[type="checkbox"]');
     boxes[0].click();
     boxes[1].click();

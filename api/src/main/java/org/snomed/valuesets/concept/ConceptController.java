@@ -1,7 +1,13 @@
 package org.snomed.valuesets.concept;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -12,6 +18,7 @@ import org.snomed.valuesets.snowstorm.ConceptDetails;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
+import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.snomed.valuesets.valueset.ValueSetDefinition;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,6 +48,36 @@ public class ConceptController {
 			@RequestParam(defaultValue = "MAIN") String branch,
 			@RequestParam(defaultValue = "25") @Min(1) @Max(50) int limit) {
 		return snowstorm.search(term, branch, limit);
+	}
+
+	/**
+	 * How many direct children each of the given concepts has, for the search results.
+	 * Snowstorm has no single call for this, so the concepts are asked about side by side.
+	 */
+	@GetMapping("/child-counts")
+	public Map<String, Long> childCounts(
+			@RequestParam @Size(min = 1, max = 50) List<@Pattern(regexp = ValueSetDefinition.CONCEPT_ID_REGEX) String> conceptIds,
+			@RequestParam(defaultValue = "MAIN") String branch) throws InterruptedException {
+		Map<String, Future<Long>> pending = new LinkedHashMap<>();
+		try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+			for (String conceptId : conceptIds) {
+				pending.computeIfAbsent(conceptId,
+						id -> executor.submit(() -> snowstorm.expand("<! " + id, branch, 0, 1).total()));
+			}
+		}
+		Map<String, Long> counts = new LinkedHashMap<>();
+		for (Map.Entry<String, Future<Long>> entry : pending.entrySet()) {
+			try {
+				counts.put(entry.getKey(), entry.getValue().get());
+			}
+			catch (ExecutionException e) {
+				if (e.getCause() instanceof SnowstormException snowstormFailure) {
+					throw snowstormFailure;
+				}
+				throw new IllegalStateException(e.getCause());
+			}
+		}
+		return counts;
 	}
 
 	/** Everything shown when a person clicks on a concept. */

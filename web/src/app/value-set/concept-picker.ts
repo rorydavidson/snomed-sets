@@ -56,6 +56,11 @@ type Search =
                   <span>
                     <span>{{ concept.preferredTerm }}</span>
                     <span class="meta mono">{{ concept.conceptId }} · {{ concept.fullySpecifiedName }}</span>
+                    @if (childCounts()[concept.conceptId]; as count) {
+                      <span class="meta">{{ count }} {{ count === 1 ? 'child' : 'children' }}</span>
+                    } @else if (childCounts()[concept.conceptId] === 0) {
+                      <span class="meta">No children</span>
+                    }
                   </span>
                 </label>
                 @if (inList().has(concept.conceptId)) {
@@ -91,6 +96,8 @@ export class ConceptPicker {
 
   protected readonly search = signal<Search>({ status: 'idle' });
   protected readonly selected = signal<ReadonlySet<string>>(new Set());
+  /** Number of direct children per concept ID. Filled in shortly after the results appear. */
+  protected readonly childCounts = signal<Record<string, number>>({});
   protected readonly addingChildren = signal(false);
   protected readonly childrenMessage = signal<string | null>(null);
   protected readonly childrenError = signal<string | null>(null);
@@ -127,6 +134,7 @@ export class ConceptPicker {
       .subscribe((search) => {
         this.search.set(search);
         this.selected.set(new Set());
+        this.loadChildCounts(search);
       });
   }
 
@@ -169,6 +177,25 @@ export class ConceptPicker {
         this.addingChildren.set(false);
         this.childrenError.set(describeError(error));
       },
+    });
+  }
+
+  /** Counts arrive after the results, so searching is not slowed down by them. */
+  private loadChildCounts(search: Search): void {
+    this.childCounts.set({});
+    if (search.status !== 'ready' || search.page.items.length === 0) {
+      return;
+    }
+    const conceptIds = search.page.items.map((concept) => concept.conceptId);
+    this.api.childCounts(conceptIds, this.branch()).subscribe({
+      next: (counts) => {
+        // Ignore an answer that belongs to results which have since been replaced.
+        if (this.search() === search) {
+          this.childCounts.set(counts);
+        }
+      },
+      // The counts are a convenience; the picker works without them.
+      error: () => undefined,
     });
   }
 

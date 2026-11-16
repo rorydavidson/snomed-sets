@@ -1,0 +1,4 @@
+# Development only: also loads sample value sets so the library is not empty.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/seed

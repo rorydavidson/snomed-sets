@@ -1,0 +1,15 @@
+# Local configuration and secrets
+.env
+
+# Backend
+api/target/
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.angular/
+
+# Editors and OS
+.idea/
+*.iml
+.DS_Store

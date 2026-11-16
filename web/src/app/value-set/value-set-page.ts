@@ -3,11 +3,13 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ExpansionPage, ValueSet, ValueSetApi, ValueSetVersion, describeError } from '../core/value-set-api';
 
+import { ConceptDetails } from './concept-details';
+
 const PAGE_SIZE = 50;
 
 @Component({
   selector: 'app-value-set-page',
-  imports: [RouterLink, DatePipe],
+  imports: [RouterLink, DatePipe, ConceptDetails],
   template: `
     <main class="page">
       <p><a routerLink="/">Back to the library</a></p>
@@ -152,7 +154,11 @@ const PAGE_SIZE = 50;
                     @for (concept of page.items; track concept.conceptId) {
                       <tr>
                         <td class="mono">{{ concept.conceptId }}</td>
-                        <td>{{ concept.preferredTerm }}</td>
+                        <td>
+                          <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
+                            {{ concept.preferredTerm }}
+                          </button>
+                        </td>
                         <td>{{ concept.fullySpecifiedName }}</td>
                       </tr>
                     }
@@ -174,6 +180,9 @@ const PAGE_SIZE = 50;
             }
           </section>
         </div>
+        @if (shownConcept(); as conceptId) {
+          <app-concept-details [conceptId]="conceptId" [branch]="set.branch" (closed)="shownConcept.set(null)" />
+        }
       } @else {
         <p class="muted" role="status">Loading value set…</p>
       }
@@ -194,6 +203,9 @@ export class ValueSetPage implements OnInit {
   protected readonly expansion = signal<ExpansionPage | null>(null);
   protected readonly expansionError = signal<string | null>(null);
   protected readonly offset = signal(0);
+
+  /** The concept whose details are open, if any. */
+  protected readonly shownConcept = signal<string | null>(null);
 
   protected readonly mode = signal<'view' | 'publish' | 'confirmDelete'>('view');
   protected readonly busy = signal(false);

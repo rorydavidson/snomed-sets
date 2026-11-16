@@ -87,4 +87,54 @@ class SnowstormClientTests {
 				new CodeSystem("SNOMEDCT", "SNOMEDCT", "MAIN", "2026-01-01"),
 				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", null));
 	}
+
+	@Test
+	void conceptDetailsKeepOnlyActiveDescriptionsAndActiveInferredRelationships() {
+		server.expect(requestTo("https://snowstorm.test/browser/MAIN/SNOMEDCT-BE/concepts/233678006"))
+				.andRespond(withSuccess("""
+						{"conceptId":"233678006","active":true,"definitionStatus":"PRIMITIVE",
+						 "moduleId":"900000000000207008","effectiveTime":"20020131",
+						 "fsn":{"term":"Childhood asthma (disorder)"},"pt":{"term":"Childhood asthma"},
+						 "descriptions":[
+						   {"term":"Childhood asthma","type":"SYNONYM","lang":"en","active":true,
+						    "acceptabilityMap":{"900000000000509007":"PREFERRED"}},
+						   {"term":"Asthma of childhood","type":"SYNONYM","lang":"en","active":false}],
+						 "relationships":[
+						   {"active":true,"typeId":"116680003","characteristicType":"INFERRED_RELATIONSHIP","groupId":0,
+						    "type":{"conceptId":"116680003","pt":{"term":"Is a"}},
+						    "target":{"conceptId":"195967001","pt":{"term":"Asthma"}}},
+						   {"active":true,"typeId":"246454002","characteristicType":"INFERRED_RELATIONSHIP","groupId":1,
+						    "type":{"conceptId":"246454002","pt":{"term":"Occurrence"}},
+						    "target":{"conceptId":"255398004","pt":{"term":"Childhood"}}},
+						   {"active":false,"typeId":"116680003","characteristicType":"INFERRED_RELATIONSHIP","groupId":0,
+						    "type":{"conceptId":"116680003","pt":{"term":"Is a"}},
+						    "target":{"conceptId":"1","pt":{"term":"Retired parent"}}},
+						   {"active":true,"typeId":"116680003","characteristicType":"STATED_RELATIONSHIP","groupId":0,
+						    "type":{"conceptId":"116680003","pt":{"term":"Is a"}},
+						    "target":{"conceptId":"2","pt":{"term":"Stated parent"}}}]}
+						""", MediaType.APPLICATION_JSON));
+
+		ConceptDetails details = client.conceptDetails("233678006", "MAIN/SNOMEDCT-BE");
+
+		assertThat(details.preferredTerm()).isEqualTo("Childhood asthma");
+		assertThat(details.descriptions())
+				.containsExactly(new ConceptDetails.Description("Childhood asthma", "SYNONYM", "en", true));
+		assertThat(details.parents())
+				.containsExactly(new ConceptDetails.Relationship("Is a", "195967001", "Asthma", 0));
+		assertThat(details.attributes())
+				.containsExactly(new ConceptDetails.Relationship("Occurrence", "255398004", "Childhood", 1));
+	}
+
+	@Test
+	void anUnknownConceptIsReportedAsCausedByTheRequest() {
+		server.expect(requestTo("https://snowstorm.test/browser/MAIN/concepts/999999999"))
+				.andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+						.withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
+		assertThatThrownBy(() -> client.conceptDetails("999999999", "MAIN"))
+				.isInstanceOfSatisfying(SnowstormException.class, e -> {
+					assertThat(e.isCausedByRequest()).isTrue();
+					assertThat(e).hasMessage("Concept 999999999 was not found in this code system.");
+				});
+	}
 }

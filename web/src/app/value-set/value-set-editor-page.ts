@@ -4,6 +4,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable, catchError, debounceTime, distinctUntilChanged, map, of, startWith, switchMap } from 'rxjs';
 import { CodeSystem, Concept, ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
+import { ConceptDetails } from './concept-details';
 import { ConceptPicker } from './concept-picker';
 import { TagInput } from './tag-input';
 
@@ -20,7 +21,7 @@ type Preview =
 
 @Component({
   selector: 'app-value-set-editor-page',
-  imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput],
+  imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput, ConceptDetails],
   template: `
     <main class="page">
       <p><a [routerLink]="backLink">{{ id === null ? 'Back to the library' : 'Back to the value set' }}</a></p>
@@ -119,7 +120,7 @@ type Preview =
           @if (manual()) {
             <section class="wide" aria-labelledby="members-heading">
               <h2 class="overline">Find concepts</h2>
-              <app-concept-picker [branch]="branch()" [inList]="memberIds()" (add)="addMembers($event)" />
+              <app-concept-picker [branch]="branch()" [inList]="memberIds()" (add)="addMembers($event)" (details)="shownConcept.set($event)" />
 
               <h2 id="members-heading" class="overline">Concepts in this value set</h2>
               @if (memberMessage(); as message) {
@@ -145,7 +146,11 @@ type Preview =
                       @for (concept of members(); track concept.conceptId) {
                         <tr>
                           <td class="mono">{{ concept.conceptId }}</td>
-                          <td>{{ concept.preferredTerm }}</td>
+                          <td>
+                            <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
+                              {{ concept.preferredTerm }}
+                            </button>
+                          </td>
                           <td>
                             <button type="button" class="link-button" (click)="removeMember(concept.conceptId)" [attr.aria-label]="'Remove ' + concept.preferredTerm">
                               Remove
@@ -191,7 +196,11 @@ type Preview =
                           @for (concept of page.items; track concept.conceptId) {
                             <tr>
                               <td class="mono">{{ concept.conceptId }}</td>
-                              <td>{{ concept.preferredTerm }}</td>
+                              <td>
+                                <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
+                                  {{ concept.preferredTerm }}
+                                </button>
+                              </td>
                             </tr>
                           }
                         </tbody>
@@ -204,6 +213,9 @@ type Preview =
           </section>
           }
         </div>
+        @if (shownConcept(); as conceptId) {
+          <app-concept-details [conceptId]="conceptId" [branch]="branch()" (closed)="shownConcept.set(null)" />
+        }
       } @else {
         <p class="muted" role="status">Loading value set…</p>
       }
@@ -239,6 +251,8 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly members = signal<Concept[]>([]);
   protected readonly memberIds = computed<ReadonlySet<string>>(() => new Set(this.members().map((c) => c.conceptId)));
   protected readonly memberMessage = signal<string | null>(null);
+  /** The concept whose details are open, if any. */
+  protected readonly shownConcept = signal<string | null>(null);
   protected readonly tags = signal<string[]>([]);
   protected readonly knownTags = signal<string[]>([]);
   protected readonly codeSystems = signal<CodeSystem[]>([]);

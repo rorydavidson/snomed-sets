@@ -51,6 +51,36 @@ public class SnowstormClient {
 				.toList();
 	}
 
+	public ConceptDetails conceptDetails(String conceptId, String branch) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		BrowserConcept concept;
+		try {
+			concept = restClient.get()
+					.uri(uriBuilder -> uriBuilder
+							.pathSegment("browser")
+							.pathSegment(branch.split("/"))
+							.pathSegment("concepts", conceptId)
+							.build())
+					.retrieve()
+					.body(BrowserConcept.class);
+		}
+		catch (RestClientResponseException e) {
+			boolean rejected = e.getStatusCode().is4xxClientError();
+			throw new SnowstormException(rejected
+					? "Concept " + conceptId + " was not found in this code system."
+					: "Snowstorm returned an error.", rejected, e);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+		}
+		if (concept == null) {
+			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
+		}
+		return concept.toDetails();
+	}
+
 	/** The active concepts matching an ECL expression. */
 	public ExpansionPage expand(String ecl, String branch, int offset, int limit) {
 		return concepts("ecl", ecl, branch, offset, limit);
@@ -109,6 +139,48 @@ public class SnowstormClient {
 	}
 
 	record SnowstormTerm(String term) {
+	}
+
+	record BrowserConcept(String conceptId, SnowstormTerm fsn, SnowstormTerm pt, boolean active,
+			String definitionStatus, String moduleId, String effectiveTime, List<BrowserDescription> descriptions,
+			List<BrowserRelationship> relationships) {
+
+		private static final String IS_A = "116680003";
+
+		ConceptDetails toDetails() {
+			List<ConceptDetails.Description> activeDescriptions = orEmpty(descriptions).stream()
+					.filter(BrowserDescription::active)
+					.map(description -> new ConceptDetails.Description(description.term(), description.type(),
+							description.lang(), description.acceptabilityMap() != null
+									&& description.acceptabilityMap().containsValue("PREFERRED")))
+					.toList();
+			List<BrowserRelationship> inferred = orEmpty(relationships).stream()
+					.filter(relationship -> relationship.active()
+							&& "INFERRED_RELATIONSHIP".equals(relationship.characteristicType())
+							&& relationship.target() != null)
+					.toList();
+			return new ConceptDetails(conceptId, termOf(fsn), termOf(pt), active, definitionStatus, moduleId,
+					effectiveTime, activeDescriptions,
+					inferred.stream().filter(r -> IS_A.equals(r.typeId())).map(BrowserRelationship::toRelationship).toList(),
+					inferred.stream().filter(r -> !IS_A.equals(r.typeId())).map(BrowserRelationship::toRelationship).toList());
+		}
+
+		private static <T> List<T> orEmpty(List<T> list) {
+			return list == null ? List.of() : list;
+		}
+	}
+
+	record BrowserDescription(String term, String type, String lang, boolean active,
+			java.util.Map<String, String> acceptabilityMap) {
+	}
+
+	record BrowserRelationship(boolean active, String typeId, String characteristicType, int groupId,
+			SnowstormConcept type, SnowstormConcept target) {
+
+		ConceptDetails.Relationship toRelationship() {
+			return new ConceptDetails.Relationship(type == null ? null : termOf(type.pt()), target.conceptId(),
+					termOf(target.pt()), groupId);
+		}
 	}
 
 	record SnowstormCodeSystems(List<SnowstormCodeSystem> items) {

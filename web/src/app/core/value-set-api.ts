@@ -60,6 +60,27 @@ export interface Concept {
   fullySpecifiedName: string | null;
 }
 
+export interface ConceptRelationship {
+  typeTerm: string | null;
+  targetId: string;
+  targetTerm: string | null;
+  group: number;
+}
+
+/** What is shown when a concept is clicked: its active descriptions and inferred relationships. */
+export interface ConceptDetails {
+  conceptId: string;
+  fullySpecifiedName: string | null;
+  preferredTerm: string | null;
+  active: boolean;
+  definitionStatus: string | null;
+  moduleId: string | null;
+  effectiveTime: string | null;
+  descriptions: { term: string; type: string; language: string; preferred: boolean }[];
+  parents: ConceptRelationship[];
+  attributes: ConceptRelationship[];
+}
+
 export interface ExpansionPage {
   items: Concept[];
   total: number;
@@ -111,6 +132,10 @@ export class ValueSetApi {
 
   searchConcepts(term: string, branch: string): Observable<ExpansionPage> {
     return this.http.get<ExpansionPage>('/api/concepts', { params: { term, branch } });
+  }
+
+  conceptDetails(conceptId: string, branch: string): Observable<ConceptDetails> {
+    return this.http.get<ConceptDetails>(`/api/concepts/${conceptId}`, { params: { branch } });
   }
 
   /** The direct children of a concept. The total is larger than the list when it was cut short. */

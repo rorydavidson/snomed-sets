@@ -483,3 +483,40 @@ fieldset.field {
   flex: 1 1 160px;
   width: auto !important;
 }
+
+.dialog {
+  width: min(640px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-8));
+  padding: var(--space-6);
+  overflow-y: auto;
+  color: var(--text-body);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+
+  &[open] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  &::backdrop {
+    background: rgb(0 56 101 / 45%);
+  }
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import org.snomed.valuesets.snowstorm.ConceptDetails;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
@@ -40,6 +41,14 @@ public class ConceptController {
 			@RequestParam(defaultValue = "MAIN") String branch,
 			@RequestParam(defaultValue = "25") @Min(1) @Max(50) int limit) {
 		return snowstorm.search(term, branch, limit);
+	}
+
+	/** Everything shown when a person clicks on a concept. */
+	@GetMapping("/{conceptId}")
+	public ConceptDetails details(
+			@PathVariable @Pattern(regexp = ValueSetDefinition.CONCEPT_ID_REGEX) String conceptId,
+			@RequestParam(defaultValue = "MAIN") String branch) {
+		return snowstorm.conceptDetails(conceptId, branch);
 	}
 
 	/** The direct children of a concept, up to {@link #MAX_CHILDREN}. The total says if there are more. */

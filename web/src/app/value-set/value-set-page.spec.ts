@@ -175,6 +175,41 @@ describe('ValueSetPage', () => {
     expect(page.textContent).toContain('Showing 1 to 1 of 121 concepts');
   });
 
+  it('opens the details of a concept when its term is clicked, and follows a parent', async () => {
+    open(SET);
+    http
+      .expectOne('/api/value-sets/7/expansion?offset=0&limit=50')
+      .flush({ items: [{ conceptId: '233678006', preferredTerm: 'Childhood asthma', fullySpecifiedName: 'Childhood asthma (disorder)' }], total: 1, offset: 0, limit: 50 });
+    await fixture.whenStable();
+
+    button(page, 'Childhood asthma')?.click();
+    await fixture.whenStable();
+    http.expectOne('/api/concepts/233678006?branch=MAIN').flush({
+      conceptId: '233678006',
+      fullySpecifiedName: 'Childhood asthma (disorder)',
+      preferredTerm: 'Childhood asthma',
+      active: true,
+      definitionStatus: 'PRIMITIVE',
+      moduleId: '900000000000207008',
+      effectiveTime: '20020131',
+      descriptions: [{ term: 'Childhood asthma', type: 'SYNONYM', language: 'en', preferred: true }],
+      parents: [{ typeTerm: 'Is a', targetId: '195967001', targetTerm: 'Asthma', group: 0 }],
+      attributes: [{ typeTerm: 'Occurrence', targetId: '255398004', targetTerm: 'Childhood', group: 1 }],
+    });
+    await fixture.whenStable();
+
+    const dialog = page.querySelector('dialog')!;
+    expect(dialog.textContent).toContain('Preferred synonym');
+    expect(dialog.textContent).toContain('Occurrence =');
+    expect(dialog.textContent).toContain('Group 1');
+
+    Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Asthma')?.click();
+    await fixture.whenStable();
+    http.expectOne('/api/concepts/195967001?branch=MAIN').flush({ detail: 'Concept 195967001 was not found in this code system.' }, { status: 400, statusText: 'Bad Request' });
+    await fixture.whenStable();
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('was not found');
+  });
+
   it('explains why publishing was refused', async () => {
     open({ ...SET, status: 'PUBLISHED', latestVersion: 1, unpublishedChanges: true }, [VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);

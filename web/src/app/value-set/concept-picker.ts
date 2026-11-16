@@ -61,6 +61,9 @@ type Search =
                 @if (inList().has(concept.conceptId)) {
                   <span class="badge">In the list</span>
                 }
+                <button type="button" class="link-button" (click)="details.emit(concept.conceptId)" [attr.aria-label]="'Details of ' + concept.preferredTerm">
+                  Details
+                </button>
               </li>
             }
           </ul>
@@ -83,6 +86,8 @@ export class ConceptPicker {
   /** Concept IDs already in the value set, so results can be marked. */
   readonly inList = input.required<ReadonlySet<string>>();
   readonly add = output<Concept[]>();
+  /** Asks the page to show everything about one concept. */
+  readonly details = output<string>();
 
   protected readonly search = signal<Search>({ status: 'idle' });
   protected readonly selected = signal<ReadonlySet<string>>(new Set());

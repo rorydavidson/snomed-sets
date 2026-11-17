@@ -75,16 +75,10 @@ services:
   snowstorm:
     profiles: ["local-snowstorm"]
     image: snomedinternational/snowstorm:latest
-    entrypoint:
-      - java
-      - -Xms2g
-      - -Xmx4g
-      - --add-opens
-      - java.base/java.lang=ALL-UNNAMED
-      - --add-opens
-      - java.base/java.util=ALL-UNNAMED
-      - -jar
-      - /app/snowstorm.jar
+    # The image's own entrypoint is kept, because its layout changes between releases (it no
+    # longer contains a single jar). The java launcher picks these options up from the environment.
+    environment:
+      JDK_JAVA_OPTIONS: -Xms2g -Xmx4g --add-opens=java.base/java.util=ALL-UNNAMED
     command:
       - --elasticsearch.urls=http://elasticsearch:9200
     # Snowstorm has no authentication of its own, so it is published on this machine only.

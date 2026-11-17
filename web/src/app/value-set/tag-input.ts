@@ -15,7 +15,7 @@ const TAG_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u;
           @for (tag of tags(); track tag) {
             <li class="tag">
               {{ tag }}
-              <button type="button" class="tag-remove" (click)="remove(tag)" [attr.aria-label]="'Remove tag ' + tag">×</button>
+              <button type="button" class="tag-remove" (click)="remove(tag)" [attr.aria-label]="'Remove tag ' + tag"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8" /></svg></button>
             </li>
           }
         </ul>

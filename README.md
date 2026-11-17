@@ -150,6 +150,26 @@ the backend. Tokens stay on the server; the browser holds a session cookie.
 
 3. Open http://localhost:8090.
 
+### Behind a reverse proxy
+
+On a server, put the application behind a reverse proxy that handles HTTPS, and do not open
+`WEB_PORT` to the internet. If the proxy runs in Docker (Nginx Proxy Manager, for example), it
+cannot reach the application at `localhost`, because that is the proxy's own container. Join the
+two instead:
+
+1. Set `PROXY_NETWORK` in `.env` to the proxy's network (`docker network ls` lists them).
+2. Start the stack with the proxy file as well:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+   ```
+
+3. Point the proxy host at scheme `http`, host `snomed-sets-web`, port `8080`, with websockets off.
+
+The proxy must pass `X-Forwarded-Proto` and `X-Forwarded-Host` (Nginx Proxy Manager does), so
+that sign-in redirects use the public `https://` address. Add that address to the Keycloak client
+as described below.
+
 ### Keycloak client
 
 Create a confidential OpenID Connect client with the standard (authorisation code) flow and:

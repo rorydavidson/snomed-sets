@@ -1,0 +1,19 @@
+# Optional: serve the app through a reverse proxy running in Docker, such as Nginx Proxy Manager.
+# Joins the web container to the proxy's network so the proxy can reach it by name.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+#
+# Set PROXY_NETWORK in .env to the proxy's network (see `docker network ls`), then point the
+# proxy at http://snomed-sets-web:8080.
+services:
+  web:
+    networks:
+      default:
+      proxy:
+        aliases:
+          - snomed-sets-web
+
+networks:
+  proxy:
+    name: ${PROXY_NETWORK:?set PROXY_NETWORK in .env to the reverse proxy's Docker network}
+    external: true

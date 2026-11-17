@@ -95,19 +95,50 @@ export interface ConceptRelationship {
   group: number;
 }
 
-/** What is shown when a concept is clicked: its active descriptions and inferred relationships. */
+/** The edition a concept was looked up in. */
+export interface EditionSummary {
+  shortName: string;
+  name: string;
+  /** The language terms are shown in first, for example "no"; "en" for the International Edition. */
+  language: string;
+  /** Languages the edition holds, by code, with their names. */
+  languages: Record<string, string>;
+}
+
+export interface ConceptDescription {
+  term: string;
+  type: string;
+  language: string;
+  /** Language reference sets where this is the preferred term: en-US, en-GB, or an identifier named in `names`. */
+  preferredIn: string[];
+  /** The same, where it is an acceptable synonym. */
+  acceptableIn: string[];
+  moduleId: string | null;
+}
+
+/** What is shown when a concept is clicked: its descriptions, inferred relationships and where it comes from. */
 export interface ConceptDetails {
   conceptId: string;
   fullySpecifiedName: string | null;
+  /** In the edition's language where the concept has a term in it. */
   preferredTerm: string | null;
+  preferredTermLanguage: string | null;
   active: boolean;
   definitionStatus: string | null;
   moduleId: string | null;
   effectiveTime: string | null;
-  /** preferredIn lists the dialects in which the term is the preferred one, for example en-US. */
-  descriptions: { term: string; type: string; language: string; preferredIn: string[] }[];
+  descriptions: ConceptDescription[];
   parents: ConceptRelationship[];
   attributes: ConceptRelationship[];
+  /** Null when Snowstorm could not say which edition the branch belongs to. */
+  edition: EditionSummary | null;
+  moduleName: string | null;
+  /** True when the concept's module is part of the International Edition rather than a national extension. */
+  international: boolean;
+  /** Names for module and language reference set identifiers. */
+  names: Record<string, string>;
+  /** Which of the modules mentioned belong to the International Edition. */
+  internationalModules: string[];
 }
 
 /** Whether a newer release of the code system is available. Only the owner is told. */

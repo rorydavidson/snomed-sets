@@ -1,18 +1,18 @@
 /* Colours for concepts and attributes follow the SNOMED CT diagramming convention:
-   blue for a primitive concept, purple with a double border for a fully defined one,
-   yellow for an attribute. */
+   blue for a primitive concept, purple for a fully defined one, yellow for an attribute. */
 $primitive: #99ccff;
 $defined: #ccccff;
 $attribute: #ffffcc;
-$line: var(--neutral-400);
+$line: var(--neutral-300);
+$extension: #fff3c4;
 
 .concept-view {
-  width: min(1080px, calc(100vw - 2 * var(--space-4)));
+  width: min(960px, calc(100vw - 2 * var(--space-4)));
   max-height: calc(100vh - 2 * var(--space-6));
   padding: 0;
   overflow-y: auto;
   color: var(--text-body);
-  background: var(--surface-subtle);
+  background: var(--surface-card);
   border: 0;
   border-radius: var(--radius-md);
   box-shadow: 0 24px 64px rgb(0 56 101 / 35%);
@@ -22,15 +22,20 @@ $line: var(--neutral-400);
   }
 }
 
+/* Header: who the concept is and where it comes from. */
 .cv-head {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-5) var(--space-6) var(--space-6);
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-6) var(--space-5);
   color: var(--snomed-white);
   background: linear-gradient(135deg, var(--snomed-navy), var(--snomed-blue));
 
   h2 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
     font-size: var(--fs-h2);
     color: inherit;
   }
@@ -48,7 +53,7 @@ $line: var(--neutral-400);
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
-  min-height: 44px;
+  min-height: 36px;
   font-size: var(--fs-caption);
 }
 
@@ -60,10 +65,6 @@ $line: var(--neutral-400);
   border: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
-
-  &:hover {
-    background: rgb(255 255 255 / 28%);
-  }
 }
 
 .cv-tag {
@@ -76,6 +77,15 @@ $line: var(--neutral-400);
 
 .cv-fsn {
   opacity: 0.85;
+}
+
+.cv-lang {
+  padding: 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-sm);
 }
 
 .cv-facts {
@@ -92,43 +102,63 @@ $line: var(--neutral-400);
     border: 1px solid rgb(255 255 255 / 40%);
     border-radius: var(--radius-sm);
   }
+
+  .cv-origin {
+    font-weight: var(--fw-semibold);
+  }
+
+  .cv-origin.cv-extension {
+    color: var(--snomed-ink);
+    background: var(--snomed-yellow);
+    border-color: var(--snomed-yellow);
+  }
+}
+
+.cv-context {
+  font-size: var(--fs-caption);
+  opacity: 0.85;
+}
+
+/* Tabs */
+.cv-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-6);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-subtle);
+
+  button {
+    padding: var(--space-3) var(--space-3) calc(var(--space-3) - 3px);
+    font: inherit;
+    font-weight: var(--fw-semibold);
+    color: var(--text-muted);
+    background: none;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+
+    &[aria-selected='true'] {
+      color: var(--snomed-navy);
+      border-bottom-color: var(--snomed-blue);
+    }
+  }
 }
 
 .cv-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: var(--space-5);
   padding: var(--space-5) var(--space-6) var(--space-6);
-  animation: cv-arrive 220ms ease-out;
 
   > section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-5);
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    gap: var(--space-2);
+    min-width: 0;
   }
-}
-
-@keyframes cv-arrive {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cv-body {
-    animation: none;
-  }
-}
-
-/* The map: parents in a bracket above, the concept in the middle, its kinds in a bracket below. */
-.cv-map {
-  align-items: center;
-  text-align: center;
 }
 
 .cv-caption {
@@ -136,83 +166,143 @@ $line: var(--neutral-400);
   color: var(--text-muted);
 }
 
-.cv-nodes {
+/* Names: the edition's language first, with the preferred term picked out. */
+.cv-language {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.cv-primary {
+  background: color-mix(in srgb, var(--snomed-cyan) 8%, white);
+  border-color: color-mix(in srgb, var(--snomed-cyan) 45%, white);
+}
+
+.cv-language-name {
+  margin-top: var(--space-2);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--snomed-navy);
+  text-transform: uppercase;
+}
+
+.cv-preferred {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-2);
-  width: 100%;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.cv-star {
+  color: var(--snomed-yellow);
+}
+
+.cv-term {
+  font-size: var(--fs-body-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--snomed-navy);
+}
+
+.cv-synonyms {
+  font-size: var(--fs-body-sm);
+}
+
+/* Where it sits: parents as chips, the concept, then its kinds as a dense list. */
+.cv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   margin: 0;
-  padding: var(--space-3);
+  padding: 0;
   list-style: none;
-  border: 2px solid $line;
 }
 
-.cv-above {
-  border-top: 0;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-}
-
-.cv-below {
-  border-bottom: 0;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-}
-
-.cv-stem {
-  width: 2px;
-  height: var(--space-5);
-  margin: calc(-1 * var(--space-3)) 0;
-  background: $line;
-}
-
-.cv-node {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: 220px;
-  padding: var(--space-2) var(--space-3);
+.cv-chip {
+  max-width: 100%;
+  padding: 2px var(--space-2);
   font: inherit;
   font-size: var(--fs-body-sm);
   color: var(--snomed-navy);
-  background: color-mix(in srgb, #{$primitive} 35%, white);
+  text-align: left;
+  background: color-mix(in srgb, #{$primitive} 30%, white);
   border: 1px solid $primitive;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition:
-    transform 120ms ease-out,
-    box-shadow 120ms ease-out;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgb(0 56 101 / 18%);
-  }
-
-  .mono {
-    font-size: 11px;
-    color: var(--text-muted);
+    background: color-mix(in srgb, #{$primitive} 55%, white);
   }
 }
 
+.cv-above {
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid $line;
+}
+
 .cv-focus {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--space-3) var(--space-5);
-  font-size: var(--fs-body-lg);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   font-weight: var(--fw-bold);
   color: var(--snomed-navy);
   background: $primitive;
-  border: 2px solid var(--snomed-blue);
-  border-radius: var(--radius-md);
+  border-left: 4px solid var(--snomed-blue);
+  border-radius: var(--radius-sm);
 
   .mono {
+    font-size: 11px;
     font-weight: var(--fw-regular, 400);
+    color: var(--text-muted);
   }
 }
 
 .cv-defined {
   background: $defined;
-  border: 5px double var(--snomed-purple);
+  border-left-color: var(--snomed-purple);
+}
+
+.cv-kinds-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 2px solid $line;
+
+  input {
+    flex: 0 1 180px;
+    padding: 2px var(--space-2);
+    font: inherit;
+    font-size: var(--fs-body-sm);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+  }
+}
+
+.cv-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 2px var(--space-3);
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-body-sm);
+  list-style: none;
+
+  li::before {
+    margin-right: var(--space-1);
+    color: var(--text-muted);
+    content: '›';
+  }
+
+  .link-button {
+    text-align: left;
+  }
 }
 
 /* Attributes: each role group is a card, each attribute a yellow pill pointing at its value. */
@@ -239,35 +329,20 @@ $line: var(--neutral-400);
 }
 
 .cv-type {
-  padding: var(--space-1) var(--space-3);
+  padding: 2px var(--space-2);
   font-size: var(--fs-body-sm);
   color: var(--neutral-800);
+  white-space: nowrap;
   background: $attribute;
   border: 1px solid #d9d98c;
   border-radius: 999px;
 }
 
 .cv-arrow {
-  position: relative;
-  flex: 1 1 24px;
-  min-width: 24px;
+  flex: 0 0 16px;
   height: 2px;
   background: $line;
 
-  &::after {
-    position: absolute;
-    top: -4px;
-    right: -1px;
-    content: '';
-    border: 5px solid transparent;
-    border-left-color: $line;
-    border-right: 0;
-  }
-}
-
-.cv-value {
-  align-items: flex-start;
-  text-align: left;
 }
 
 .cv-expression {
@@ -281,20 +356,24 @@ $line: var(--neutral-400);
   border-radius: var(--radius-sm);
 }
 
+/* Every description, by language. */
 .cv-descriptions {
   grid-column: 1 / -1;
+  font-size: var(--fs-body-sm);
+}
 
-  ul {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
+.cv-preferred-row td:first-child {
+  font-weight: var(--fw-semibold);
+}
 
-  li {
-    display: flex;
-    flex-direction: column;
-  }
+.cv-module {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  font-size: var(--fs-caption);
+  background: var(--neutral-100);
+  border-radius: var(--radius-sm);
+}
+
+.cv-module.cv-extension {
+  background: $extension;
 }

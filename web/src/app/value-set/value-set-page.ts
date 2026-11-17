@@ -14,13 +14,14 @@ import {
 } from '../core/value-set-api';
 
 import { ConceptDetails } from './concept-details';
+import { EclSuggestionDialog } from './ecl-suggestion-dialog';
 import { UpgradeDialog, describeChanges } from './upgrade-dialog';
 
 const PAGE_SIZE = 50;
 
 @Component({
   selector: 'app-value-set-page',
-  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog],
+  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog],
   styles: `
     .facts {
       display: flex;
@@ -250,6 +251,11 @@ const PAGE_SIZE = 50;
                 {{ definitionLabel() }} Code system {{ set.codeSystem }}, {{ releaseLabel(definition().branch) }}.
                 Terms are as they were in that release when each concept was added or upgraded.
               </p>
+              <p>
+                <button type="button" class="button button-secondary button-small" (click)="suggestingEcl.set(true)">
+                  Suggest an ECL expression
+                </button>
+              </p>
             } @else {
               <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
               <p class="meta">
@@ -401,6 +407,9 @@ const PAGE_SIZE = 50;
             (closed)="upgrading.set(false)"
           />
         }
+        @if (suggestingEcl()) {
+          <app-ecl-suggestion-dialog [valueSetId]="set.id" [name]="set.name" (closed)="suggestingEcl.set(false)" />
+        }
         @if (shownConcept(); as conceptId) {
           <app-concept-details [conceptId]="conceptId" [branch]="set.branch" (closed)="shownConcept.set(null)" />
         }
@@ -435,6 +444,8 @@ export class ValueSetPage implements OnInit {
     return this.codeSystemNames()[shortName] ?? shortName;
   });
   protected readonly upgrading = signal(false);
+  /** True while the dialog suggesting an ECL expression for a hand-picked list is open. */
+  protected readonly suggestingEcl = signal(false);
   protected readonly describeChanges = describeChanges;
 
   /** The concept whose details are open, if any. */

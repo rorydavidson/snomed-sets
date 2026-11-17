@@ -1,6 +1,8 @@
 import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { tap } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
+import { CanActivateFn } from '@angular/router';
+import { filter, map, take, tap } from 'rxjs';
 
 export type SessionState =
   | { status: 'loading' }
@@ -38,7 +40,31 @@ export class Session {
   }
 }
 
-/** If the session expires while the app is open, drop back to the sign-in screen. */
+/**
+ * For pages that change things, such as the editor. Waits until it is known whether someone is
+ * signed in, then sends a visitor who is not to the sign-in, which brings them back to the library.
+ */
+export const signedInGuard: CanActivateFn = () => {
+  const session = inject(Session);
+  return toObservable(session.state).pipe(
+    filter((state) => state.status !== 'loading'),
+    take(1),
+    map((state) => {
+      if (state.status === 'signedIn') {
+        return true;
+      }
+      if (state.status === 'signedOut') {
+        window.location.assign(SIGN_IN_URL);
+      }
+      return false;
+    }),
+  );
+};
+
+/**
+ * If the session expires while the app is open, carry on as a visitor who has not signed in:
+ * the published library stays readable and the header offers sign-in again.
+ */
 export const sessionExpiryInterceptor: HttpInterceptorFn = (request, next) => {
   const session = inject(Session);
   return next(request).pipe(

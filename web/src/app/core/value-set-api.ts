@@ -17,7 +17,8 @@ export interface ValueSet {
   codeSystemVersion: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   visibility: 'PRIVATE' | 'COMMUNITY';
-  ownerName: string;
+  /** Null for a visitor who has not signed in: they are not told who made a set. */
+  ownerName: string | null;
   ownedByMe: boolean;
   updatedAt: string;
   /** The newest published version number, or null if never published. */

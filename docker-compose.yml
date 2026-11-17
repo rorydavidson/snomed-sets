@@ -17,7 +17,7 @@ services:
   api:
     build: ./api
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
       DB_URL: jdbc:mariadb://db:3306/${DB_NAME:-valuesets}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}

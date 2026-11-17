@@ -15,15 +15,17 @@ describe('App', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  it('offers sign-in when there is no session', async () => {
+  it('lets a visitor browse without signing in, offering sign-in in the header', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     http.expectOne('/api/me').flush(null, { status: 401, statusText: 'Unauthorized' });
     await fixture.whenStable();
 
-    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.button-primary');
+    const page = fixture.nativeElement as HTMLElement;
+    const link = page.querySelector<HTMLAnchorElement>('header a.button');
     expect(link?.textContent).toContain('Sign in');
     expect(link?.getAttribute('href')).toBe('/sign-in');
+    expect(page.querySelector('router-outlet')).not.toBeNull();
   });
 
   it('shows the signed-in name and a sign-out button', async () => {

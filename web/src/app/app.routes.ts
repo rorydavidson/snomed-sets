@@ -1,13 +1,14 @@
 import { Routes } from '@angular/router';
 import { LibraryPage } from './library/library-page';
+import { signedInGuard } from './core/session';
 import { NotFoundPage } from './not-found-page';
 import { ValueSetEditorPage } from './value-set/value-set-editor-page';
 import { ValueSetPage } from './value-set/value-set-page';
 
 export const routes: Routes = [
   { path: '', component: LibraryPage, title: 'Library · SNOMED CT value sets' },
-  { path: 'value-sets/new', component: ValueSetEditorPage, title: 'New value set · SNOMED CT value sets' },
+  { path: 'value-sets/new', component: ValueSetEditorPage, canActivate: [signedInGuard], title: 'New value set · SNOMED CT value sets' },
   { path: 'value-sets/:id', component: ValueSetPage, title: 'Value set · SNOMED CT value sets' },
-  { path: 'value-sets/:id/edit', component: ValueSetEditorPage, title: 'Edit value set · SNOMED CT value sets' },
+  { path: 'value-sets/:id/edit', component: ValueSetEditorPage, canActivate: [signedInGuard], title: 'Edit value set · SNOMED CT value sets' },
   { path: '**', component: NotFoundPage, title: 'Not found · SNOMED CT value sets' },
 ];

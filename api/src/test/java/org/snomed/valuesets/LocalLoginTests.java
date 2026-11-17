@@ -80,7 +80,7 @@ class LocalLoginTests {
 
 	@Test
 	void apiStillRequiresSignIn() throws Exception {
-		mvc.perform(get("/api/value-sets")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/me")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

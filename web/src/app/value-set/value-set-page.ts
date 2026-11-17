@@ -13,6 +13,7 @@ import {
   upgradeReportUrl,
 } from '../core/value-set-api';
 
+import { Session } from '../core/session';
 import { ConceptDetails } from './concept-details';
 import { EclSuggestionDialog } from './ecl-suggestion-dialog';
 import { UpgradeDialog, describeChanges } from './upgrade-dialog';
@@ -112,13 +113,20 @@ const PAGE_SIZE = 50;
             <a class="button button-secondary" [href]="downloadUrl(target, false)" download>
               Download {{ downloadLabel(target) }} (TSV)
             </a>
-            <a class="button button-secondary" [href]="downloadUrl(target, true)" download>
-              Download {{ downloadLabel(target) }} (FHIR JSON)
-            </a>
-            <span class="meta">
-              Downloads what is shown below. TSV in the Global Patient Set layout: SNOMED CT ID, FSN, PT and
-              active flag, in US English. FHIR R4 ValueSet with the definition and the concept list as its expansion.
-            </span>
+            @if (signedIn()) {
+              <a class="button button-secondary" [href]="downloadUrl(target, true)" download>
+                Download {{ downloadLabel(target) }} (FHIR JSON)
+              </a>
+              <span class="meta">
+                Downloads what is shown below. TSV in the Global Patient Set layout: SNOMED CT ID, FSN, PT and
+                active flag, in US English. FHIR R4 ValueSet with the definition and the concept list as its expansion.
+              </span>
+            } @else {
+              <span class="meta">
+                Downloads what is shown below in the Global Patient Set layout: SNOMED CT ID, FSN, PT and
+                active flag, in US English. Sign in for other formats.
+              </span>
+            }
           </div>
         }
 
@@ -251,11 +259,13 @@ const PAGE_SIZE = 50;
                 {{ definitionLabel() }} Code system {{ set.codeSystem }}, {{ releaseLabel(definition().branch) }}.
                 Terms are as they were in that release when each concept was added or upgraded.
               </p>
-              <p>
-                <button type="button" class="button button-secondary button-small" (click)="suggestingEcl.set(true)">
-                  Suggest an ECL expression
-                </button>
-              </p>
+              @if (signedIn()) {
+                <p>
+                  <button type="button" class="button button-secondary button-small" (click)="suggestingEcl.set(true)">
+                    Suggest an ECL expression
+                  </button>
+                </p>
+              }
             } @else {
               <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
               <p class="meta">
@@ -366,9 +376,13 @@ const PAGE_SIZE = 50;
                       <tr>
                         <td class="mono">{{ concept.conceptId }}</td>
                         <td>
-                          <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
+                          @if (signedIn()) {
+                            <button type="button" class="link-button" (click)="shownConcept.set(concept.conceptId)">
+                              {{ concept.preferredTerm }}
+                            </button>
+                          } @else {
                             {{ concept.preferredTerm }}
-                          </button>
+                          }
                           @if (concept.language) {
                             <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
                           }
@@ -422,6 +436,9 @@ const PAGE_SIZE = 50;
 export class ValueSetPage implements OnInit {
   private readonly api = inject(ValueSetApi);
   private readonly router = inject(Router);
+  private readonly session = inject(Session);
+  /** A visitor who has not signed in may read the published set and download it as GPS only. */
+  protected readonly signedIn = computed(() => this.session.state().status === 'signedIn');
   private readonly id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
 
   protected readonly valueSet = signal<ValueSet | null>(null);
@@ -500,6 +517,9 @@ export class ValueSetPage implements OnInit {
 
   ngOnInit(): void {
     this.load(true);
+    if (!this.signedIn()) {
+      return;
+    }
     // Only for the display name: the short name is shown instead if this fails.
     this.api.codeSystems().subscribe({
       next: (codeSystems) =>
@@ -678,7 +698,7 @@ export class ValueSetPage implements OnInit {
       next: (versions) => this.versions.set(versions),
       error: () => this.versionsError.set(true),
     });
-    if (withUpgrades) {
+    if (withUpgrades && this.signedIn()) {
       this.api.upgrades(this.id).subscribe({
         next: (upgrades) => this.upgrades.set(upgrades),
         error: () => this.upgrades.set(null),

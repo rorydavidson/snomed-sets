@@ -59,7 +59,9 @@ public class ValueSetService {
 	}
 
 	public List<ValueSetView> list(CurrentUser user) {
-		List<ValueSet> visible = valueSets.findAllVisibleTo(user.subject());
+		List<ValueSet> visible = user.isSignedIn()
+				? valueSets.findAllVisibleTo(user.subject())
+				: valueSets.findAllPublished();
 		Map<Long, List<ValueSetVersion>> versionsById = versions
 				.findByValueSetIdInOrderByVersionNumberDesc(visible.stream().map(ValueSet::getId).toList()).stream()
 				.collect(Collectors.groupingBy(ValueSetVersion::getValueSetId));
@@ -268,6 +270,10 @@ public class ValueSetService {
 	 * @param baseUrl where this application is reached, used for the resource's canonical URL
 	 */
 	public FhirValueSet downloadFhir(long id, String version, CurrentUser user, String baseUrl) {
+		// Visitors who have not signed in get the Global Patient Set layout only.
+		if (!user.isSignedIn()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sign in to download a value set as FHIR.");
+		}
 		DownloadContent download = downloadable(id, version, user);
 		return FhirValueSet.of(download, baseUrl, editionModuleOf(download.valueSet().getCodeSystem()));
 	}
@@ -539,7 +545,8 @@ public class ValueSetService {
 
 	ValueSet findVisible(long id, CurrentUser user) {
 		// A set the caller may not see is reported as missing, so its existence is not revealed.
-		return valueSets.findVisibleById(id, user.subject())
+		var found = user.isSignedIn() ? valueSets.findVisibleById(id, user.subject()) : valueSets.findPublishedById(id);
+		return found
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Value set not found"));
 	}
 

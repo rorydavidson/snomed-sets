@@ -1,19 +1,30 @@
 package org.snomed.valuesets.user;
 
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 /**
- * The signed-in person, however they signed in. Controllers take this as a
- * parameter so they do not depend on Keycloak types.
+ * The person making a request, however they signed in, or {@link #ANONYMOUS} for a visitor
+ * who has not. Controllers take this as a parameter so they do not depend on Keycloak types.
  *
- * @param subject stable identifier used for ownership. Never sent to the browser.
- * @param name the name shown to other people. Never the email address.
+ * @param subject stable identifier used for ownership. Never sent to the browser. Null when anonymous.
+ * @param name the name shown to other people. Never the email address. Null when anonymous.
  */
 public record CurrentUser(String subject, String name) {
 
+	/** A visitor who has not signed in. They may only read published community value sets. */
+	public static final CurrentUser ANONYMOUS = new CurrentUser(null, null);
+
+	public boolean isSignedIn() {
+		return subject != null;
+	}
+
 	static CurrentUser of(Authentication authentication) {
+		if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
+			return ANONYMOUS;
+		}
 		Object principal = authentication.getPrincipal();
 		if (principal instanceof OidcUser oidcUser) {
 			return new CurrentUser(oidcUser.getSubject(), displayName(oidcUser));

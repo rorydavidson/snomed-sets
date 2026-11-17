@@ -29,6 +29,23 @@ public interface ValueSetRepository extends Repository<ValueSet, Long> {
 			""")
 	Optional<ValueSet> findVisibleById(@Param("id") long id, @Param("subject") String subject);
 
+	/** What a visitor who has not signed in may see: community value sets that have been published. */
+	@Query("""
+			select v from ValueSet v
+			where v.visibility = org.snomed.valuesets.valueset.ValueSet.Visibility.COMMUNITY
+			  and v.status = org.snomed.valuesets.valueset.ValueSet.Status.PUBLISHED
+			order by v.updatedAt desc
+			""")
+	List<ValueSet> findAllPublished();
+
+	@Query("""
+			select v from ValueSet v
+			where v.id = :id
+			  and v.visibility = org.snomed.valuesets.valueset.ValueSet.Visibility.COMMUNITY
+			  and v.status = org.snomed.valuesets.valueset.ValueSet.Status.PUBLISHED
+			""")
+	Optional<ValueSet> findPublishedById(@Param("id") long id);
+
 	/** Tags in use on the value sets the caller may see, so private sets do not leak their tags. */
 	@Query("""
 			select distinct tag from ValueSet v join v.tags tag

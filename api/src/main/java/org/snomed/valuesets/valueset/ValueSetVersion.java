@@ -44,6 +44,13 @@ public class ValueSetVersion {
 	@Column(name = "content_frozen", nullable = false)
 	private boolean contentFrozen;
 
+	/** Set when the owner marks this as not to be used any more. Null otherwise. */
+	@Column(name = "deprecated_at")
+	private Instant deprecatedAt;
+
+	@Column(name = "deprecation_reason", length = 500)
+	private String deprecationReason;
+
 	@Column(name = "published_at", nullable = false)
 	private Instant publishedAt;
 
@@ -80,6 +87,24 @@ public class ValueSetVersion {
 
 	public long getConceptCount() {
 		return conceptCount;
+	}
+
+	public void deprecate(String reason) {
+		this.deprecatedAt = Instant.now();
+		this.deprecationReason = reason;
+	}
+
+	public void restore() {
+		this.deprecatedAt = null;
+		this.deprecationReason = null;
+	}
+
+	public boolean isDeprecated() {
+		return deprecatedAt != null;
+	}
+
+	public String getDeprecationReason() {
+		return deprecationReason;
 	}
 
 	public boolean isContentFrozen() {

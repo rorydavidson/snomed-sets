@@ -628,23 +628,140 @@ class ValueSetApiTests {
 				.andExpect(status().isForbidden());
 	}
 
+	private void deprecate(String path, long id, String subject) throws Exception {
+		mvc.perform(put(path, id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\": \"Replaced by a newer set\"}").with(signedInAs(subject)).with(csrf()))
+				.andExpect(status().isOk());
+	}
+
 	@Test
-	void aPublishedSharedSetMustBeWithdrawnBeforeItCanBeDeleted() throws Exception {
-		long id = createSetOwnedBy("alice", "COMMUNITY");
+	void aPublishedSetCannotBeDeletedOnlyDeprecated() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
 		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
 		publish(id, "alice", "");
 
 		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.detail")
+						.value("A value set that has been published cannot be deleted. Deprecate it instead."));
+	}
+
+	@Test
+	void aDeprecatedSetStaysReadableSaysWhyAndCanBeRestored() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		publish(id, "alice", "");
+
+		deprecate("/api/value-sets/{id}/deprecation", id, "alice");
+
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.deprecated").value(true))
+				.andExpect(jsonPath("$.deprecationReason").value("Replaced by a newer set"));
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.total").value(2));
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isConflict());
 
+		mvc.perform(delete("/api/value-sets/{id}/deprecation", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.deprecated").value(false))
+				.andExpect(jsonPath("$.deprecationReason").doesNotExist());
+	}
+
+	@Test
+	void deprecationNeedsAReasonAPublishedSetAndTheOwner() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+
+		mvc.perform(put("/api/value-sets/{id}/deprecation", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\": \"No longer needed\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict());
+		mvc.perform(put("/api/value-sets/{id}/deprecation", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\": \" \"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(put("/api/value-sets/{id}/deprecation", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\": \"Not mine\"}").with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isForbidden());
+		mvc.perform(put("/api/value-sets/{id}/versions/1/deprecation", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reason\": \"Not mine\"}").with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void deprecatingTheNewestVersionPutsOtherPeopleBackOnTheOneBefore() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		given(snowstorm.expand("<< 233678006", "MAIN", 0, 1000)).willReturn(pageOf(CHILDHOOD_ASTHMA));
+		publish(id, "alice", "");
 		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"name": "Owned set", "description": "", "ecl": "<< 195967001",
-						 "branch": "MAIN", "visibility": "PRIVATE"}
-						""").with(signedInAs("alice")).with(csrf()))
+				.content(NEW_SET.replace("PRIVATE", "COMMUNITY")).with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isOk());
-		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
-				.andExpect(status().isNoContent());
+		publish(id, "alice", "Published by mistake");
+
+		deprecate("/api/value-sets/{id}/versions/2/deprecation", id, "alice");
+
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.latestVersion").value(1))
+				.andExpect(jsonPath("$.ecl").value("<< 195967001"))
+				.andExpect(jsonPath("$.deprecated").value(false));
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.total").value(2));
+		mvc.perform(get("/api/value-sets/{id}/versions", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$[0].number").value(2))
+				.andExpect(jsonPath("$[0].deprecated").value(true))
+				.andExpect(jsonPath("$[0].deprecationReason").value("Replaced by a newer set"))
+				.andExpect(jsonPath("$[1].deprecated").value(false));
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.unpublishedChanges").value(true));
+
+		// The number of a deprecated version is not given out again.
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"Second attempt\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.number").value(3));
+
+		mvc.perform(delete("/api/value-sets/{id}/versions/2/deprecation", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.deprecated").value(false));
+	}
+
+	@Test
+	void discardingChangesPutsAnEclDraftBackToThePublishedVersion() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		publish(id, "alice", "");
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.unpublishedChanges").value(true));
+
+		mvc.perform(post("/api/value-sets/{id}/discard-changes", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ecl").value("<< 195967001"))
+				.andExpect(jsonPath("$.name").value("Childhood asthma"))
+				.andExpect(jsonPath("$.unpublishedChanges").value(false));
+	}
+
+	@Test
+	void discardingChangesPutsAHandPickedListBackToThePublishedOne() throws Exception {
+		long id = createHandPicked("alice", "PRIVATE");
+		publish(id, "alice", "");
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(handPicked("PRIVATE", "233678006")).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.unpublishedChanges").value(true));
+
+		mvc.perform(post("/api/value-sets/{id}/discard-changes", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.unpublishedChanges").value(false));
+		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$", hasSize(2)));
+	}
+
+	@Test
+	void thereIsNothingToDiscardOnASetThatWasNeverPublished() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+
+		mvc.perform(post("/api/value-sets/{id}/discard-changes", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict());
+		mvc.perform(post("/api/value-sets/{id}/discard-changes", id).with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isNotFound());
 	}
 
 	@Test

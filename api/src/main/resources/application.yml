@@ -29,6 +29,10 @@ server:
       cookie:
         http-only: true
         same-site: lax
+        # Sent over HTTPS only. Behind a proxy that ends TLS the application itself sees plain
+        # HTTP, so this cannot be worked out per request. Set SESSION_COOKIE_SECURE=false only to
+        # sign in over plain HTTP from another machine; browsers accept it on http://localhost.
+        secure: ${SESSION_COOKIE_SECURE:true}
 
 snowstorm:
   # No default: the public Snowstorm refuses server-side calls, so an instance must be chosen.

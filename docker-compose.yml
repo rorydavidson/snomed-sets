@@ -28,6 +28,7 @@ services:
       LOCAL_LOGIN_USERNAME: ${LOCAL_LOGIN_USERNAME:-}
       LOCAL_LOGIN_PASSWORD: ${LOCAL_LOGIN_PASSWORD:-}
       SNOWSTORM_BASE_URL: ${SNOWSTORM_BASE_URL:-http://host.docker.internal:8080}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
     # Lets the container reach a Snowstorm running on this machine as host.docker.internal,
     # on Linux as well as on Docker Desktop.
     extra_hosts:

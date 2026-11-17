@@ -180,6 +180,16 @@ The proxy must pass `X-Forwarded-Proto` and `X-Forwarded-Host` (Nginx Proxy Mana
 that sign-in redirects use the public `https://` address. Add that address to the Keycloak client
 as described below.
 
+### Cookies and browser security
+
+- The sign-in cookie is HTTP-only, `SameSite=Lax` and sent over HTTPS only. Browsers make an
+  exception for `http://localhost`. To sign in over plain HTTP from another machine, set
+  `SESSION_COOKIE_SECURE=false` in `.env`, and never do that on a server.
+- The web container sends a Content-Security-Policy that allows scripts, styles, images and API
+  calls from the application's own address only. Inline styles are allowed because Angular adds
+  component styles that way; inline scripts are not. For that reason the production build does not
+  inline critical CSS (`angular.json`), which would need an inline script.
+
 ### Keycloak client
 
 Create a confidential OpenID Connect client with the standard (authorisation code) flow and:

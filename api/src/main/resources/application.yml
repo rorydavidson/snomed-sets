@@ -11,6 +11,10 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration
+    # The dev profile's sample data is a repeatable migration in another folder. A database that
+    # once ran with dev has it recorded, and without dev it cannot be found, which Flyway would
+    # refuse. Versioned migrations are still checked strictly.
+    ignore-migration-patterns: "*:future,repeatable:missing"
   mvc:
     # Errors are sent as problem details, whose "detail" field the frontend shows to the user.
     problemdetails:

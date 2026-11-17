@@ -222,7 +222,37 @@ describe('ValueSetPage', () => {
     expect(page.textContent).toContain('Showing 1 to 1 of 121 concepts');
   });
 
-  it('opens a concept as a map of its relationships and moves along them', async () => {
+  const INTERNATIONAL = { shortName: 'SNOMEDCT', name: 'International Edition', language: 'en', languages: { en: 'English' } };
+
+  function concept(overrides: Record<string, unknown>): Record<string, unknown> {
+    return {
+      conceptId: '233678006',
+      fullySpecifiedName: 'Childhood asthma (disorder)',
+      preferredTerm: 'Childhood asthma',
+      preferredTermLanguage: 'en',
+      active: true,
+      definitionStatus: 'PRIMITIVE',
+      moduleId: '900000000000207008',
+      effectiveTime: '20020131',
+      descriptions: [],
+      parents: [],
+      attributes: [],
+      edition: INTERNATIONAL,
+      moduleName: 'SNOMED CT core',
+      international: true,
+      names: { '900000000000207008': 'SNOMED CT core' },
+      internationalModules: ['900000000000207008'],
+      ...overrides,
+    };
+  }
+
+  function tab(dialog: Element, label: string): void {
+    Array.from(dialog.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+      .find((candidate) => candidate.textContent?.includes(label))!
+      .click();
+  }
+
+  it('opens a concept with a compact outline of where it sits, and moves along it', async () => {
     open(SET);
     http
       .expectOne('/api/value-sets/7/expansion?offset=0&limit=50')
@@ -232,28 +262,34 @@ describe('ValueSetPage', () => {
     button(page, 'Childhood asthma')?.click();
     await fixture.whenStable();
     http.expectOne('/api/concepts/233678006/children?branch=MAIN').flush({ items: [], total: 0 });
-    http.expectOne('/api/concepts/233678006?branch=MAIN').flush({
-      conceptId: '233678006',
-      fullySpecifiedName: 'Childhood asthma (disorder)',
-      preferredTerm: 'Childhood asthma',
-      active: true,
-      definitionStatus: 'PRIMITIVE',
-      moduleId: '900000000000207008',
-      effectiveTime: '20020131',
-      descriptions: [{ term: 'Childhood asthma', type: 'SYNONYM', language: 'en', preferredIn: ['en-GB', 'en-US'] }],
-      parents: [{ typeId: '116680003', typeTerm: 'Is a', targetId: '195967001', targetTerm: 'Asthma', group: 0 }],
-      attributes: [
-        { typeId: '246454002', typeTerm: 'Occurrence', targetId: '255398004', targetTerm: 'Childhood', group: 1 },
-        { typeId: '363698007', typeTerm: 'Finding site', targetId: '89187006', targetTerm: 'Airway structure', group: 2 },
-      ],
-    });
+    http.expectOne('/api/concepts/233678006?branch=MAIN').flush(
+      concept({
+        descriptions: [
+          { term: 'Childhood asthma (disorder)', type: 'FSN', language: 'en', preferredIn: ['en-GB', 'en-US'], acceptableIn: [], moduleId: '900000000000207008' },
+          { term: 'Childhood asthma', type: 'SYNONYM', language: 'en', preferredIn: ['en-GB', 'en-US'], acceptableIn: [], moduleId: '900000000000207008' },
+          { term: 'Asthma in childhood', type: 'SYNONYM', language: 'en', preferredIn: [], acceptableIn: ['en-US'], moduleId: '900000000000207008' },
+        ],
+        parents: [{ typeId: '116680003', typeTerm: 'Is a', targetId: '195967001', targetTerm: 'Asthma', group: 0 }],
+        attributes: [
+          { typeId: '246454002', typeTerm: 'Occurrence', targetId: '255398004', targetTerm: 'Childhood', group: 1 },
+          { typeId: '363698007', typeTerm: 'Finding site', targetId: '89187006', targetTerm: 'Airway structure', group: 2 },
+        ],
+      }),
+    );
     await fixture.whenStable();
 
     const dialog = page.querySelector('dialog')!;
     expect(dialog.querySelector('.cv-tag')?.textContent).toBe('disorder');
-    expect(dialog.textContent).toContain('Synonym · preferred in en-GB, en-US');
-    expect(Array.from(dialog.querySelectorAll('.cv-group-label')).map((label) => label.textContent)).toEqual(['Group 1', 'Group 2']);
+    expect(dialog.querySelector('.cv-origin')?.textContent).toContain('International');
+    expect(dialog.querySelector('.cv-origin')?.classList.contains('cv-extension')).toBe(false);
+    expect(dialog.textContent).toContain('Shown from International Edition, live branch.');
+    expect(dialog.querySelector('.cv-preferred')?.textContent).toContain('preferred in GB English, US English');
+    expect(dialog.querySelector('.cv-synonyms')?.textContent).toContain('Asthma in childhood');
     expect(dialog.textContent).toContain('Has no kinds of its own');
+
+    tab(dialog, 'Definition');
+    await fixture.whenStable();
+    expect(Array.from(dialog.querySelectorAll('.cv-group-label')).map((label) => label.textContent)).toEqual(['Group 1', 'Group 2']);
     expect(dialog.querySelector('.cv-expression')?.textContent).toBe(
       [
         '<<< 195967001 |Asthma| :',
@@ -262,32 +298,36 @@ describe('ValueSetPage', () => {
       ].join('\n'),
     );
 
-    // Follow the parent: the map moves onto Asthma and the trail remembers where we came from.
-    Array.from(dialog.querySelectorAll<HTMLButtonElement>('.cv-above .cv-node'))[0].click();
+    tab(dialog, 'Descriptions (3)');
+    await fixture.whenStable();
+    expect(dialog.textContent).toContain('Synonym · acceptable in US English');
+
+    // Follow the parent: the outline moves onto Asthma and the trail remembers where we came from.
+    tab(dialog, 'Overview');
+    await fixture.whenStable();
+    dialog.querySelector<HTMLButtonElement>('.cv-above .cv-chip')!.click();
     await fixture.whenStable();
     http.expectOne('/api/concepts/195967001/children?branch=MAIN').flush({
       items: Array.from({ length: 14 }, (_, i) => ({ conceptId: String(1000000 + i), preferredTerm: `Kind ${i}`, fullySpecifiedName: null })),
       total: 27,
     });
-    http.expectOne('/api/concepts/195967001?branch=MAIN').flush({
-      conceptId: '195967001',
-      fullySpecifiedName: 'Asthma (disorder)',
-      preferredTerm: 'Asthma',
-      active: true,
-      definitionStatus: 'FULLY_DEFINED',
-      moduleId: '900000000000207008',
-      effectiveTime: '20020131',
-      descriptions: [],
-      parents: [],
-      attributes: [],
-    });
+    http.expectOne('/api/concepts/195967001?branch=MAIN').flush(
+      concept({ conceptId: '195967001', fullySpecifiedName: 'Asthma (disorder)', preferredTerm: 'Asthma', definitionStatus: 'FULLY_DEFINED' }),
+    );
     await fixture.whenStable();
 
-    expect(dialog.querySelector('h2')?.textContent).toBe('Asthma');
+    expect(dialog.querySelector('h2')?.textContent?.trim()).toBe('Asthma');
     expect(dialog.querySelector('.cv-focus')?.classList.contains('cv-defined')).toBe(true);
-    expect(dialog.querySelectorAll('.cv-below .cv-node')).toHaveLength(12);
-    expect(dialog.textContent).toContain('27 kinds of this');
+    expect(dialog.querySelectorAll('.cv-below li')).toHaveLength(10);
+    expect(dialog.textContent).toContain('Kinds of it (27)');
+    expect(dialog.textContent).toContain('The first 14 are listed.');
     expect(dialog.querySelector('.cv-step')?.textContent).toBe('Childhood asthma');
+
+    const filter = dialog.querySelector<HTMLInputElement>('#cv-kind-filter')!;
+    filter.value = 'kind 13';
+    filter.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(Array.from(dialog.querySelectorAll('.cv-below li')).map((item) => item.textContent?.trim())).toEqual(['Kind 13']);
 
     dialog.querySelector<HTMLButtonElement>('.cv-step')!.click();
     await fixture.whenStable();
@@ -298,6 +338,83 @@ describe('ValueSetPage', () => {
     await fixture.whenStable();
     expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('was not found');
     expect(dialog.querySelector('.cv-step')).toBeNull();
+  });
+
+  it('shows the edition language first and marks what comes from a national extension', async () => {
+    const norwegian = { ...SET, codeSystem: 'SNOMEDCT-NO', branch: 'MAIN/SNOMEDCT-NO/2026-03-15', codeSystemVersion: '2026-03-15' };
+    open(norwegian);
+    http
+      .expectOne('/api/value-sets/7/expansion?offset=0&limit=50')
+      .flush({ items: [{ conceptId: '389145006', preferredTerm: 'allergisk astma', fullySpecifiedName: 'Allergic asthma (disorder)', language: 'no' }], total: 1, offset: 0, limit: 50 });
+    await fixture.whenStable();
+
+    button(page, 'allergisk astma')?.click();
+    await fixture.whenStable();
+    http.expectOne('/api/concepts/389145006/children?branch=MAIN/SNOMEDCT-NO/2026-03-15').flush({ items: [], total: 0 });
+    http.expectOne('/api/concepts/389145006?branch=MAIN/SNOMEDCT-NO/2026-03-15').flush(
+      concept({
+        conceptId: '389145006',
+        fullySpecifiedName: 'Allergic asthma (disorder)',
+        preferredTerm: 'allergisk astma',
+        preferredTermLanguage: 'no',
+        edition: { shortName: 'SNOMEDCT-NO', name: 'Norwegian Edition', language: 'no', languages: { no: 'Norwegian', en: 'English' } },
+        descriptions: [
+          { term: 'Allergic asthma', type: 'SYNONYM', language: 'en', preferredIn: ['en-US'], acceptableIn: [], moduleId: '51000202101' },
+          { term: 'allergisk astma', type: 'SYNONYM', language: 'no', preferredIn: ['61000202103'], acceptableIn: [], moduleId: '51000202101' },
+          { term: 'atopisk astma', type: 'SYNONYM', language: 'no', preferredIn: [], acceptableIn: ['61000202103'], moduleId: '51000202101' },
+        ],
+        names: {
+          '900000000000207008': 'SNOMED CT core',
+          '51000202101': 'Norwegian module',
+          '61000202103': 'Norwegian Bokmål language reference set',
+        },
+      }),
+    );
+    await fixture.whenStable();
+
+    const dialog = page.querySelector('dialog')!;
+    expect(dialog.querySelector('h2')?.textContent).toContain('allergisk astma');
+    expect(dialog.querySelector('h2 .cv-lang')?.textContent).toBe('no');
+    expect(dialog.textContent).toContain('Shown from Norwegian Edition, release 2026-03-15. Norwegian names first.');
+    const languages = Array.from(dialog.querySelectorAll('.cv-language'));
+    expect(languages[0].classList.contains('cv-primary')).toBe(true);
+    expect(languages[0].textContent).toContain('Norwegian');
+    expect(languages[0].querySelector('.cv-preferred')?.textContent).toContain('preferred in Norwegian Bokmål');
+    expect(languages[1].textContent).toContain('English');
+
+    tab(dialog, 'Descriptions');
+    await fixture.whenStable();
+    const module = dialog.querySelector('.cv-module')!;
+    expect(module.textContent?.trim()).toBe('Norwegian module');
+    expect(module.classList.contains('cv-extension')).toBe(true);
+  });
+
+  it('marks a concept from a national extension module in the header', async () => {
+    open(SET);
+    http
+      .expectOne('/api/value-sets/7/expansion?offset=0&limit=50')
+      .flush({ items: [{ conceptId: '1234567', preferredTerm: 'Lokal astma', fullySpecifiedName: null, language: 'no' }], total: 1, offset: 0, limit: 50 });
+    await fixture.whenStable();
+
+    button(page, 'Lokal astma')?.click();
+    await fixture.whenStable();
+    http.expectOne('/api/concepts/1234567/children?branch=MAIN').flush({ items: [], total: 0 });
+    http.expectOne('/api/concepts/1234567?branch=MAIN').flush(
+      concept({
+        conceptId: '1234567',
+        preferredTerm: 'Lokal astma',
+        moduleId: '51000202101',
+        moduleName: 'Norwegian module',
+        international: false,
+        edition: { shortName: 'SNOMEDCT-NO', name: 'Norwegian Edition', language: 'no', languages: { no: 'Norwegian' } },
+      }),
+    );
+    await fixture.whenStable();
+
+    const origin = page.querySelector('dialog .cv-origin')!;
+    expect(origin.textContent).toContain('Norwegian Edition');
+    expect(origin.textContent).toContain('Norwegian module');
+    expect(origin.classList.contains('cv-extension')).toBe(true);
   });
 
   function downloadLinks(): (string | null)[] {

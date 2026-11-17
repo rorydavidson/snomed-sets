@@ -119,6 +119,23 @@ public class SnowstormClient {
 	}
 
 	public List<CodeSystem> codeSystems() {
+		return fetchCodeSystems().stream().map(SnowstormCodeSystem::toCodeSystem).toList();
+	}
+
+	/**
+	 * The edition a branch belongs to: the code system whose branch is the longest that contains it,
+	 * so MAIN/SNOMEDCT-NO/2026-03-15 is the Norwegian Edition rather than the International one.
+	 * Null if no code system contains the branch.
+	 */
+	public Edition editionFor(String branch) {
+		return fetchCodeSystems().stream()
+				.filter(item -> branch.equals(item.branchPath()) || branch.startsWith(item.branchPath() + "/"))
+				.max(Comparator.comparingInt(item -> item.branchPath().length()))
+				.map(SnowstormCodeSystem::toEdition)
+				.orElse(null);
+	}
+
+	private List<SnowstormCodeSystem> fetchCodeSystems() {
 		SnowstormCodeSystems response;
 		try {
 			response = restClient.get().uri("/codesystems").retrieve().body(SnowstormCodeSystems.class);
@@ -131,22 +148,37 @@ public class SnowstormClient {
 		}
 		return response.items().stream()
 				.filter(item -> isValidBranch(item.branchPath()))
-				.map(SnowstormCodeSystem::toCodeSystem)
 				.toList();
 	}
 
 	public ConceptDetails conceptDetails(String conceptId, String branch) {
-		return browserConcept(conceptId, branch).toDetails();
+		return browserConcept(conceptId, branch, US_ENGLISH).toDetails();
+	}
+
+	/**
+	 * The same, with terms in the given language where the concept has them, for example "no".
+	 * English is asked for after it, so a concept without a translation still has terms.
+	 */
+	public ConceptDetails conceptDetails(String conceptId, String branch, String language) {
+		return browserConcept(conceptId, branch, acceptLanguage(language)).toDetails();
+	}
+
+	private static String acceptLanguage(String language) {
+		return language == null || language.equals("en") ? US_ENGLISH : language + "," + US_ENGLISH;
 	}
 
 	/** Why a concept was made inactive and what the historical association reference sets point to instead. */
 	public Inactivation inactivation(String conceptId, String branch) {
-		BrowserConcept concept = browserConcept(conceptId, branch);
+		BrowserConcept concept = browserConcept(conceptId, branch, US_ENGLISH);
 		return new Inactivation(concept.active(), concept.inactivationIndicator(),
 				concept.associationTargets() == null ? Map.of() : concept.associationTargets());
 	}
 
-	private BrowserConcept browserConcept(String conceptId, String branch) {
+	private BrowserConcept browserConcept(String conceptId, String branch, String acceptLanguage) {
+		// The language goes in a request header, so only a language-tag list is accepted.
+		if (!acceptLanguage.matches("[A-Za-z0-9,;=.-]{1,100}")) {
+			throw new SnowstormException("Language is not valid: " + acceptLanguage, true, null);
+		}
 		if (!isValidBranch(branch)) {
 			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
 		}
@@ -158,6 +190,7 @@ public class SnowstormClient {
 							.pathSegment(branch.split("/"))
 							.pathSegment("concepts", conceptId)
 							.build())
+					.header(HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage)
 					.retrieve()
 					.body(BrowserConcept.class);
 		}
@@ -178,12 +211,17 @@ public class SnowstormClient {
 
 	/** The active concepts matching an ECL expression. */
 	public ExpansionPage expand(String ecl, String branch, int offset, int limit) {
-		return concepts("ecl", List.of(ecl), branch, offset, limit);
+		return concepts("ecl", List.of(ecl), branch, offset, limit, US_ENGLISH);
+	}
+
+	/** The same, with preferred terms in the given language where the concepts have them. */
+	public ExpansionPage expand(String ecl, String branch, int offset, int limit, String language) {
+		return concepts("ecl", List.of(ecl), branch, offset, limit, acceptLanguage(language));
 	}
 
 	/** The active concepts whose descriptions match the words in a search term. */
 	public ExpansionPage search(String term, String branch, int limit) {
-		return concepts("term", List.of(term), branch, 0, limit);
+		return concepts("term", List.of(term), branch, 0, limit, US_ENGLISH);
 	}
 
 	/**
@@ -192,10 +230,11 @@ public class SnowstormClient {
 	 * inactive and unknown concepts are simply left out.
 	 */
 	public ExpansionPage activeConcepts(List<String> conceptIds, String branch) {
-		return concepts("conceptIds", conceptIds, branch, 0, conceptIds.size());
+		return concepts("conceptIds", conceptIds, branch, 0, conceptIds.size(), US_ENGLISH);
 	}
 
-	private ExpansionPage concepts(String filterName, List<String> filterValues, String branch, int offset, int limit) {
+	private ExpansionPage concepts(String filterName, List<String> filterValues, String branch, int offset, int limit,
+			String acceptLanguage) {
 		if (!isValidBranch(branch)) {
 			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
 		}
@@ -212,6 +251,7 @@ public class SnowstormClient {
 							.queryParam("offset", offset)
 							.queryParam("limit", limit)
 							.build(filterValues.toArray()))
+					.header(HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage)
 					.retrieve()
 					.body(SnowstormConceptPage.class);
 		}
@@ -263,17 +303,19 @@ public class SnowstormClient {
 			List<ConceptDetails.Description> activeDescriptions = orEmpty(descriptions).stream()
 					.filter(BrowserDescription::active)
 					.map(description -> new ConceptDetails.Description(description.term(), description.type(),
-							description.lang(), description.preferredIn()))
+							description.lang(), description.preferredIn(), description.acceptableIn(),
+							description.moduleId()))
 					.toList();
 			List<BrowserRelationship> inferred = orEmpty(relationships).stream()
 					.filter(relationship -> relationship.active()
 							&& "INFERRED_RELATIONSHIP".equals(relationship.characteristicType())
 							&& relationship.target() != null)
 					.toList();
-			return new ConceptDetails(conceptId, termOf(fsn), termOf(pt), active, definitionStatus, moduleId,
-					effectiveTime, activeDescriptions,
+			return new ConceptDetails(conceptId, termOf(fsn), termOf(pt), pt == null ? null : pt.lang(), active,
+					definitionStatus, moduleId, effectiveTime, activeDescriptions,
 					inferred.stream().filter(r -> IS_A.equals(r.typeId())).map(BrowserRelationship::toRelationship).toList(),
-					inferred.stream().filter(r -> !IS_A.equals(r.typeId())).map(BrowserRelationship::toRelationship).toList());
+					inferred.stream().filter(r -> !IS_A.equals(r.typeId())).map(BrowserRelationship::toRelationship).toList(),
+					null, null, false, Map.of(), List.of());
 		}
 
 		private static <T> List<T> orEmpty(List<T> list) {
@@ -281,20 +323,32 @@ public class SnowstormClient {
 		}
 	}
 
-	record BrowserDescription(String term, String type, String lang, boolean active,
+	record BrowserDescription(String term, String type, String lang, boolean active, String moduleId,
 			java.util.Map<String, String> acceptabilityMap) {
 
 		private static final java.util.Map<String, String> DIALECTS = java.util.Map.of(
 				"900000000000509007", "en-US",
 				"900000000000508004", "en-GB");
 
-		/** The acceptability map is keyed by language reference set identifier. */
+		/**
+		 * The language reference sets in which it is preferred. US and GB English are named by
+		 * dialect; others are given by identifier.
+		 */
 		List<String> preferredIn() {
+			return refsetsWhere("PREFERRED");
+		}
+
+		List<String> acceptableIn() {
+			return refsetsWhere("ACCEPTABLE");
+		}
+
+		/** The acceptability map is keyed by language reference set identifier. */
+		private List<String> refsetsWhere(String acceptability) {
 			if (acceptabilityMap == null) {
 				return List.of();
 			}
 			return acceptabilityMap.entrySet().stream()
-					.filter(entry -> "PREFERRED".equals(entry.getValue()))
+					.filter(entry -> acceptability.equals(entry.getValue()))
 					.map(entry -> DIALECTS.getOrDefault(entry.getKey(), entry.getKey()))
 					.sorted()
 					.toList();
@@ -313,7 +367,21 @@ public class SnowstormClient {
 	record SnowstormCodeSystems(List<SnowstormCodeSystem> items) {
 	}
 
-	record SnowstormCodeSystem(String shortName, String name, String branchPath, SnowstormCodeSystemVersion latestVersion) {
+	record SnowstormCodeSystem(String shortName, String name, String branchPath, SnowstormCodeSystemVersion latestVersion,
+			Map<String, String> languages, List<SnowstormModule> modules) {
+
+		Edition toEdition() {
+			Map<String, String> known = languages == null || languages.isEmpty() ? Map.of("en", "English") : languages;
+			// The edition's own language comes first; English only when it has no other.
+			String language = known.keySet().stream().filter(code -> !code.equals("en")).sorted().findFirst().orElse("en");
+			Map<String, String> owners = new java.util.HashMap<>();
+			if (modules != null) {
+				modules.stream()
+						.filter(module -> module.conceptId() != null && module.moduleId() != null)
+						.forEach(module -> owners.put(module.conceptId(), module.moduleId()));
+			}
+			return new Edition(shortName, name == null ? shortName : name, language, known, owners);
+		}
 
 		CodeSystem toCodeSystem() {
 			// A release branch that fails the path check is treated as no release, so it is never used.

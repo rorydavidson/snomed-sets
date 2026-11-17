@@ -122,7 +122,7 @@ class SnowstormClientTests {
 		assertThat(details.preferredTerm()).isEqualTo("Childhood asthma");
 		assertThat(details.descriptions())
 				.containsExactly(new ConceptDetails.Description("Childhood asthma", "SYNONYM", "en",
-						List.of("21000172104", "en-US")));
+						List.of("21000172104", "en-US"), List.of("en-GB"), null));
 		assertThat(details.parents())
 				.containsExactly(new ConceptDetails.Relationship("116680003", "Is a", "195967001", "Asthma", 0));
 		assertThat(details.attributes())
@@ -203,6 +203,46 @@ class SnowstormClientTests {
 
 		assertThat(client.editionModuleId("SNOMEDCT-NO")).isEqualTo("51000202101");
 		assertThat(client.editionModuleId("SNOMEDCT")).isEqualTo("900000000000207008");
+		server.verify();
+	}
+
+	@Test
+	void asksForTermsInTheEditionLanguageWithEnglishAfterIt() {
+		server.expect(requestTo("https://snowstorm.test/browser/MAIN/SNOMEDCT-NO/2026-03-15/concepts/389145006"))
+				.andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.header("Accept-Language",
+						"no,en-X-900000000000509007,en"))
+				.andRespond(withSuccess("""
+						{"conceptId":"389145006","active":true,"moduleId":"900000000000207008",
+						 "pt":{"term":"allergisk astma","lang":"no"},"fsn":{"term":"Allergic asthma (disorder)","lang":"en"},
+						 "descriptions":[],"relationships":[]}
+						""", MediaType.APPLICATION_JSON));
+
+		ConceptDetails details = client.conceptDetails("389145006", "MAIN/SNOMEDCT-NO/2026-03-15", "no");
+
+		assertThat(details.preferredTerm()).isEqualTo("allergisk astma");
+		assertThat(details.preferredTermLanguage()).isEqualTo("no");
+		server.verify();
+	}
+
+	@Test
+	void findsTheEditionOfAReleaseBranchWithItsLanguageAndModules() {
+		server.expect(requestTo("https://snowstorm.test/codesystems"))
+				.andRespond(withSuccess("""
+						{"items":[
+						  {"shortName":"SNOMEDCT","branchPath":"MAIN","languages":{"en":"English"},
+						   "modules":[{"conceptId":"900000000000207008","moduleId":"900000000000012004"}]},
+						  {"shortName":"SNOMEDCT-NO","name":"Norwegian Edition","branchPath":"MAIN/SNOMEDCT-NO",
+						   "languages":{"no":"Norwegian","en":"English"},
+						   "modules":[{"conceptId":"51000202101","moduleId":"51000202101"},
+						              {"conceptId":"900000000000207008","moduleId":"900000000000012004"}]}]}
+						""", MediaType.APPLICATION_JSON));
+
+		Edition edition = client.editionFor("MAIN/SNOMEDCT-NO/2026-03-15");
+
+		assertThat(edition.shortName()).isEqualTo("SNOMEDCT-NO");
+		assertThat(edition.language()).isEqualTo("no");
+		assertThat(edition.isInternational("900000000000207008")).isTrue();
+		assertThat(edition.isInternational("51000202101")).isFalse();
 		server.verify();
 	}
 }

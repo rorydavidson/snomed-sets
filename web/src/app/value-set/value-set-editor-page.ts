@@ -197,8 +197,14 @@ type Preview =
                             }
                           </td>
                           <td>
-                            <button type="button" class="link-button" (click)="removeMember(concept.conceptId)" [attr.aria-label]="'Remove ' + concept.preferredTerm">
-                              Remove
+                            <button
+                              type="button"
+                              class="icon-button"
+                              (click)="removeMember(concept.conceptId)"
+                              [attr.aria-label]="'Remove ' + concept.preferredTerm"
+                              title="Remove from the list"
+                            >
+                              <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8" /></svg>
                             </button>
                           </td>
                         </tr>

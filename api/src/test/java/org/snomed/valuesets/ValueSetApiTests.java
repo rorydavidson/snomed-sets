@@ -28,6 +28,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.CodeSystemVersion;
+import org.snomed.valuesets.snowstorm.ConceptDetails;
+import org.snomed.valuesets.snowstorm.Edition;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.Inactivation;
@@ -1295,5 +1297,33 @@ class ValueSetApiTests {
 
 		mvc.perform(get("/api/value-sets/{id}/upgrade/preview", id).with(signedInAs("alice")))
 				.andExpect(jsonPath("$.inactivated[0].keptBefore").value(true));
+	}
+
+	@Test
+	void aConceptIsShownInTheEditionLanguageWithItsModuleAndLanguageReferenceSetsNamed() throws Exception {
+		String branch = "MAIN/SNOMEDCT-NO/2026-03-15";
+		given(snowstorm.editionFor(branch)).willReturn(new Edition("SNOMEDCT-NO", "Norwegian Edition", "no",
+				Map.of("no", "Norwegian", "en", "English"),
+				Map.of("900000000000207008", "900000000000012004", "51000202101", "51000202101")));
+		given(snowstorm.conceptDetails("389145006", branch, "no")).willReturn(new ConceptDetails("389145006",
+				"Allergic asthma (disorder)", "allergisk astma", "no", true, "PRIMITIVE", "900000000000207008",
+				"20020131", List.of(new ConceptDetails.Description("allergisk astma", "SYNONYM", "no",
+						List.of("61000202103"), List.of(), "51000202101")),
+				List.of(), List.of(), null, null, false, Map.of(), List.of()));
+		given(snowstorm.activeConcepts(List.of("900000000000207008", "51000202101", "61000202103"), branch))
+				.willReturn(new ExpansionPage(List.of(new Concept("900000000000207008", "SNOMED CT core", null, "en"),
+						new Concept("51000202101", "Norwegian module", null, "en"),
+						new Concept("61000202103", "Norwegian Bokmål language reference set", null, "en")), 3, 0, 3));
+
+		mvc.perform(get("/api/concepts/389145006").param("branch", branch).with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.preferredTerm").value("allergisk astma"))
+				.andExpect(jsonPath("$.edition.language").value("no"))
+				.andExpect(jsonPath("$.edition.name").value("Norwegian Edition"))
+				.andExpect(jsonPath("$.international").value(true))
+				.andExpect(jsonPath("$.moduleName").value("SNOMED CT core"))
+				.andExpect(jsonPath("$.names.61000202103").value("Norwegian Bokmål language reference set"))
+				.andExpect(jsonPath("$.descriptions[0].moduleId").value("51000202101"))
+				.andExpect(jsonPath("$.internationalModules", contains("900000000000207008")));
 	}
 }

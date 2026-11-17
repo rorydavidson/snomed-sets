@@ -175,11 +175,6 @@ function selectable(member: InactiveMember): InactiveMember['replacements'] {
       }
     }
 
-    .button-small {
-      padding: var(--space-1) var(--space-3);
-      font-size: var(--fs-body-sm);
-    }
-
     .review {
       max-height: 45vh;
       overflow: auto;

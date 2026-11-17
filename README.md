@@ -142,6 +142,8 @@ the backend. Tokens stay on the server; the browser holds a session cookie.
 ## Running it
 
 1. Copy `.env.example` to `.env` and fill in the database password and the Keycloak settings.
+   The `dev` profile loads four sample value sets owned by nobody who can sign in; use it only on
+   your own machine. Older databases have those samples removed once by a migration.
 2. Start the stack:
 
    ```bash

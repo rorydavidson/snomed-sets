@@ -81,6 +81,13 @@ public class ValueSet {
 	@Column(name = "owner_name", nullable = false)
 	private String ownerName;
 
+	/** Set when the owner marks this as not to be used any more. Null otherwise. */
+	@Column(name = "deprecated_at")
+	private Instant deprecatedAt;
+
+	@Column(name = "deprecation_reason", length = 500)
+	private String deprecationReason;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
@@ -113,6 +120,30 @@ public class ValueSet {
 		this.description = description;
 		this.ecl = ecl;
 		this.visibility = visibility;
+		this.updatedAt = Instant.now();
+	}
+
+	public void deprecate(String reason) {
+		this.deprecatedAt = Instant.now();
+		this.deprecationReason = reason;
+	}
+
+	public void restore() {
+		this.deprecatedAt = null;
+		this.deprecationReason = null;
+	}
+
+	public boolean isDeprecated() {
+		return deprecatedAt != null;
+	}
+
+	public String getDeprecationReason() {
+		return deprecationReason;
+	}
+
+	/** Puts the definition back to a published one, leaving name, tags and sharing as they are. */
+	public void revertEclTo(String publishedEcl) {
+		this.ecl = publishedEcl;
 		this.updatedAt = Instant.now();
 	}
 

@@ -32,6 +32,13 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
           </div>
         </div>
 
+        @if (deprecatedCount() > 0) {
+          <label class="checkbox">
+            <input type="checkbox" [checked]="hideDeprecated()" (change)="hideDeprecated.set($any($event.target).checked)" />
+            <span>Hide deprecated value sets ({{ deprecatedCount() }})</span>
+          </label>
+        }
+
         <p class="meta" role="status">{{ countLabel() }}</p>
 
         @if (shown().length > 0) {
@@ -49,7 +56,7 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
               </thead>
               <tbody>
                 @for (set of shown(); track set.id) {
-                  <tr>
+                  <tr [class.row-deprecated]="isDeprecated(set)">
                     <td>
                       <div class="set-heading">
                         <a class="set-name" [routerLink]="['/value-sets', set.id]">{{ set.name }}</a>
@@ -58,6 +65,9 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                         </span>
                         @if (set.visibility === 'PRIVATE') {
                           <span class="badge">Private</span>
+                        }
+                        @if (isDeprecated(set)) {
+                          <span class="badge badge-warning" [title]="set.deprecationReason ?? 'Every version is deprecated'">Deprecated</span>
                         }
                       </div>
                       @if (set.description) {
@@ -98,17 +108,24 @@ export class LibraryPage implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly query = signal('');
 
+  /** Deprecated value sets are listed and marked, so people can see they are not for new use. */
+  protected readonly hideDeprecated = signal(false);
+  protected readonly deprecatedCount = computed(() => (this.valueSets() ?? []).filter((set) => this.isDeprecated(set)).length);
+  private readonly listed = computed(() =>
+    (this.valueSets() ?? []).filter((set) => !this.hideDeprecated() || !this.isDeprecated(set)),
+  );
+
   /** Value sets whose name or one of whose tags contains every word that was typed. */
   protected readonly shown = computed(() => {
     const words = this.query().toLowerCase().split(/\s+/).filter((word) => word !== '');
-    return (this.valueSets() ?? []).filter((set) => {
+    return this.listed().filter((set) => {
       const searchable = [set.name, ...set.tags].join(' ').toLowerCase();
       return words.every((word) => searchable.includes(word));
     });
   });
 
   protected readonly countLabel = computed(() => {
-    const total = this.valueSets()?.length ?? 0;
+    const total = this.listed().length;
     if (total === 0) {
       return 'No value sets yet.';
     }
@@ -117,6 +134,11 @@ export class LibraryPage implements OnInit {
     }
     return this.shown().length === 0 ? `None of the ${total} value sets match.` : `${this.shown().length} of ${total} value sets`;
   });
+
+  /** Deprecated as a whole, or with nothing left in use because every version is deprecated. */
+  protected isDeprecated(set: ValueSet): boolean {
+    return set.deprecated || set.allVersionsDeprecated;
+  }
 
   ngOnInit(): void {
     this.load();

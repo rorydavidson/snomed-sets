@@ -23,6 +23,11 @@ export interface ValueSet {
   unpublishedChanges: boolean;
   /** Free-text labels, in lower case. */
   tags: string[];
+  /** True when the owner has marked the whole value set as not to be used any more. */
+  deprecated: boolean;
+  /** True when the set has been published and every one of its versions is deprecated. */
+  allVersionsDeprecated: boolean;
+  deprecationReason: string | null;
 }
 
 /** A definition frozen at the moment it was published. */
@@ -35,6 +40,8 @@ export interface ValueSetVersion {
   publishedAt: string;
   /** False for an old version whose concept list was not stored when it was published. */
   frozen: boolean;
+  deprecated: boolean;
+  deprecationReason: string | null;
 }
 
 /** The fields a person can set when creating or editing a value set. */
@@ -152,6 +159,27 @@ export class ValueSetApi {
     return this.http.get<{ items: Concept[]; total: number }>(`/api/concepts/${conceptId}/children`, {
       params: { branch },
     });
+  }
+
+  /** Throws away the changes made since the published version in use. */
+  discardChanges(id: number): Observable<ValueSet> {
+    return this.http.post<ValueSet>(`/api/value-sets/${id}/discard-changes`, null);
+  }
+
+  deprecate(id: number, reason: string): Observable<ValueSet> {
+    return this.http.put<ValueSet>(`/api/value-sets/${id}/deprecation`, { reason });
+  }
+
+  restore(id: number): Observable<ValueSet> {
+    return this.http.delete<ValueSet>(`/api/value-sets/${id}/deprecation`);
+  }
+
+  deprecateVersion(id: number, version: number, reason: string): Observable<ValueSetVersion> {
+    return this.http.put<ValueSetVersion>(`/api/value-sets/${id}/versions/${version}/deprecation`, { reason });
+  }
+
+  restoreVersion(id: number, version: number): Observable<ValueSetVersion> {
+    return this.http.delete<ValueSetVersion>(`/api/value-sets/${id}/versions/${version}/deprecation`);
   }
 
   versions(id: number): Observable<ValueSetVersion[]> {

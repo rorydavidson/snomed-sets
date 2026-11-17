@@ -59,11 +59,11 @@ public class ValueSetService {
 
 	public List<ValueSetView> list(CurrentUser user) {
 		List<ValueSet> visible = valueSets.findAllVisibleTo(user.subject());
-		Map<Long, ValueSetVersion> latestById = versions
-				.findLatestOfEach(visible.stream().map(ValueSet::getId).toList()).stream()
-				.collect(Collectors.toMap(ValueSetVersion::getValueSetId, Function.identity()));
+		Map<Long, List<ValueSetVersion>> versionsById = versions
+				.findByValueSetIdInOrderByVersionNumberDesc(visible.stream().map(ValueSet::getId).toList()).stream()
+				.collect(Collectors.groupingBy(ValueSetVersion::getValueSetId));
 		return visible.stream()
-				.map(valueSet -> view(valueSet, latestById.get(valueSet.getId()), user))
+				.map(valueSet -> view(valueSet, versionInUse(versionsById.getOrDefault(valueSet.getId(), List.of())), user))
 				.toList();
 	}
 
@@ -125,13 +125,68 @@ public class ValueSetService {
 
 	public void delete(long id, CurrentUser user) {
 		ValueSet valueSet = findOwned(id, user);
-		// Other people may be relying on a published, shared set, so it has to be withdrawn first.
-		if (valueSet.getStatus() == ValueSet.Status.PUBLISHED
-				&& valueSet.getVisibility() == ValueSet.Visibility.COMMUNITY) {
+		// A published version may be in use or referred to, so it is kept until the owner has
+		// deprecated it. Once every version is deprecated the owner may remove the set entirely.
+		if (allVersionsOf(valueSet).stream().anyMatch(version -> !version.isDeprecated())) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
-					"A published value set that is shared with the community cannot be deleted. Stop sharing it first.");
+					"A value set with a published version in use cannot be deleted. Deprecate every version first.");
 		}
 		valueSets.delete(valueSet);
+	}
+
+	/** Throws away the changes made since the version in use, so the draft matches it again. */
+	public ValueSetView discardChanges(long id, CurrentUser user) {
+		ValueSet valueSet = findOwned(id, user);
+		ValueSetVersion published = latestVersionOf(valueSet);
+		if (published == null) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"This value set has not been published, so there is no version to go back to. It can be deleted instead.");
+		}
+		transaction.executeWithoutResult(status -> {
+			valueSet.revertEclTo(published.getEcl());
+			valueSets.save(valueSet);
+			if (valueSet.isManual()) {
+				members.deleteWorkingList(valueSet.getId());
+				members.copyVersionToWorkingList(valueSet.getId(), published.getVersionNumber());
+			}
+		});
+		return view(valueSet, published, user);
+	}
+
+	/** Marks a published value set as not to be used any more. It stays readable. */
+	public ValueSetView deprecate(long id, String reason, CurrentUser user) {
+		ValueSet valueSet = findOwned(id, user);
+		if (allVersionsOf(valueSet).isEmpty()) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Only a published value set can be deprecated. An unpublished one can be deleted.");
+		}
+		valueSet.deprecate(reason);
+		return view(valueSets.save(valueSet), latestVersionOf(valueSet), user);
+	}
+
+	public ValueSetView restore(long id, CurrentUser user) {
+		ValueSet valueSet = findOwned(id, user);
+		valueSet.restore();
+		return view(valueSets.save(valueSet), latestVersionOf(valueSet), user);
+	}
+
+	/** Marks one published version as not to be used. Other people then see the newest version that is not deprecated. */
+	public VersionView deprecateVersion(long id, int versionNumber, String reason, CurrentUser user) {
+		ValueSetVersion version = findOwnedVersion(id, versionNumber, user);
+		version.deprecate(reason);
+		return VersionView.of(versions.save(version));
+	}
+
+	public VersionView restoreVersion(long id, int versionNumber, CurrentUser user) {
+		ValueSetVersion version = findOwnedVersion(id, versionNumber, user);
+		version.restore();
+		return VersionView.of(versions.save(version));
+	}
+
+	private ValueSetVersion findOwnedVersion(long id, int versionNumber, CurrentUser user) {
+		ValueSet valueSet = findOwned(id, user);
+		return versions.findByValueSetIdAndVersionNumber(valueSet.getId(), versionNumber)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
 	}
 
 	/** The hand-picked list as it is being edited. Only the owner edits, so only the owner may read it. */
@@ -202,12 +257,18 @@ public class ValueSetService {
 
 	public VersionView publish(long id, String note, CurrentUser user) {
 		ValueSet valueSet = findOwned(id, user);
-		ValueSetVersion latest = latestVersionOf(valueSet);
+		if (valueSet.isDeprecated()) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"This value set is deprecated. Restore it before publishing a new version.");
+		}
+		List<ValueSetVersion> all = allVersionsOf(valueSet);
+		ValueSetVersion latest = versionInUse(all);
 		if (latest != null && !differsFrom(valueSet, latest)) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
 					"Nothing has changed since version " + latest.getVersionNumber() + ".");
 		}
-		int number = latest == null ? 1 : latest.getVersionNumber() + 1;
+		// Numbers are never reused, so a deprecated version still counts.
+		int number = all.isEmpty() ? 1 : all.get(0).getVersionNumber() + 1;
 		if (valueSet.isManual()) {
 			return publishHandPicked(valueSet, number, note);
 		}
@@ -367,8 +428,27 @@ public class ValueSetService {
 		return new ExpansionPage(concepts, total, offset, limit);
 	}
 
+	/** Every version of a value set, newest first. */
+	private List<ValueSetVersion> allVersionsOf(ValueSet valueSet) {
+		return versions.findByValueSetIdOrderByVersionNumberDesc(valueSet.getId());
+	}
+
 	private ValueSetVersion latestVersionOf(ValueSet valueSet) {
-		return versions.findFirstByValueSetIdOrderByVersionNumberDesc(valueSet.getId()).orElse(null);
+		return versionInUse(allVersionsOf(valueSet));
+	}
+
+	/**
+	 * The version other people are shown: the newest one that is not deprecated. If every
+	 * version is deprecated it is the newest of all, which is then shown as deprecated.
+	 * Null if there are no versions.
+	 *
+	 * @param newestFirst all versions of one value set
+	 */
+	private static ValueSetVersion versionInUse(List<ValueSetVersion> newestFirst) {
+		return newestFirst.stream()
+				.filter(version -> !version.isDeprecated())
+				.findFirst()
+				.orElse(newestFirst.isEmpty() ? null : newestFirst.get(0));
 	}
 
 	private ValueSet findVisible(long id, CurrentUser user) {

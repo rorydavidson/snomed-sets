@@ -21,6 +21,9 @@ const SET: ValueSet = {
   latestVersion: null,
   unpublishedChanges: false,
   tags: [],
+  deprecated: false,
+  allVersionsDeprecated: false,
+  deprecationReason: null,
 };
 
 const VERSION_1: ValueSetVersion = {
@@ -31,6 +34,8 @@ const VERSION_1: ValueSetVersion = {
   note: 'First release',
   publishedAt: '2026-11-10T09:00:00Z',
   frozen: true,
+  deprecated: false,
+  deprecationReason: null,
 };
 
 const EMPTY_PAGE = { items: [], total: 0, offset: 0, limit: 50 };
@@ -122,6 +127,23 @@ describe('ValueSetPage', () => {
     button(page, 'Yes, delete')?.click();
     http.expectOne({ method: 'DELETE', url: '/api/value-sets/7' }).flush(null, { status: 204, statusText: 'No Content' });
 
+    expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  it('offers deletion with a warning once every published version is deprecated', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const retired: ValueSet = { ...SET, status: 'PUBLISHED', visibility: 'COMMUNITY', latestVersion: 1, allVersionsDeprecated: true };
+    open(retired, [{ ...VERSION_1, deprecated: true, deprecationReason: 'Wrong branch' }]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Delete')?.click();
+    await fixture.whenStable();
+    expect(page.textContent).toContain('may already be in use or referred to by others');
+    http.expectNone({ method: 'DELETE', url: '/api/value-sets/7' });
+
+    button(page, 'Yes, delete')?.click();
+    http.expectOne({ method: 'DELETE', url: '/api/value-sets/7' }).flush(null, { status: 204, statusText: 'No Content' });
     expect(navigate).toHaveBeenCalledWith(['/']);
   });
 
@@ -271,6 +293,84 @@ describe('ValueSetPage', () => {
     await fixture.whenStable();
 
     expect(page.querySelector('a[download]')).toBeNull();
+  });
+
+  it('offers deprecation instead of deletion once published, and asks for a reason', async () => {
+    const published: ValueSet = { ...SET, status: 'PUBLISHED', latestVersion: 1 };
+    open(published, [VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    expect(button(page, 'Delete')).toBeUndefined();
+
+    button(page, 'Deprecate value set')?.click();
+    await fixture.whenStable();
+    button(page, 'Deprecate this value set')?.click();
+    await fixture.whenStable();
+    http.expectNone({ method: 'PUT', url: '/api/value-sets/7/deprecation' });
+    expect(page.querySelector('[role="alert"]')?.textContent).toContain('A reason is needed');
+
+    page.querySelector<HTMLInputElement>('#deprecation-reason')!.value = ' Replaced by set 12 ';
+    button(page, 'Deprecate this value set')?.click();
+    const request = http.expectOne({ method: 'PUT', url: '/api/value-sets/7/deprecation' });
+    expect(request.request.body).toEqual({ reason: 'Replaced by set 12' });
+    request.flush({ ...published, deprecated: true, deprecationReason: 'Replaced by set 12' });
+
+    http.expectOne('/api/value-sets/7').flush({ ...published, deprecated: true, deprecationReason: 'Replaced by set 12' });
+    http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('.warning-panel')?.textContent).toContain('Replaced by set 12');
+    expect(button(page, 'Publish')).toBeUndefined();
+    expect(button(page, 'Restore value set')).toBeDefined();
+  });
+
+  it('deprecates and restores a single version from the history', async () => {
+    const published: ValueSet = { ...SET, status: 'PUBLISHED', latestVersion: 1 };
+    const deprecated: ValueSetVersion = { ...VERSION_1, deprecated: true, deprecationReason: 'Wrong branch' };
+    open(published, [VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Deprecate version 1')?.click();
+    await fixture.whenStable();
+    page.querySelector<HTMLInputElement>('#deprecation-reason')!.value = 'Wrong branch';
+    button(page, 'Deprecate version 1')?.click();
+    http.expectOne({ method: 'PUT', url: '/api/value-sets/7/versions/1/deprecation' }).flush(deprecated);
+    http.expectOne('/api/value-sets/7').flush(published);
+    http.expectOne('/api/value-sets/7/versions').flush([deprecated]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('.version')?.textContent).toContain('Wrong branch');
+    expect(page.querySelector('.warning-panel')?.textContent).toContain('Every published version');
+
+    button(page, 'Restore version 1')?.click();
+    http.expectOne({ method: 'DELETE', url: '/api/value-sets/7/versions/1/deprecation' }).flush(VERSION_1);
+    http.expectOne('/api/value-sets/7').flush(published);
+    http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    expect(page.querySelector('.warning-panel')).toBeNull();
+  });
+
+  it('discards unpublished changes only after confirming', async () => {
+    const changed: ValueSet = { ...SET, status: 'PUBLISHED', latestVersion: 1, unpublishedChanges: true };
+    open(changed, [VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Discard changes')?.click();
+    await fixture.whenStable();
+    http.expectNone({ method: 'POST', url: '/api/value-sets/7/discard-changes' });
+    button(page, 'Yes, discard')?.click();
+    http.expectOne({ method: 'POST', url: '/api/value-sets/7/discard-changes' }).flush({ ...changed, unpublishedChanges: false });
+    http.expectOne('/api/value-sets/7').flush({ ...changed, unpublishedChanges: false });
+    http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(button(page, 'Discard changes')).toBeUndefined();
   });
 
   it('explains why publishing was refused', async () => {

@@ -49,5 +49,16 @@ public interface ValueSetMemberRepository extends Repository<ValueSetMember, Lon
 			""", nativeQuery = true)
 	void copyWorkingListToVersion(@Param("valueSetId") long valueSetId, @Param("versionNumber") int versionNumber);
 
+	/** Puts the list being edited back to what a published version holds. The list must be empty first. */
+	@Modifying
+	@Query(value = """
+			INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term,
+			                              preferred_term_language, fully_specified_name)
+			SELECT value_set_id, 0, concept_id, preferred_term, preferred_term_language, fully_specified_name
+			FROM value_set_member
+			WHERE value_set_id = :valueSetId AND version_number = :versionNumber
+			""", nativeQuery = true)
+	void copyVersionToWorkingList(@Param("valueSetId") long valueSetId, @Param("versionNumber") int versionNumber);
+
 	<S extends ValueSetMember> List<S> saveAll(Iterable<S> members);
 }

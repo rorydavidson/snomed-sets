@@ -80,6 +80,33 @@ public class ValueSetController {
 		service.delete(id, user);
 	}
 
+	@PostMapping("/value-sets/{id}/discard-changes")
+	public ValueSetView discardChanges(@PathVariable long id, CurrentUser user) {
+		return service.discardChanges(id, user);
+	}
+
+	@PutMapping("/value-sets/{id}/deprecation")
+	public ValueSetView deprecate(@PathVariable long id, @Valid @RequestBody DeprecationRequest request,
+			CurrentUser user) {
+		return service.deprecate(id, request.reason().trim(), user);
+	}
+
+	@DeleteMapping("/value-sets/{id}/deprecation")
+	public ValueSetView restore(@PathVariable long id, CurrentUser user) {
+		return service.restore(id, user);
+	}
+
+	@PutMapping("/value-sets/{id}/versions/{number}/deprecation")
+	public VersionView deprecateVersion(@PathVariable long id, @PathVariable int number,
+			@Valid @RequestBody DeprecationRequest request, CurrentUser user) {
+		return service.deprecateVersion(id, number, request.reason().trim(), user);
+	}
+
+	@DeleteMapping("/value-sets/{id}/versions/{number}/deprecation")
+	public VersionView restoreVersion(@PathVariable long id, @PathVariable int number, CurrentUser user) {
+		return service.restoreVersion(id, number, user);
+	}
+
 	/** The hand-picked list as it is being edited, for the editor. Owner only. */
 	@GetMapping("/value-sets/{id}/members")
 	public List<ExpansionPage.Concept> members(@PathVariable long id, CurrentUser user) {
@@ -132,6 +159,10 @@ public class ValueSetController {
 			@RequestParam(defaultValue = "0") @Min(0) int offset,
 			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit) {
 		return snowstorm.expand(ecl, branch, offset, limit);
+	}
+
+	/** @param reason why it should no longer be used; shown to everyone who can see the value set */
+	public record DeprecationRequest(@NotBlank @Size(max = 500) String reason) {
 	}
 
 	/** @param note what changed in this version; may be empty */

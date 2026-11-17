@@ -1,6 +1,6 @@
 <header class="site-header">
   <a class="brand" routerLink="/">
-    <span class="brand-mark" aria-hidden="true"></span>
+    <img class="brand-mark" src="logo.svg" alt="" width="32" height="32" />
     <span>SNOMED CT <span class="brand-light">value sets</span></span>
   </a>
   @if (session.state(); as state) {
@@ -20,6 +20,7 @@
   }
   @case ('signedOut') {
     <main class="page sign-in">
+      <img src="logo.svg" alt="" width="72" height="72" />
       <p class="overline">Community library</p>
       <h1 class="display">shared value sets</h1>
       <p class="lead">

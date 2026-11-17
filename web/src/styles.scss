@@ -526,3 +526,9 @@ fieldset.field {
   gap: var(--space-2);
   cursor: pointer;
 }
+
+/* Deprecated sets stay listed but recede, so sets in use stand out. */
+.library-table tr.row-deprecated .set-name,
+.library-table tr.row-deprecated td {
+  color: var(--text-muted);
+}

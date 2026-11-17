@@ -22,6 +22,7 @@ const MINE: ValueSet = {
   unpublishedChanges: false,
   tags: [],
   deprecated: false,
+  allVersionsDeprecated: false,
   deprecationReason: null,
 };
 

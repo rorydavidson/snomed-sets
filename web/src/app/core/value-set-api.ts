@@ -25,6 +25,8 @@ export interface ValueSet {
   tags: string[];
   /** True when the owner has marked the whole value set as not to be used any more. */
   deprecated: boolean;
+  /** True when the set has been published and every one of its versions is deprecated. */
+  allVersionsDeprecated: boolean;
   deprecationReason: string | null;
 }
 

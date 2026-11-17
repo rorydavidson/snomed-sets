@@ -22,6 +22,7 @@ const SET: ValueSet = {
   unpublishedChanges: false,
   tags: [],
   deprecated: false,
+  allVersionsDeprecated: false,
   deprecationReason: null,
 };
 
@@ -126,6 +127,23 @@ describe('ValueSetPage', () => {
     button(page, 'Yes, delete')?.click();
     http.expectOne({ method: 'DELETE', url: '/api/value-sets/7' }).flush(null, { status: 204, statusText: 'No Content' });
 
+    expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  it('offers deletion with a warning once every published version is deprecated', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const retired: ValueSet = { ...SET, status: 'PUBLISHED', visibility: 'COMMUNITY', latestVersion: 1, allVersionsDeprecated: true };
+    open(retired, [{ ...VERSION_1, deprecated: true, deprecationReason: 'Wrong branch' }]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Delete')?.click();
+    await fixture.whenStable();
+    expect(page.textContent).toContain('may already be in use or referred to by others');
+    http.expectNone({ method: 'DELETE', url: '/api/value-sets/7' });
+
+    button(page, 'Yes, delete')?.click();
+    http.expectOne({ method: 'DELETE', url: '/api/value-sets/7' }).flush(null, { status: 204, statusText: 'No Content' });
     expect(navigate).toHaveBeenCalledWith(['/']);
   });
 

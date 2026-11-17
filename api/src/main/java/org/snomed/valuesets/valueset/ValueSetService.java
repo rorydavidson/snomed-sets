@@ -125,10 +125,11 @@ public class ValueSetService {
 
 	public void delete(long id, CurrentUser user) {
 		ValueSet valueSet = findOwned(id, user);
-		// Something that has been published may be in use or referred to, so it is kept.
-		if (!allVersionsOf(valueSet).isEmpty()) {
+		// A published version may be in use or referred to, so it is kept until the owner has
+		// deprecated it. Once every version is deprecated the owner may remove the set entirely.
+		if (allVersionsOf(valueSet).stream().anyMatch(version -> !version.isDeprecated())) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
-					"A value set that has been published cannot be deleted. Deprecate it instead.");
+					"A value set with a published version in use cannot be deleted. Deprecate every version first.");
 		}
 		valueSets.delete(valueSet);
 	}

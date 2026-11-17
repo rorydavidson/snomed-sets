@@ -29,7 +29,7 @@ const PAGE_SIZE = 50;
           @if (set.unpublishedChanges) {
             <span class="badge">Unpublished changes</span>
           }
-          @if (set.deprecated) {
+          @if (set.deprecated || set.allVersionsDeprecated) {
             <span class="badge badge-warning">Deprecated</span>
           }
         </div>
@@ -72,7 +72,19 @@ const PAGE_SIZE = 50;
           <div class="actions">
             @switch (mode()) {
               @case ('confirmDelete') {
-                <span>Delete this value set? This cannot be undone.</span>
+                @if (set.latestVersion === null) {
+                  <span>Delete this value set? This cannot be undone.</span>
+                } @else {
+                  <div class="warning-panel grow" role="status">
+                    <h2>Delete a published value set?</h2>
+                    <p>
+                      Every version is deprecated, but this value set was published
+                      @if (set.visibility === 'COMMUNITY') { and shared with the community }
+                      and may already be in use or referred to by others. Deleting it removes
+                      every version and its concept lists for everyone. This cannot be undone.
+                    </p>
+                  </div>
+                }
                 <button type="button" class="button button-danger" [disabled]="busy()" (click)="delete()">
                   Yes, delete
                 </button>
@@ -135,6 +147,9 @@ const PAGE_SIZE = 50;
                   <button type="button" class="button button-secondary" (click)="startDeprecating('set')">
                     Deprecate value set
                   </button>
+                }
+                @if (set.allVersionsDeprecated) {
+                  <button type="button" class="button button-danger" (click)="open('confirmDelete')">Delete</button>
                 }
               }
             }

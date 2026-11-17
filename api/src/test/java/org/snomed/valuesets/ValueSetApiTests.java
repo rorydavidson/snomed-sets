@@ -643,7 +643,33 @@ class ValueSetApiTests {
 		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.detail")
-						.value("A value set that has been published cannot be deleted. Deprecate it instead."));
+						.value("A value set with a published version in use cannot be deleted. Deprecate every version first."));
+	}
+
+	@Test
+	void aSetWhoseEveryVersionIsDeprecatedCanBeDeleted() throws Exception {
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		publish(id, "alice", "");
+		jdbc.update("UPDATE value_set SET ecl = '<< 233678006' WHERE id = ?", id);
+		given(snowstorm.expand("<< 233678006", "MAIN", 0, 1000)).willReturn(pageOf(CHILDHOOD_ASTHMA));
+		publish(id, "alice", "");
+
+		deprecate("/api/value-sets/{id}/versions/2/deprecation", id, "alice");
+		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict());
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.allVersionsDeprecated").value(false));
+
+		deprecate("/api/value-sets/{id}/versions/1/deprecation", id, "alice");
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.allVersionsDeprecated").value(true));
+		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isForbidden());
+		mvc.perform(delete("/api/value-sets/{id}", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isNoContent());
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice")))
+				.andExpect(status().isNotFound());
 	}
 
 	@Test

@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Observable } from 'rxjs';
 import { ExpansionPage, ValueSet, ValueSetApi, ValueSetVersion, describeError } from '../core/value-set-api';
 
 import { ConceptDetails } from './concept-details';
@@ -28,7 +29,21 @@ const PAGE_SIZE = 50;
           @if (set.unpublishedChanges) {
             <span class="badge">Unpublished changes</span>
           }
+          @if (set.deprecated) {
+            <span class="badge badge-warning">Deprecated</span>
+          }
         </div>
+        @if (set.deprecated) {
+          <div class="warning-panel" role="status">
+            <h2>This value set is deprecated</h2>
+            <p>{{ set.deprecationReason }}</p>
+          </div>
+        } @else if (versionInUseDeprecated()) {
+          <div class="warning-panel" role="status">
+            <h2>Every published version of this value set is deprecated</h2>
+            <p>The newest one is shown. See the version history for the reasons.</p>
+          </div>
+        }
         <p class="lead">{{ set.description }}</p>
         @if (set.tags.length > 0) {
           <ul class="tags" aria-label="Tags">
@@ -77,12 +92,50 @@ const PAGE_SIZE = 50;
                 </button>
                 <button type="button" class="button button-secondary" (click)="mode.set('view')">Cancel</button>
               }
+              @case ('confirmDiscard') {
+                <span>Discard the changes made since version {{ set.latestVersion }}? This cannot be undone.</span>
+                <button type="button" class="button button-danger" [disabled]="busy()" (click)="discardChanges()">
+                  Yes, discard
+                </button>
+                <button type="button" class="button button-secondary" (click)="mode.set('view')">Keep them</button>
+              }
+              @case ('deprecate') {
+                <div class="field grow">
+                  <label for="deprecation-reason">Why should {{ deprecationLabel() }} no longer be used?</label>
+                  <input id="deprecation-reason" type="text" maxlength="500" autocomplete="off" #reason />
+                  <p class="meta">
+                    It stays visible, marked as deprecated with this reason, and can be restored later.
+                    @if (deprecationTarget() !== 'set') {
+                      Other people are shown the newest version that is not deprecated.
+                    }
+                  </p>
+                </div>
+                <button type="button" class="button button-danger" [disabled]="busy()" (click)="deprecate(reason.value)">
+                  Deprecate {{ deprecationLabel() }}
+                </button>
+                <button type="button" class="button button-secondary" (click)="mode.set('view')">Cancel</button>
+              }
               @default {
                 @if (canPublish()) {
                   <button type="button" class="button button-primary" (click)="open('publish')">Publish</button>
                 }
                 <a class="button button-secondary" [routerLink]="['/value-sets', set.id, 'edit']">Edit</a>
-                <button type="button" class="button button-secondary" (click)="open('confirmDelete')">Delete</button>
+                @if (set.unpublishedChanges) {
+                  <button type="button" class="button button-secondary" (click)="open('confirmDiscard')">
+                    Discard changes
+                  </button>
+                }
+                @if (set.latestVersion === null) {
+                  <button type="button" class="button button-secondary" (click)="open('confirmDelete')">Delete</button>
+                } @else if (set.deprecated) {
+                  <button type="button" class="button button-secondary" [disabled]="busy()" (click)="restore('set')">
+                    Restore value set
+                  </button>
+                } @else {
+                  <button type="button" class="button button-secondary" (click)="startDeprecating('set')">
+                    Deprecate value set
+                  </button>
+                }
               }
             }
           </div>
@@ -126,7 +179,21 @@ const PAGE_SIZE = 50;
                         @if (!version.frozen) {
                           <span class="meta">Concept list not stored; shown as Snowstorm evaluates it now.</span>
                         }
+                        @if (version.deprecated) {
+                          <span><span class="badge badge-warning">Deprecated</span> {{ version.deprecationReason }}</span>
+                        }
                       </button>
+                      @if (set.ownedByMe) {
+                        @if (version.deprecated) {
+                          <button type="button" class="link-button" [disabled]="busy()" (click)="restore(version.number)">
+                            Restore version {{ version.number }}
+                          </button>
+                        } @else {
+                          <button type="button" class="link-button" (click)="startDeprecating(version.number)">
+                            Deprecate version {{ version.number }}
+                          </button>
+                        }
+                      }
                     </li>
                   }
                 </ul>
@@ -222,13 +289,23 @@ export class ValueSetPage implements OnInit {
   /** The concept whose details are open, if any. */
   protected readonly shownConcept = signal<string | null>(null);
 
-  protected readonly mode = signal<'view' | 'publish' | 'confirmDelete'>('view');
+  protected readonly mode = signal<'view' | 'publish' | 'confirmDelete' | 'confirmDiscard' | 'deprecate'>('view');
+  /** What the deprecation form is about: the whole value set, or one version number. */
+  protected readonly deprecationTarget = signal<'set' | number>('set');
+  protected readonly deprecationLabel = computed(() => {
+    const target = this.deprecationTarget();
+    return target === 'set' ? 'this value set' : `version ${target}`;
+  });
+  protected readonly versionInUseDeprecated = computed(() => {
+    const inUse = this.versions()?.find((version) => version.number === this.valueSet()?.latestVersion);
+    return inUse?.deprecated ?? false;
+  });
   protected readonly busy = signal(false);
   protected readonly actionError = signal<{ title: string; detail: string } | null>(null);
 
   protected readonly canPublish = computed(() => {
     const set = this.valueSet();
-    return set !== null && (set.latestVersion === null || set.unpublishedChanges);
+    return set !== null && !set.deprecated && (set.latestVersion === null || set.unpublishedChanges);
   });
   protected readonly nextVersion = computed(() => (this.valueSet()?.latestVersion ?? 0) + 1);
 
@@ -277,7 +354,7 @@ export class ValueSetPage implements OnInit {
     this.loadExpansion(0);
   }
 
-  protected open(mode: 'publish' | 'confirmDelete'): void {
+  protected open(mode: 'publish' | 'confirmDelete' | 'confirmDiscard'): void {
     this.actionError.set(null);
     this.mode.set(mode);
   }
@@ -314,6 +391,46 @@ export class ValueSetPage implements OnInit {
         this.load();
       },
       error: (error: unknown) => this.failAction('The value set could not be published', error),
+    });
+  }
+
+  protected startDeprecating(target: 'set' | number): void {
+    this.actionError.set(null);
+    this.deprecationTarget.set(target);
+    this.mode.set('deprecate');
+  }
+
+  protected deprecate(reason: string): void {
+    if (reason.trim() === '') {
+      this.actionError.set({ title: 'A reason is needed', detail: 'Say why it should no longer be used.' });
+      return;
+    }
+    const target = this.deprecationTarget();
+    const request =
+      target === 'set' ? this.api.deprecate(this.id, reason.trim()) : this.api.deprecateVersion(this.id, target, reason.trim());
+    this.run(request, 'It could not be deprecated');
+  }
+
+  protected restore(target: 'set' | number): void {
+    const request = target === 'set' ? this.api.restore(this.id) : this.api.restoreVersion(this.id, target);
+    this.run(request, 'It could not be restored');
+  }
+
+  protected discardChanges(): void {
+    this.run(this.api.discardChanges(this.id), 'The changes could not be discarded');
+  }
+
+  /** Runs an owner action, then reloads the page content so every part reflects the result. */
+  private run(request: Observable<unknown>, failureTitle: string): void {
+    this.busy.set(true);
+    this.actionError.set(null);
+    request.subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.mode.set('view');
+        this.load();
+      },
+      error: (error: unknown) => this.failAction(failureTitle, error),
     });
   }
 

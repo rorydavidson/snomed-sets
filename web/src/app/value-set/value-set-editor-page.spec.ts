@@ -21,6 +21,8 @@ const MINE: ValueSet = {
   latestVersion: null,
   unpublishedChanges: false,
   tags: [],
+  deprecated: false,
+  deprecationReason: null,
 };
 
 function type(page: HTMLElement, selector: string, value: string): void {

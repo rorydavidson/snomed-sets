@@ -32,6 +32,13 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
           </div>
         </div>
 
+        @if (deprecatedCount() > 0) {
+          <label class="checkbox">
+            <input type="checkbox" [checked]="showDeprecated()" (change)="showDeprecated.set($any($event.target).checked)" />
+            <span>Show deprecated value sets ({{ deprecatedCount() }})</span>
+          </label>
+        }
+
         <p class="meta" role="status">{{ countLabel() }}</p>
 
         @if (shown().length > 0) {
@@ -58,6 +65,9 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                         </span>
                         @if (set.visibility === 'PRIVATE') {
                           <span class="badge">Private</span>
+                        }
+                        @if (set.deprecated) {
+                          <span class="badge badge-warning">Deprecated</span>
                         }
                       </div>
                       @if (set.description) {
@@ -98,17 +108,24 @@ export class LibraryPage implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly query = signal('');
 
+  /** Deprecated value sets are left out unless asked for: they are kept, but not for new use. */
+  protected readonly showDeprecated = signal(false);
+  protected readonly deprecatedCount = computed(() => (this.valueSets() ?? []).filter((set) => set.deprecated).length);
+  private readonly listed = computed(() =>
+    (this.valueSets() ?? []).filter((set) => this.showDeprecated() || !set.deprecated),
+  );
+
   /** Value sets whose name or one of whose tags contains every word that was typed. */
   protected readonly shown = computed(() => {
     const words = this.query().toLowerCase().split(/\s+/).filter((word) => word !== '');
-    return (this.valueSets() ?? []).filter((set) => {
+    return this.listed().filter((set) => {
       const searchable = [set.name, ...set.tags].join(' ').toLowerCase();
       return words.every((word) => searchable.includes(word));
     });
   });
 
   protected readonly countLabel = computed(() => {
-    const total = this.valueSets()?.length ?? 0;
+    const total = this.listed().length;
     if (total === 0) {
       return 'No value sets yet.';
     }

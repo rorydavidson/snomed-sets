@@ -21,6 +21,8 @@ const ASTHMA: ValueSet = {
   latestVersion: null,
   unpublishedChanges: false,
   tags: [],
+  deprecated: false,
+  deprecationReason: null,
 };
 
 describe('LibraryPage', () => {
@@ -74,6 +76,27 @@ describe('LibraryPage', () => {
     await fixture.whenStable();
     expect(page.textContent).toContain('None of the 3 value sets match.');
     expect(page.querySelector<HTMLInputElement>('#concept-search-placeholder')?.disabled).toBe(true);
+  });
+
+  it('leaves deprecated value sets out until they are asked for', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([
+      ASTHMA,
+      { ...ASTHMA, id: 2, name: 'Old asthma list', deprecated: true, deprecationReason: 'Replaced' },
+    ]);
+    await fixture.whenStable();
+    const names = () => Array.from(page.querySelectorAll('a.set-name')).map((a) => a.textContent?.trim());
+    expect(names()).toEqual(['Asthma diagnoses']);
+    expect(page.textContent).toContain('1 value set');
+
+    const toggle = page.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(toggle.parentElement?.textContent).toContain('Show deprecated value sets (1)');
+    toggle.click();
+    await fixture.whenStable();
+    expect(names()).toEqual(['Asthma diagnoses', 'Old asthma list']);
+    expect(page.textContent).toContain('Deprecated');
   });
 
   it('shows the backend explanation and a retry when loading fails', async () => {

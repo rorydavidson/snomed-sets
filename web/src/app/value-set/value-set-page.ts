@@ -2,15 +2,52 @@ import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
-import { ExpansionPage, ValueSet, ValueSetApi, ValueSetVersion, describeError } from '../core/value-set-api';
+import {
+  ExpansionPage,
+  UpgradeAvailability,
+  ValueSet,
+  ValueSetApi,
+  ValueSetUpgrade,
+  ValueSetVersion,
+  describeError,
+  upgradeReportUrl,
+} from '../core/value-set-api';
 
 import { ConceptDetails } from './concept-details';
+import { UpgradeDialog, describeChanges } from './upgrade-dialog';
 
 const PAGE_SIZE = 50;
 
 @Component({
   selector: 'app-value-set-page',
-  imports: [RouterLink, DatePipe, ConceptDetails],
+  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog],
+  styles: `
+    .facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2) var(--space-6);
+      margin: 0;
+
+      div {
+        display: flex;
+        flex-direction: column;
+      }
+
+      dt {
+        font-size: var(--fs-caption);
+        font-weight: var(--fw-semibold);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      dd {
+        margin: 0;
+        font-weight: var(--fw-semibold);
+        color: var(--snomed-navy);
+      }
+    }
+  `,
   template: `
     <main class="page">
       <p><a routerLink="/">Back to the library</a></p>
@@ -44,6 +81,22 @@ const PAGE_SIZE = 50;
             <p>The newest one is shown. See the version history for the reasons.</p>
           </div>
         }
+        <dl class="facts" aria-label="What this value set is built on">
+          <div>
+            <dt>Code system</dt>
+            <dd>{{ codeSystemName() }} <span class="mono">({{ set.codeSystem }})</span></dd>
+          </div>
+          <div>
+            <dt>Release</dt>
+            <dd>
+              @if (set.codeSystemVersion) {
+                {{ set.codeSystemVersion }}
+              } @else {
+                Live branch, not a release
+              }
+            </dd>
+          </div>
+        </dl>
         <p class="lead">{{ set.description }}</p>
         @if (set.tags.length > 0) {
           <ul class="tags" aria-label="Tags">
@@ -58,7 +111,30 @@ const PAGE_SIZE = 50;
             <a class="button button-secondary" [href]="'/api/value-sets/' + set.id + '/download'" download>
               Download version {{ set.latestVersion }} (TSV)
             </a>
-            <span class="meta">Global Patient Set layout: SNOMED CT ID, FSN, PT and active flag, in US English.</span>
+            <a class="button button-secondary" [href]="'/api/value-sets/' + set.id + '/download?format=fhir'" download>
+              Download version {{ set.latestVersion }} (FHIR JSON)
+            </a>
+            <span class="meta">
+              TSV in the Global Patient Set layout: SNOMED CT ID, FSN, PT and active flag, in US English.
+              FHIR R4 ValueSet with the definition and the published concept list as its expansion.
+            </span>
+          </div>
+        }
+
+        @if (set.ownedByMe && upgradeAvailability()?.available) {
+          <div class="warning-panel" role="status">
+            <h2>A newer release of {{ set.codeSystem }} is available</h2>
+            <p>
+              This value set is built on
+              {{ set.codeSystemVersion ? 'release ' + set.codeSystemVersion : 'the live branch, not a release' }}.
+              Release {{ upgradeAvailability()?.latestVersion }} is out. See what upgrading would change before
+              anything is saved.
+            </p>
+            <div class="actions">
+              <button type="button" class="button button-primary" (click)="upgrading.set(true)">
+                Upgrade to {{ upgradeAvailability()?.latestVersion }}
+              </button>
+            </div>
           </div>
         }
 
@@ -161,10 +237,15 @@ const PAGE_SIZE = 50;
             <h2 id="definition-heading" class="overline">Definition</h2>
             @if (set.type === 'MANUAL') {
               <p>A list of concepts picked by hand.</p>
-              <p class="meta">{{ definitionLabel() }} Terms are as they were in {{ set.codeSystem }} when each concept was added.</p>
+              <p class="meta">
+                {{ definitionLabel() }} Code system {{ set.codeSystem }}, {{ releaseLabel(definition().branch) }}.
+                Terms are as they were in that release when each concept was added or upgraded.
+              </p>
             } @else {
               <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
-              <p class="meta">{{ definitionLabel() }} Code system {{ set.codeSystem }}, branch {{ definition().branch }}.</p>
+              <p class="meta">
+                {{ definitionLabel() }} Code system {{ set.codeSystem }}, {{ releaseLabel(definition().branch) }}.
+              </p>
             }
 
             <h2 id="versions-heading" class="overline">Versions</h2>
@@ -218,6 +299,27 @@ const PAGE_SIZE = 50;
             } @else {
               <p class="muted" role="status">Loading versions…</p>
             }
+
+            @if (upgrades(); as list) {
+              @if (list.length > 0) {
+                <h2 id="upgrades-heading" class="overline">Release upgrades</h2>
+                <ul class="version-list" aria-labelledby="upgrades-heading">
+                  @for (upgrade of list; track upgrade.id) {
+                    <li>
+                      <span class="version-name">
+                        {{ upgrade.fromVersion ?? 'Live branch' }} → {{ upgrade.toVersion }}
+                      </span>
+                      <span class="meta">
+                        {{ upgrade.upgradedAt | date: 'd MMM y' }} ·
+                        {{ upgrade.publishedVersion !== null ? 'published as version ' + upgrade.publishedVersion : 'saved as a draft' }}
+                      </span>
+                      <span class="meta">{{ describeChanges(upgrade.changeCounts) }}</span>
+                      <a class="link-button" [href]="reportUrl(upgrade)" download>Download change report (CSV)</a>
+                    </li>
+                  }
+                </ul>
+              }
+            }
           </section>
 
           <section aria-labelledby="expansion-heading" class="wide">
@@ -255,6 +357,9 @@ const PAGE_SIZE = 50;
                           @if (concept.language) {
                             <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
                           }
+                          @if (concept.active === false) {
+                            <span class="badge badge-warning" title="Kept in the list after this release made it inactive">Inactive</span>
+                          }
                         </td>
                         <td>{{ concept.fullySpecifiedName }}</td>
                       </tr>
@@ -277,6 +382,16 @@ const PAGE_SIZE = 50;
             }
           </section>
         </div>
+        @if (upgrading()) {
+          <app-upgrade-dialog
+            [valueSetId]="set.id"
+            [canPublish]="!set.deprecated"
+            [unpublishedChanges]="set.unpublishedChanges"
+            [nextVersion]="nextVersion()"
+            (upgraded)="load(true)"
+            (closed)="upgrading.set(false)"
+          />
+        }
         @if (shownConcept(); as conceptId) {
           <app-concept-details [conceptId]="conceptId" [branch]="set.branch" (closed)="shownConcept.set(null)" />
         }
@@ -300,6 +415,18 @@ export class ValueSetPage implements OnInit {
   protected readonly expansion = signal<ExpansionPage | null>(null);
   protected readonly expansionError = signal<string | null>(null);
   protected readonly offset = signal(0);
+
+  /** Null until known; only asked for when the signed-in person owns the set. */
+  protected readonly upgradeAvailability = signal<UpgradeAvailability | null>(null);
+  protected readonly upgrades = signal<ValueSetUpgrade[] | null>(null);
+  /** Display names of code systems, by short name. Empty until loaded, or if Snowstorm cannot say. */
+  private readonly codeSystemNames = signal<Record<string, string>>({});
+  protected readonly codeSystemName = computed(() => {
+    const shortName = this.valueSet()?.codeSystem ?? '';
+    return this.codeSystemNames()[shortName] ?? shortName;
+  });
+  protected readonly upgrading = signal(false);
+  protected readonly describeChanges = describeChanges;
 
   /** The concept whose details are open, if any. */
   protected readonly shownConcept = signal<string | null>(null);
@@ -352,7 +479,22 @@ export class ValueSetPage implements OnInit {
   });
 
   ngOnInit(): void {
-    this.load();
+    this.load(true);
+    // Only for the display name: the short name is shown instead if this fails.
+    this.api.codeSystems().subscribe({
+      next: (codeSystems) =>
+        this.codeSystemNames.set(Object.fromEntries(codeSystems.map((codeSystem) => [codeSystem.shortName, codeSystem.name]))),
+      error: () => undefined,
+    });
+  }
+
+  protected releaseLabel(branch: string): string {
+    const release = /\/(\d{4}-\d{2}-\d{2})$/.exec(branch)?.[1];
+    return release ? `release ${release}` : `live branch ${branch}`;
+  }
+
+  protected reportUrl(upgrade: ValueSetUpgrade): string {
+    return upgradeReportUrl(this.id, upgrade.id);
   }
 
   protected isShown(version: ValueSetVersion): boolean {
@@ -463,12 +605,23 @@ export class ValueSetPage implements OnInit {
     this.actionError.set({ title, detail: describeError(error) });
   }
 
-  private load(): void {
+  /**
+   * @param withUpgrades also refresh the release information, which changes only on an upgrade,
+   *        so other actions do not ask Snowstorm for it again
+   */
+  protected load(withUpgrades = false): void {
     this.selectedVersion.set(null);
     this.api.get(this.id).subscribe({
       next: (set) => {
         this.valueSet.set(set);
         this.loadExpansion(0);
+        if (withUpgrades && set.ownedByMe) {
+          // Only a hint: if Snowstorm cannot say, the page works as before without the button.
+          this.api.upgradeAvailability(this.id).subscribe({
+            next: (availability) => this.upgradeAvailability.set(availability),
+            error: () => this.upgradeAvailability.set(null),
+          });
+        }
       },
       error: (error: unknown) => this.error.set(describeError(error)),
     });
@@ -477,5 +630,11 @@ export class ValueSetPage implements OnInit {
       next: (versions) => this.versions.set(versions),
       error: () => this.versionsError.set(true),
     });
+    if (withUpgrades) {
+      this.api.upgrades(this.id).subscribe({
+        next: (upgrades) => this.upgrades.set(upgrades),
+        error: () => this.upgrades.set(null),
+      });
+    }
   }
 }

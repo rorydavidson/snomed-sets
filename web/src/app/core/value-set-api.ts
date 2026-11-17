@@ -11,7 +11,10 @@ export interface ValueSet {
   name: string;
   description: string;
   ecl: string;
+  /** A release branch such as MAIN/2026-01-01, or the live branch for older sets. */
   branch: string;
+  /** The code system release the content comes from, for example 2026-01-01, or null for the live branch. */
+  codeSystemVersion: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   visibility: 'PRIVATE' | 'COMMUNITY';
   ownerName: string;
@@ -51,7 +54,18 @@ export type ValueSetDraft = Pick<
 > & {
   /** The whole list of a hand-picked value set. Empty for an ECL one. */
   conceptIds: string[];
+  /**
+   * The release to build a new value set on, for example 2026-01-01; the latest when null.
+   * Ignored when editing: only an upgrade moves a value set to another release.
+   */
+  codeSystemVersion?: string | null;
 };
+
+/** One release of a code system. */
+export interface CodeSystemVersion {
+  version: string;
+  branchPath: string;
+}
 
 /** A SNOMED CT edition or extension held by Snowstorm. */
 export interface CodeSystem {
@@ -59,6 +73,8 @@ export interface CodeSystem {
   name: string;
   branchPath: string;
   latestVersion: string | null;
+  /** The branch the latest release is frozen on, for example MAIN/2026-01-01. New value sets are built on it. */
+  latestVersionBranch: string | null;
 }
 
 export interface Concept {
@@ -67,6 +83,8 @@ export interface Concept {
   fullySpecifiedName: string | null;
   /** Language of the preferred term, for example "en". Missing only in old data. */
   language?: string | null;
+  /** False for a concept kept in a hand-picked list after a release made it inactive. */
+  active?: boolean;
 }
 
 export interface ConceptRelationship {
@@ -90,6 +108,79 @@ export interface ConceptDetails {
   descriptions: { term: string; type: string; language: string; preferredIn: string[] }[];
   parents: ConceptRelationship[];
   attributes: ConceptRelationship[];
+}
+
+/** Whether a newer release of the code system is available. Only the owner is told. */
+export interface UpgradeAvailability {
+  codeSystem: string;
+  currentVersion: string | null;
+  latestVersion: string | null;
+  available: boolean;
+}
+
+export interface UpgradeReplacement {
+  conceptId: string;
+  term: string | null;
+  /** The historical association that suggests it, for example REPLACED_BY or SAME_AS. */
+  association: string;
+  /** Already in the list, so accepting it would add nothing. */
+  alreadyInSet: boolean;
+}
+
+/** What an upgrade to the latest release would change. Nothing has been saved. */
+export interface UpgradePreview {
+  codeSystem: string;
+  type: 'ECL' | 'MANUAL';
+  fromVersion: string | null;
+  toVersion: string;
+  fromBranch: string;
+  toBranch: string;
+  conceptCountBefore: number;
+  /** ECL only: concepts matched only in the new release. */
+  added: Concept[];
+  /** ECL only: concepts no longer matched. */
+  removed: Concept[];
+  termChanges: { conceptId: string; oldTerm: string | null; newTerm: string | null }[];
+  /** Hand-picked only: concepts inactive in the new release, with suggested replacements. */
+  inactivated: {
+    conceptId: string;
+    term: string | null;
+    reason: string | null;
+    replacements: UpgradeReplacement[];
+    /** Kept, flagged as inactive, by an earlier upgrade, so it starts as kept again. */
+    keptBefore: boolean;
+  }[];
+}
+
+export type UpgradeChangeType =
+  | 'ADDED'
+  | 'REMOVED'
+  | 'INACTIVATED'
+  | 'INACTIVE_KEPT'
+  | 'REPLACEMENT_ADDED'
+  | 'REPLACEMENT_DECLINED'
+  | 'TERM_CHANGED';
+
+/** A saved upgrade, with a change report that can be downloaded. */
+export interface ValueSetUpgrade {
+  id: number;
+  fromVersion: string | null;
+  toVersion: string;
+  fromBranch: string;
+  toBranch: string;
+  upgradedAt: string;
+  /** The version published with the upgrade, or null if it was saved as a draft. */
+  publishedVersion: number | null;
+  changeCounts: Partial<Record<UpgradeChangeType, number>>;
+}
+
+export interface UpgradeRequest {
+  targetVersion: string;
+  acceptedReplacements: { inactiveConceptId: string; replacementConceptId: string }[];
+  /** Inactive concepts to keep in the list, flagged as inactive. Any left out are removed. */
+  keptInactiveConceptIds: string[];
+  publish: boolean;
+  note: string;
 }
 
 export interface ExpansionPage {
@@ -134,6 +225,11 @@ export class ValueSetApi {
 
   codeSystems(): Observable<CodeSystem[]> {
     return this.http.get<CodeSystem[]>('/api/code-systems');
+  }
+
+  /** The releases of a code system, newest first. */
+  codeSystemVersions(shortName: string): Observable<CodeSystemVersion[]> {
+    return this.http.get<CodeSystemVersion[]>(`/api/code-systems/${encodeURIComponent(shortName)}/versions`);
   }
 
   /** The hand-picked list as it is being edited. Owner only. */
@@ -196,10 +292,32 @@ export class ValueSetApi {
     });
   }
 
+  upgradeAvailability(id: number): Observable<UpgradeAvailability> {
+    return this.http.get<UpgradeAvailability>(`/api/value-sets/${id}/upgrade`);
+  }
+
+  /** Works out what an upgrade would change, without saving anything. */
+  upgradePreview(id: number): Observable<UpgradePreview> {
+    return this.http.get<UpgradePreview>(`/api/value-sets/${id}/upgrade/preview`);
+  }
+
+  upgrade(id: number, request: UpgradeRequest): Observable<{ valueSet: ValueSet; upgrade: ValueSetUpgrade }> {
+    return this.http.post<{ valueSet: ValueSet; upgrade: ValueSetUpgrade }>(`/api/value-sets/${id}/upgrade`, request);
+  }
+
+  upgrades(id: number): Observable<ValueSetUpgrade[]> {
+    return this.http.get<ValueSetUpgrade[]>(`/api/value-sets/${id}/upgrades`);
+  }
+
   /** Expands a definition that has not been saved yet. */
   preview(ecl: string, branch: string, limit: number): Observable<ExpansionPage> {
     return this.http.get<ExpansionPage>('/api/ecl/expansion', { params: { ecl, branch, limit } });
   }
+}
+
+/** Where the CSV report of one upgrade is downloaded from. */
+export function upgradeReportUrl(valueSetId: number, upgradeId: number): string {
+  return `/api/value-sets/${valueSetId}/upgrades/${upgradeId}/report`;
 }
 
 /** Turns a failed API call into a sentence that can be shown to the user. */

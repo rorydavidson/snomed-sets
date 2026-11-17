@@ -13,6 +13,7 @@ const ASTHMA: ValueSet = {
   description: 'All asthma disorders.',
   ecl: '<< 195967001 |Asthma|',
   branch: 'MAIN',
+  codeSystemVersion: null,
   status: 'PUBLISHED',
   visibility: 'COMMUNITY',
   ownerName: 'Sample data',
@@ -114,5 +115,29 @@ describe('LibraryPage', () => {
 
     alert?.querySelector('button')?.click();
     http.expectOne('/api/value-sets').flush([]);
+  });
+
+  it('shows the edition and release each set is built on', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/code-systems').flush([
+      { shortName: 'SNOMEDCT', name: 'International Edition', branchPath: 'MAIN', latestVersion: '2026-07-01', latestVersionBranch: 'MAIN/2026-07-01' },
+    ]);
+    http.expectOne('/api/value-sets').flush([
+      { ...ASTHMA, branch: 'MAIN/2026-01-01', codeSystemVersion: '2026-01-01' },
+      { ...ASTHMA, id: 2, name: 'Belgian asthma', codeSystem: 'SNOMEDCT-BE' },
+    ]);
+    await fixture.whenStable();
+
+    const headers = Array.from(page.querySelectorAll('th')).map((th) => th.textContent?.trim());
+    expect(headers).toContain('Edition');
+    expect(headers).toContain('Release');
+    const rows = Array.from(page.querySelectorAll('tbody tr')).map((row) => row.textContent ?? '');
+    expect(rows[0]).toContain('International Edition');
+    expect(rows[0]).toContain('2026-01-01');
+    // An edition Snowstorm did not name falls back to its short name; a set with no release says so.
+    expect(rows[1]).toContain('SNOMEDCT-BE');
+    expect(rows[1]).toContain('Live branch');
   });
 });

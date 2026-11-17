@@ -40,14 +40,17 @@ function submit(page: HTMLElement): void {
 describe('ValueSetEditorPage', () => {
   let http: HttpTestingController;
 
-  function create(params: Record<string, string>): ComponentFixture<ValueSetEditorPage> {
+  function create(params: Record<string, string>, query: Record<string, string> = {}): ComponentFixture<ValueSetEditorPage> {
     TestBed.configureTestingModule({
       imports: [ValueSetEditorPage],
       providers: [
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap(params) } } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap(params), queryParamMap: convertToParamMap(query) } },
+        },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -306,6 +309,173 @@ describe('ValueSetEditorPage', () => {
       codeSystemVersion: '2026-01-01',
     });
     request.flush({ ...MINE, id: 12, type: 'MANUAL' });
+  });
+
+  it('builds a hand-picked list from an imported list of identifiers, after a review', () => {
+    const fixture = create({});
+    const page = fixture.nativeElement as HTMLElement;
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    page.querySelector<HTMLInputElement>('input[type="radio"][value="IMPORT"]')!.click();
+    fixture.detectChanges();
+    expect(page.querySelector('#ecl')).toBeNull();
+    expect(page.querySelector('dialog')?.textContent).toContain('Import concepts');
+    type(page, '#name', 'Imported asthma codes');
+
+    type(page, '#import-text', 'Code\tTerm\n195967001\tAsthma\n100000000\tOld asthma\n12345\tTypo');
+    fixture.detectChanges();
+    expect(page.querySelector('dialog')?.textContent).toContain('3 identifiers read, after a header row.');
+    button(page, 'Check identifiers').click();
+    const check = http.expectOne({ method: 'POST', url: '/api/identifier-checks' });
+    expect(check.request.body).toEqual({
+      branch: 'MAIN/2026-01-01',
+      entries: [
+        { identifier: '195967001', term: 'Asthma' },
+        { identifier: '100000000', term: 'Old asthma' },
+        { identifier: '12345', term: 'Typo' },
+      ],
+    });
+    check.flush({
+      branch: 'MAIN/2026-01-01',
+      entryCount: 3,
+      duplicateCount: 0,
+      found: [{ ...ASTHMA, language: 'en', descriptionId: null, suppliedTerm: 'Asthma', termDiffers: false }],
+      inactive: [
+        {
+          conceptId: '100000000',
+          term: 'Old asthma',
+          reason: 'OUTDATED',
+          descriptionId: null,
+          replacements: [
+            { conceptId: CHILDHOOD.conceptId, term: CHILDHOOD.preferredTerm, association: 'REPLACED_BY', alreadyInSet: false },
+            { conceptId: ALLERGIC.conceptId, term: ALLERGIC.preferredTerm, association: 'REPLACED_BY', alreadyInSet: false },
+          ],
+        },
+      ],
+      rejected: [{ identifier: '12345', reason: 'NOT_AN_IDENTIFIER' }],
+    });
+    fixture.detectChanges();
+
+    const dialog = page.querySelector('dialog')!;
+    expect(dialog.textContent).toContain('Not a SNOMED CT identifier');
+    expect(dialog.textContent).toContain('Outdated');
+    expect(button(page, 'Add 3 new concepts')).toBeTruthy();
+    // Decline the second suggested replacement.
+    dialog.querySelectorAll<HTMLInputElement>('.review input[type="checkbox"]')[1].click();
+    fixture.detectChanges();
+    button(page, 'Add 2 new concepts').click();
+    fixture.detectChanges();
+    expect(page.textContent).toContain('2 concepts');
+    expect(page.textContent).toContain('Childhood asthma');
+
+    submit(page);
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
+    expect(request.request.body.type).toBe('MANUAL');
+    expect(request.request.body.conceptIds).toEqual(['195967001', '233678006']);
+    request.flush({ ...MINE, id: 12, type: 'MANUAL' });
+  });
+
+  it('imports more identifiers into a saved list, pointing out those already in it', () => {
+    const fixture = create({ id: '7' }, { import: 'concepts' });
+    const page = fixture.nativeElement as HTMLElement;
+    http.expectOne('/api/value-sets/7').flush({ ...MINE, type: 'MANUAL', ecl: '', branch: 'MAIN/2026-01-01' });
+    http.expectOne('/api/value-sets/7/members').flush([ASTHMA, CHILDHOOD]);
+    fixture.detectChanges();
+
+    const dialog = page.querySelector('dialog')!;
+    expect(dialog.textContent).toContain('The list has 2 concepts');
+    type(page, '#import-text', '195967001\n389145006');
+    fixture.detectChanges();
+    button(page, 'Check identifiers').click();
+    http.expectOne({ method: 'POST', url: '/api/identifier-checks' }).flush({
+      branch: 'MAIN/2026-01-01',
+      entryCount: 2,
+      duplicateCount: 0,
+      found: [ASTHMA, ALLERGIC].map((concept) => ({
+        ...concept,
+        language: 'en',
+        descriptionId: null,
+        suppliedTerm: null,
+        termDiffers: false,
+      })),
+      inactive: [],
+      rejected: [],
+    });
+    fixture.detectChanges();
+
+    expect(dialog.textContent).toContain('1 already in the list');
+    expect(dialog.textContent).toContain('2 found: 1 new, 1 already in the list');
+    const filter = page.querySelector<HTMLSelectElement>('#found-filter')!;
+    filter.value = 'inList';
+    filter.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(dialog.querySelector('details tbody')?.textContent).toContain('Asthma');
+    expect(dialog.querySelector('details tbody')?.textContent).not.toContain('Allergic asthma');
+
+    button(page, 'Add 1 new concept').click();
+    fixture.detectChanges();
+    expect(page.textContent).toContain('Added 1. Save to keep the changes.');
+    expect(page.textContent).toContain('3 concepts');
+
+    // The import can be run again on the same list.
+    button(page, 'Import concepts').click();
+    fixture.detectChanges();
+    expect(page.querySelector('dialog')?.textContent).toContain('The list has 3 concepts');
+    button(page, 'Cancel').click();
+    fixture.detectChanges();
+
+    submit(page);
+    const request = http.expectOne({ method: 'PUT', url: '/api/value-sets/7' });
+    expect(request.request.body.conceptIds).toEqual(['195967001', '233678006', '389145006']);
+  });
+
+  it('adds what an ECL expression matches to a hand-picked list, once', () => {
+    const fixture = create({});
+    const page = fixture.nativeElement as HTMLElement;
+
+    page.querySelector<HTMLInputElement>('input[type="radio"][value="IMPORT"]')!.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLInputElement>('input[name="import-source"][value="ecl"]')!.click();
+    fixture.detectChanges();
+    expect(page.querySelector('#import-text')).toBeNull();
+
+    type(page, '#import-ecl', '<< 404684003');
+    fixture.detectChanges();
+    button(page, 'Find concepts').click();
+    http
+      .expectOne({ method: 'POST', url: '/api/identifier-checks/ecl' })
+      .flush(
+        { detail: 'This expression matches 120000 concepts, and a list can hold at most 2000.' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    fixture.detectChanges();
+    expect(page.querySelector('dialog [role="alert"]')?.textContent).toContain('matches 120000 concepts');
+
+    type(page, '#import-ecl', ' < 195967001 ');
+    fixture.detectChanges();
+    button(page, 'Find concepts').click();
+    const request = http.expectOne({ method: 'POST', url: '/api/identifier-checks/ecl' });
+    expect(request.request.body).toEqual({ branch: 'MAIN/2026-01-01', ecl: '< 195967001' });
+    request.flush({
+      branch: 'MAIN/2026-01-01',
+      entryCount: 2,
+      duplicateCount: 0,
+      found: [CHILDHOOD, ALLERGIC].map((concept) => ({
+        ...concept,
+        language: 'en',
+        descriptionId: null,
+        suppliedTerm: null,
+        termDiffers: false,
+      })),
+      inactive: [],
+      rejected: [],
+    });
+    fixture.detectChanges();
+    expect(page.querySelector('dialog')?.textContent).not.toContain('not recognised');
+    button(page, 'Add 2 new concepts').click();
+    fixture.detectChanges();
+    expect(page.textContent).toContain('2 concepts');
+    expect(page.textContent).toContain('Allergic asthma');
   });
 
   it('loads the existing list when editing a hand-picked value set', () => {

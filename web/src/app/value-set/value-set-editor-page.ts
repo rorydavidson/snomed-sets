@@ -15,6 +15,7 @@ import {
 } from '../core/value-set-api';
 import { ConceptDetails } from './concept-details';
 import { ConceptPicker } from './concept-picker';
+import { IdentifierImport } from './identifier-import';
 import { TagInput } from './tag-input';
 
 const PREVIEW_SIZE = 20;
@@ -30,7 +31,7 @@ type Preview =
 
 @Component({
   selector: 'app-value-set-editor-page',
-  imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput, ConceptDetails],
+  imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput, ConceptDetails, IdentifierImport],
   template: `
     <main class="page">
       <p><a [routerLink]="backLink">{{ id === null ? 'Back to the library' : 'Back to the value set' }}</a></p>
@@ -69,6 +70,10 @@ type Preview =
                   <label class="checkbox">
                     <input type="radio" formControlName="type" value="MANUAL" />
                     <span>By a list of concepts I pick</span>
+                  </label>
+                  <label class="checkbox">
+                    <input type="radio" formControlName="type" value="IMPORT" />
+                    <span>By importing a list of identifiers or an ECL expression</span>
                   </label>
                   <p class="meta">This cannot be changed after the value set is created.</p>
                 </fieldset>
@@ -158,7 +163,12 @@ type Preview =
 
           @if (manual()) {
             <section class="wide" aria-labelledby="members-heading">
-              <h2 class="overline">Find concepts</h2>
+              <div class="actions">
+                <h2 class="overline">Find concepts</h2>
+                <button type="button" class="button button-secondary button-small" (click)="importing.set(true)">
+                  Import concepts
+                </button>
+              </div>
               <app-concept-picker [branch]="branch()" [inList]="memberIds()" (add)="addMembers($event)" (details)="shownConcept.set($event)" />
 
               <h2 id="members-heading" class="overline">Concepts in this value set</h2>
@@ -267,6 +277,15 @@ type Preview =
           </section>
           }
         </div>
+        @if (importing()) {
+          <app-identifier-import
+            [branch]="branch()"
+            [inList]="memberIds()"
+            [maxMembers]="maxMembers"
+            (added)="addMembers($event)"
+            (closed)="importing.set(false)"
+          />
+        }
         @if (shownConcept(); as conceptId) {
           <app-concept-details [conceptId]="conceptId" [branch]="branch()" (closed)="shownConcept.set(null)" />
         }
@@ -279,14 +298,18 @@ type Preview =
 export class ValueSetEditorPage implements OnInit {
   private readonly api = inject(ValueSetApi);
   private readonly router = inject(Router);
-  private readonly idParam = inject(ActivatedRoute).snapshot.paramMap.get('id');
+  private readonly route = inject(ActivatedRoute).snapshot;
+  private readonly idParam = this.route.paramMap.get('id');
+  /** Set when the set page's Import concepts button led here, to open the import straight away. */
+  private readonly startWithImport = this.route.queryParamMap?.get('import') === 'concepts';
 
   /** Null when creating a new value set. */
   protected readonly id = this.idParam === null ? null : Number(this.idParam);
   protected readonly backLink = this.id === null ? ['/'] : ['/value-sets', this.id];
 
   protected readonly form = inject(NonNullableFormBuilder).group({
-    type: ['ECL' as ValueSet['type']],
+    /** IMPORT is a hand-picked list that starts from an imported list of identifiers. */
+    type: ['ECL' as ValueSet['type'] | 'IMPORT'],
     name: ['', [Validators.required, Validators.pattern(/\S/)]],
     description: [''],
     ecl: ['', [Validators.required, Validators.pattern(/\S/)]],
@@ -307,6 +330,9 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly members = signal<Concept[]>([]);
   protected readonly memberIds = computed<ReadonlySet<string>>(() => new Set(this.members().map((c) => c.conceptId)));
   protected readonly memberMessage = signal<string | null>(null);
+  /** True while the dialog for importing identifiers is open. */
+  protected readonly importing = signal(false);
+  protected readonly maxMembers = MAX_MEMBERS;
   /** The concept whose details are open, if any. */
   protected readonly shownConcept = signal<string | null>(null);
   protected readonly tags = signal<string[]>([]);
@@ -415,7 +441,7 @@ export class ValueSetEditorPage implements OnInit {
     }
     const value = this.form.getRawValue();
     const draft: ValueSetDraft = {
-      type: value.type,
+      type: value.type === 'ECL' ? 'ECL' : 'MANUAL',
       codeSystem: value.codeSystem,
       name: value.name.trim(),
       description: value.description.trim(),
@@ -475,6 +501,7 @@ export class ValueSetEditorPage implements OnInit {
       next: (members) => {
         this.members.set(members);
         this.loaded.set(true);
+        this.importing.set(this.startWithImport);
       },
       error: (error: unknown) => this.loadError.set(describeError(error)),
     });
@@ -491,9 +518,10 @@ export class ValueSetEditorPage implements OnInit {
     const added = byId.size - before;
     const skipped = concepts.length - added;
     this.members.set([...byId.values()]);
-    this.memberMessage.set(
-      skipped === 0 ? `Added ${added}.` : `Added ${added}. ${skipped} already in the list or listed twice.`,
-    );
+    const outcome =
+      skipped === 0 ? `Added ${added}.` : `Added ${added}. ${skipped} already in the list or listed twice.`;
+    // Changes to a saved list only last once saved, which is easy to miss after an import.
+    this.memberMessage.set(this.id === null || added === 0 ? outcome : `${outcome} Save to keep the changes.`);
   }
 
   protected removeMember(conceptId: string): void {
@@ -506,11 +534,14 @@ export class ValueSetEditorPage implements OnInit {
     this.memberMessage.set(null);
   }
 
-  private useType(type: ValueSet['type']): void {
-    this.manual.set(type === 'MANUAL');
+  private useType(type: ValueSet['type'] | 'IMPORT'): void {
+    this.manual.set(type !== 'ECL');
+    if (type === 'IMPORT') {
+      this.importing.set(true);
+    }
     // A disabled field is left out of validation, so a hand-picked set does not need ECL.
     const { ecl } = this.form.controls;
-    if (type === 'MANUAL') {
+    if (type !== 'ECL') {
       ecl.disable();
     } else {
       ecl.enable();

@@ -208,6 +208,15 @@ const PAGE_SIZE = 50;
                   <button type="button" class="button button-primary" (click)="open('publish')">Publish</button>
                 }
                 <a class="button button-secondary" [routerLink]="['/value-sets', set.id, 'edit']">Edit</a>
+                @if (set.type === 'MANUAL' && !set.deprecated) {
+                  <a
+                    class="button button-secondary"
+                    [routerLink]="['/value-sets', set.id, 'edit']"
+                    [queryParams]="{ import: 'concepts' }"
+                  >
+                    Import concepts
+                  </a>
+                }
                 @if (set.unpublishedChanges) {
                   <button type="button" class="button button-secondary" (click)="open('confirmDiscard')">
                     Discard changes

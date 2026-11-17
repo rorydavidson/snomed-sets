@@ -3,6 +3,8 @@ package org.snomed.valuesets.snowstorm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.startsWith;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
@@ -12,6 +14,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -243,6 +246,46 @@ class SnowstormClientTests {
 		assertThat(edition.language()).isEqualTo("no");
 		assertThat(edition.isInternational("900000000000207008")).isTrue();
 		assertThat(edition.isInternational("51000202101")).isFalse();
+		server.verify();
+	}
+
+	@Test
+	void sendsLongExpressionsAndConceptFiltersInTheRequestBody() {
+		server.expect(requestTo("https://snowstorm.test/MAIN/2026-01-01/concepts/search"))
+				.andExpect(method(HttpMethod.POST))
+				.andExpect(jsonPath("$.eclFilter").value("< (195967001 OR 233678006)"))
+				.andExpect(jsonPath("$.conceptIds[0]").value("195967001"))
+				.andExpect(jsonPath("$.activeFilter").value(true))
+				.andRespond(withSuccess("""
+						{"items":[{"conceptId":"233678006","pt":{"term":"Childhood asthma","lang":"en"}}],"total":1}
+						""", MediaType.APPLICATION_JSON));
+
+		ExpansionPage page = client.expandLong("< (195967001 OR 233678006)", "MAIN/2026-01-01", 0, 100,
+				List.of("195967001", "233678006"));
+
+		assertThat(page.items()).extracting(ExpansionPage.Concept::conceptId).containsExactly("233678006");
+		server.verify();
+	}
+
+	@Test
+	void readsOnlyActiveInferredIsARelationshipsAsParents() {
+		server.expect(requestTo("https://snowstorm.test/browser/MAIN/2026-01-01/concepts/bulk-load"))
+				.andExpect(method(HttpMethod.POST))
+				.andExpect(jsonPath("$.conceptIds[0]").value("233678006"))
+				.andRespond(withSuccess("""
+						[{"conceptId":"233678006","active":true,"relationships":[
+						  {"active":true,"typeId":"116680003","characteristicType":"INFERRED_RELATIONSHIP","groupId":0,
+						   "target":{"conceptId":"195967001"}},
+						  {"active":true,"typeId":"116680003","characteristicType":"STATED_RELATIONSHIP","groupId":0,
+						   "target":{"conceptId":"50043002"}},
+						  {"active":false,"typeId":"116680003","characteristicType":"INFERRED_RELATIONSHIP","groupId":0,
+						   "target":{"conceptId":"64572001"}},
+						  {"active":true,"typeId":"363698007","characteristicType":"INFERRED_RELATIONSHIP","groupId":1,
+						   "target":{"conceptId":"39607008"}}]}]
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.inferredParents(List.of("233678006"), "MAIN/2026-01-01"))
+				.containsExactlyEntriesOf(java.util.Map.of("233678006", List.of("195967001")));
 		server.verify();
 	}
 }

@@ -1,12 +1,15 @@
 package org.snomed.valuesets.snowstorm;
 
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -259,6 +262,102 @@ public class SnowstormClient {
 	/** The active concepts whose descriptions match the words in a search term. */
 	public ExpansionPage search(String term, String branch, int limit) {
 		return concepts("term", List.of(term), branch, 0, limit, US_ENGLISH);
+	}
+
+	/**
+	 * The same as {@link #expand(String, String, int, int)}, with the expression sent in the request
+	 * body. Used for expressions listing many concepts, which would be too long for a URL.
+	 */
+	public ExpansionPage expandLong(String ecl, String branch, int offset, int limit) {
+		return expandLong(ecl, branch, offset, limit, null);
+	}
+
+	/**
+	 * The same, keeping only the given concepts. Much faster than writing them into the expression
+	 * as an OR list, which Snowstorm takes seconds to read once it runs to thousands of concepts.
+	 */
+	public ExpansionPage expandLong(String ecl, String branch, int offset, int limit, Collection<String> onlyConceptIds) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		SnowstormConceptPage page;
+		try {
+			page = restClient.post()
+					.uri(uriBuilder -> uriBuilder.pathSegment(branch.split("/")).pathSegment("concepts", "search").build())
+					.header(HttpHeaders.ACCEPT_LANGUAGE, US_ENGLISH)
+					.contentType(MediaType.APPLICATION_JSON)
+					.body(searchBody(ecl, offset, limit, onlyConceptIds))
+					.retrieve()
+					.body(SnowstormConceptPage.class);
+		}
+		catch (RestClientResponseException e) {
+			boolean rejected = e.getStatusCode().is4xxClientError();
+			throw new SnowstormException(rejected
+					? "Snowstorm rejected the request. Check the ECL expression and branch."
+					: "Snowstorm returned an error.", rejected, e);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+		}
+		if (page == null || page.items() == null) {
+			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
+		}
+		return new ExpansionPage(page.items().stream()
+				.map(item -> new ExpansionPage.Concept(item.conceptId(), termOf(item.pt()), termOf(item.fsn()),
+						item.pt() == null ? null : item.pt().lang()))
+				.toList(), page.total(), offset, limit);
+	}
+
+	private static Map<String, Object> searchBody(String ecl, int offset, int limit, Collection<String> onlyConceptIds) {
+		Map<String, Object> body = new HashMap<>();
+		body.put("eclFilter", ecl);
+		body.put("activeFilter", true);
+		body.put("offset", offset);
+		body.put("limit", limit);
+		if (onlyConceptIds != null) {
+			body.put("conceptIds", onlyConceptIds);
+		}
+		return body;
+	}
+
+	/**
+	 * The inferred parents of each of the given concepts, loaded in one call rather than one per
+	 * concept. Concepts the branch does not have are left out.
+	 */
+	public Map<String, List<String>> inferredParents(Collection<String> conceptIds, String branch) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		List<BrowserConcept> concepts;
+		try {
+			concepts = restClient.post()
+					.uri(uriBuilder -> uriBuilder.pathSegment("browser").pathSegment(branch.split("/"))
+							.pathSegment("concepts", "bulk-load").build())
+					.contentType(MediaType.APPLICATION_JSON)
+					.body(Map.of("conceptIds", conceptIds))
+					.retrieve()
+					.body(new ParameterizedTypeReference<List<BrowserConcept>>() {
+					});
+		}
+		catch (RestClientResponseException e) {
+			boolean rejected = e.getStatusCode().is4xxClientError();
+			throw new SnowstormException(rejected ? "Snowstorm rejected the request." : "Snowstorm returned an error.",
+					rejected, e);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+		}
+		Map<String, List<String>> parents = new HashMap<>();
+		if (concepts != null) {
+			concepts.forEach(concept -> parents.put(concept.conceptId(), concept.relationships() == null ? List.of()
+					: concept.relationships().stream()
+							.filter(relationship -> relationship.active() && "116680003".equals(relationship.typeId())
+									&& "INFERRED_RELATIONSHIP".equals(relationship.characteristicType()))
+							.map(relationship -> relationship.target().conceptId())
+							.distinct()
+							.toList()));
+		}
+		return parents;
 	}
 
 	/**

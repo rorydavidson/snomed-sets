@@ -214,6 +214,23 @@ public class ValueSetService {
 				: snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, limit);
 	}
 
+	/**
+	 * A hand-picked list as the caller sees it, with the branch its concepts belong to: the
+	 * working list for the owner, the version in use for everyone else, as {@link #expansion} does.
+	 */
+	CurrentList currentList(ValueSet valueSet, CurrentUser user) {
+		ValueSetVersion latest = latestVersionOf(valueSet);
+		if (latest != null && !valueSet.isOwnedBy(user.subject())) {
+			List<Concept> concepts = members.findByValueSetIdAndVersionNumberOrderByPreferredTermAscConceptIdAsc(
+					valueSet.getId(), latest.getVersionNumber()).stream().map(ValueSetMember::toConcept).toList();
+			return new CurrentList(concepts, latest.getBranch());
+		}
+		return new CurrentList(workingList(valueSet), valueSet.getBranch());
+	}
+
+	record CurrentList(List<Concept> concepts, String branch) {
+	}
+
 	/** A published version is read from its stored concept list, so it never changes. */
 	private ExpansionPage versionContent(ValueSet valueSet, ValueSetVersion version, int offset, int limit) {
 		return version.isContentFrozen()

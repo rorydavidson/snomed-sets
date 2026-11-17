@@ -29,7 +29,7 @@ import jakarta.validation.constraints.Size;
 public record ValueSetDefinition(ValueSet.DefinitionType type,
 		@NotBlank @Size(max = 200) String name,
 		@NotNull @Size(max = 2000) String description,
-		@Size(max = 4000) String ecl,
+		@Size(max = MAX_ECL_LENGTH) String ecl,
 		@Size(max = 100) String codeSystem,
 		@NotNull ValueSet.Visibility visibility,
 		@Size(max = MAX_MEMBERS) List<@NotNull @Pattern(regexp = CONCEPT_ID_REGEX) String> conceptIds,
@@ -38,6 +38,7 @@ public record ValueSetDefinition(ValueSet.DefinitionType type,
 
 	public static final String INTERNATIONAL_EDITION = "SNOMEDCT";
 	public static final int MAX_MEMBERS = 2000;
+	public static final int MAX_ECL_LENGTH = 4000;
 	public static final String CONCEPT_ID_REGEX = "\\d{6,18}";
 	public static final String RELEASE_REGEX = "\\d{4}-\\d{2}-\\d{2}";
 	public static final int MAX_TAGS = 10;

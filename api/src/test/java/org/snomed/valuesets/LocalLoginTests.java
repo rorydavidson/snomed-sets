@@ -87,7 +87,7 @@ class LocalLoginTests {
 	void localUserCanUseTheApiAndOwnsWhatTheyCreate() throws Exception {
 		MockHttpSession session = signIn();
 		org.mockito.BDDMockito.given(snowstorm.codeSystems()).willReturn(java.util.List.of(
-				new org.snomed.valuesets.snowstorm.CodeSystem("SNOMEDCT", "International Edition", "MAIN", null)));
+				new org.snomed.valuesets.snowstorm.CodeSystem("SNOMEDCT", "International Edition", "MAIN", null, null)));
 		org.mockito.BDDMockito.given(snowstorm.expand("195967001", "MAIN", 0, 100)).willReturn(
 				new org.snomed.valuesets.snowstorm.ExpansionPage(java.util.List.of(), 0, 0, 100));
 

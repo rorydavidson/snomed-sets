@@ -9,6 +9,8 @@ import org.snomed.valuesets.user.CurrentUser;
  * What the browser is told about a value set.
  *
  * @param ecl empty for a hand-picked value set
+ * @param codeSystemVersion the release of the code system the content comes from, for example
+ *        2026-01-01, or null when it is read from the live branch
  * @param latestVersion the version in use: the newest one that is not deprecated, or the newest
  *        of all if every version is deprecated. Null if never published.
  * @param deprecated true when the owner has marked the whole value set as not to be used
@@ -16,7 +18,7 @@ import org.snomed.valuesets.user.CurrentUser;
  * @param unpublishedChanges true only for the owner, when the definition differs from the latest version
  */
 public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSystem, String name,
-		String description, String ecl, String branch,
+		String description, String ecl, String branch, String codeSystemVersion,
 		ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownedByMe,
 		Instant updatedAt, Integer latestVersion, boolean unpublishedChanges, List<String> tags,
 		boolean deprecated, boolean allVersionsDeprecated, String deprecationReason) {
@@ -28,11 +30,12 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 	static ValueSetView of(ValueSet valueSet, ValueSetVersion latest, boolean unpublishedChanges, CurrentUser user) {
 		boolean owner = valueSet.isOwnedBy(user.subject());
 		boolean showPublished = latest != null && !owner;
+		String branch = showPublished ? latest.getBranch() : valueSet.getBranch();
 		return new ValueSetView(valueSet.getId(), valueSet.getDefinitionType(), valueSet.getCodeSystem(),
 				valueSet.getName(),
 				valueSet.getDescription(),
 				showPublished ? latest.getEcl() : valueSet.getEcl(),
-				showPublished ? latest.getBranch() : valueSet.getBranch(),
+				branch, ValueSet.releaseOf(branch),
 				valueSet.getStatus(), valueSet.getVisibility(), valueSet.getOwnerName(), owner,
 				valueSet.getUpdatedAt(), latest == null ? null : latest.getVersionNumber(),
 				owner && unpublishedChanges, valueSet.getTags(), valueSet.isDeprecated(),

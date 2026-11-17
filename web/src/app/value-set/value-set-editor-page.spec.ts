@@ -13,6 +13,7 @@ const MINE: ValueSet = {
   description: 'All asthma disorders.',
   ecl: '<< 195967001',
   branch: 'MAIN',
+  codeSystemVersion: null,
   status: 'DRAFT',
   visibility: 'PRIVATE',
   ownerName: 'Me',
@@ -56,8 +57,13 @@ describe('ValueSetEditorPage', () => {
     if (!('id' in params)) {
       // A new value set starts by asking which code systems Snowstorm has.
       http.expectOne('/api/code-systems').flush([
-        { shortName: 'SNOMEDCT', name: 'SNOMEDCT', branchPath: 'MAIN', latestVersion: '2026-01-01' },
-        { shortName: 'SNOMEDCT-BE', name: 'Belgian Edition', branchPath: 'MAIN/SNOMEDCT-BE', latestVersion: null },
+        { shortName: 'SNOMEDCT', name: 'SNOMEDCT', branchPath: 'MAIN', latestVersion: '2026-01-01', latestVersionBranch: 'MAIN/2026-01-01' },
+        { shortName: 'SNOMEDCT-BE', name: 'Belgian Edition', branchPath: 'MAIN/SNOMEDCT-BE', latestVersion: null, latestVersionBranch: null },
+      ]);
+      // Choosing the default code system loads its releases, newest first.
+      http.expectOne('/api/code-systems/SNOMEDCT/versions').flush([
+        { version: '2026-01-01', branchPath: 'MAIN/2026-01-01' },
+        { version: '2025-07-01', branchPath: 'MAIN/2025-07-01' },
       ]);
       fixture.detectChanges();
     }
@@ -81,7 +87,7 @@ describe('ValueSetEditorPage', () => {
     vi.advanceTimersByTime(500);
 
     http
-      .expectOne('/api/ecl/expansion?ecl=%3C%3C%20233678006&branch=MAIN&limit=20')
+      .expectOne('/api/ecl/expansion?ecl=%3C%3C%20233678006&branch=MAIN/2026-01-01&limit=20')
       .flush({ items: [{ conceptId: '233678006', preferredTerm: 'Childhood asthma', fullySpecifiedName: null }], total: 9, offset: 0, limit: 20 });
     fixture.detectChanges();
     expect(page.textContent).toContain('9 concepts match.');
@@ -97,6 +103,7 @@ describe('ValueSetEditorPage', () => {
       visibility: 'PRIVATE',
       tags: [],
       conceptIds: [],
+      codeSystemVersion: '2026-01-01',
     });
     request.flush({ ...MINE, id: 12 });
 
@@ -110,11 +117,14 @@ describe('ValueSetEditorPage', () => {
 
     const select = page.querySelector<HTMLSelectElement>('#code-system')!;
     expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
-      'SNOMEDCT, version 2026-01-01',
-      'Belgian Edition (SNOMEDCT-BE)',
+      'SNOMEDCT',
+      'Belgian Edition',
     ]);
     select.value = 'SNOMEDCT-BE';
     select.dispatchEvent(new Event('change'));
+    http.expectOne('/api/code-systems/SNOMEDCT-BE/versions').flush([]);
+    fixture.detectChanges();
+    expect(page.querySelector('#code-system-version')?.textContent).toContain('no release yet');
     type(page, '#name', 'Belgian asthma');
     type(page, '#ecl', '<< 195967001');
     vi.advanceTimersByTime(500);
@@ -125,6 +135,32 @@ describe('ValueSetEditorPage', () => {
     submit(page);
     const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
     expect(request.request.body.codeSystem).toBe('SNOMEDCT-BE');
+    expect(request.request.body.codeSystemVersion).toBeNull();
+    request.flush({ ...MINE, id: 12 });
+  });
+
+  it('builds on an earlier release when one is chosen', () => {
+    const fixture = create({});
+    const page = fixture.nativeElement as HTMLElement;
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    const release = page.querySelector<HTMLSelectElement>('#code-system-version')!;
+    expect(Array.from(release.options).map((option) => option.textContent?.trim())).toEqual([
+      '2026-01-01 (latest)',
+      '2025-07-01',
+    ]);
+    release.value = '2025-07-01';
+    release.dispatchEvent(new Event('change'));
+    type(page, '#name', 'Asthma as of July 2025');
+    type(page, '#ecl', '<< 195967001');
+    vi.advanceTimersByTime(500);
+    http
+      .expectOne('/api/ecl/expansion?ecl=%3C%3C%20195967001&branch=MAIN/2025-07-01&limit=20')
+      .flush({ items: [], total: 0, offset: 0, limit: 20 });
+
+    submit(page);
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets' });
+    expect(request.request.body.codeSystemVersion).toBe('2025-07-01');
     request.flush({ ...MINE, id: 12 });
   });
 
@@ -215,7 +251,7 @@ describe('ValueSetEditorPage', () => {
     type(fixture.nativeElement as HTMLElement, '#concept-search', term);
     vi.advanceTimersByTime(400);
     http
-      .expectOne(`/api/concepts?term=${term}&branch=MAIN`)
+      .expectOne(`/api/concepts?term=${term}&branch=MAIN/2026-01-01`)
       .flush({ items: results, total: results.length, offset: 0, limit: 25 });
     http
       .expectOne((request) => request.url === '/api/concepts/child-counts')
@@ -248,7 +284,7 @@ describe('ValueSetEditorPage', () => {
     page.querySelectorAll<HTMLInputElement>('.pick-list input[type="checkbox"]')[0].click();
     fixture.detectChanges();
     button(page, 'Add children of selected').click();
-    http.expectOne('/api/concepts/195967001/children?branch=MAIN').flush({ items: [CHILDHOOD, ALLERGIC], total: 2 });
+    http.expectOne('/api/concepts/195967001/children?branch=MAIN/2026-01-01').flush({ items: [CHILDHOOD, ALLERGIC], total: 2 });
     fixture.detectChanges();
     expect(page.textContent).toContain('Added 1. 1 already in the list or listed twice.');
     expect(page.textContent).toContain('3 concepts');
@@ -267,6 +303,7 @@ describe('ValueSetEditorPage', () => {
       visibility: 'PRIVATE',
       tags: [],
       conceptIds: ['233678006', '389145006'],
+      codeSystemVersion: '2026-01-01',
     });
     request.flush({ ...MINE, id: 12, type: 'MANUAL' });
   });

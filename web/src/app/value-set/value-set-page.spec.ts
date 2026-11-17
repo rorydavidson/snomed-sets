@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { Concept, ValueSet, ValueSetVersion } from '../core/value-set-api';
+import { Concept, UpgradeAvailability, UpgradePreview, ValueSet, ValueSetUpgrade, ValueSetVersion } from '../core/value-set-api';
 import { ValueSetPage } from './value-set-page';
 
 const SET: ValueSet = {
@@ -13,6 +13,7 @@ const SET: ValueSet = {
   description: 'All asthma disorders.',
   ecl: '<< 195967001 |Asthma|',
   branch: 'MAIN',
+  codeSystemVersion: null,
   status: 'DRAFT',
   visibility: 'PRIVATE',
   ownerName: 'Me',
@@ -40,6 +41,13 @@ const VERSION_1: ValueSetVersion = {
 
 const EMPTY_PAGE = { items: [], total: 0, offset: 0, limit: 50 };
 
+const NO_UPGRADE: UpgradeAvailability = {
+  codeSystem: 'SNOMEDCT',
+  currentVersion: '2026-01-01',
+  latestVersion: '2026-01-01',
+  available: false,
+};
+
 function concepts(count: number, startAt: number): Concept[] {
   return Array.from({ length: count }, (_, index) => ({
     conceptId: String(startAt + index),
@@ -58,13 +66,28 @@ describe('ValueSetPage', () => {
   let fixture: ComponentFixture<ValueSetPage>;
   let page: HTMLElement;
 
-  /** Opens the page and answers the two requests it makes for the value set and its versions. */
-  function open(set: ValueSet, versions: ValueSetVersion[] = []): void {
+  /**
+   * Opens the page and answers the requests it makes for the value set, its versions, its
+   * upgrade history and, for the owner, whether a newer release is available.
+   */
+  function open(
+    set: ValueSet,
+    versions: ValueSetVersion[] = [],
+    upgrades: ValueSetUpgrade[] = [],
+    availability: UpgradeAvailability = NO_UPGRADE,
+  ): void {
     fixture = TestBed.createComponent(ValueSetPage);
     page = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
+    http.expectOne('/api/code-systems').flush([
+      { shortName: 'SNOMEDCT', name: 'International Edition', branchPath: 'MAIN', latestVersion: '2026-01-01', latestVersionBranch: 'MAIN/2026-01-01' },
+    ]);
     http.expectOne('/api/value-sets/7').flush(set);
     http.expectOne('/api/value-sets/7/versions').flush(versions);
+    http.expectOne('/api/value-sets/7/upgrades').flush(upgrades);
+    if (set.ownedByMe) {
+      http.expectOne('/api/value-sets/7/upgrade').flush(availability);
+    }
   }
 
   beforeEach(() => {
@@ -277,18 +300,37 @@ describe('ValueSetPage', () => {
     expect(dialog.querySelector('.cv-step')).toBeNull();
   });
 
-  it('offers a download only for a published set that is shared with the community', async () => {
-    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [VERSION_1]);
+  function downloadLinks(): (string | null)[] {
+    return Array.from(page.querySelectorAll<HTMLAnchorElement>('a[download]')).map((link) => link.getAttribute('href'));
+  }
+
+  it('downloads the version in use, or an older one once it is chosen from the history', async () => {
+    const VERSION_2: ValueSetVersion = { ...VERSION_1, number: 2 };
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [VERSION_2, VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
     await fixture.whenStable();
 
-    const link = page.querySelector<HTMLAnchorElement>('a[download]');
-    expect(link?.getAttribute('href')).toBe('/api/value-sets/7/download');
-    expect(link?.textContent).toContain('Download version 2 (TSV)');
+    expect(downloadLinks()).toEqual(['/api/value-sets/7/download?version=2', '/api/value-sets/7/download?version=2&format=fhir']);
+    expect(page.textContent).toContain('Download version 2 (TSV)');
+    expect(page.textContent).toContain('Download version 2 (FHIR JSON)');
+
+    button(page, 'Version 1')?.click();
+    http.expectOne('/api/value-sets/7/versions/1/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    expect(downloadLinks()).toEqual(['/api/value-sets/7/download?version=1', '/api/value-sets/7/download?version=1&format=fhir']);
   });
 
-  it('offers no download for a private or unpublished set', async () => {
-    open({ ...SET, status: 'PUBLISHED', latestVersion: 1 }, [VERSION_1]);
+  it('lets the owner download the working draft, private or not', async () => {
+    open({ ...SET, visibility: 'PRIVATE', latestVersion: null });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(downloadLinks()).toEqual(['/api/value-sets/7/download?version=draft', '/api/value-sets/7/download?version=draft&format=fhir']);
+    expect(page.textContent).toContain('Download working draft (TSV)');
+  });
+
+  it('offers no download of a set someone else has not published', async () => {
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY' });
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
     await fixture.whenStable();
 
@@ -389,5 +431,245 @@ describe('ValueSetPage', () => {
 
     expect(page.querySelector('[role="alert"]')?.textContent).toContain('could not be published');
     expect(page.querySelector('[role="alert"]')?.textContent).toContain('Snowstorm rejected the request');
+  });
+
+  describe('upgrading to a newer release', () => {
+    const OLD: ValueSet = { ...SET, type: 'MANUAL', ecl: '', branch: 'MAIN/2025-07-01', codeSystemVersion: '2025-07-01' };
+    const AVAILABLE: UpgradeAvailability = { ...NO_UPGRADE, currentVersion: '2025-07-01', available: true };
+    const PREVIEW: UpgradePreview = {
+      codeSystem: 'SNOMEDCT',
+      type: 'MANUAL',
+      fromVersion: '2025-07-01',
+      toVersion: '2026-01-01',
+      fromBranch: 'MAIN/2025-07-01',
+      toBranch: 'MAIN/2026-01-01',
+      conceptCountBefore: 2,
+      added: [],
+      removed: [],
+      termChanges: [{ conceptId: '195967001', oldTerm: 'Asthma (old term)', newTerm: 'Asthma' }],
+      inactivated: [
+        {
+          conceptId: '1234567',
+          term: 'Retired asthma concept',
+          reason: 'DUPLICATE',
+          replacements: [
+            { conceptId: '389145006', term: 'Allergic asthma', association: 'POSSIBLY_EQUIVALENT_TO', alreadyInSet: false },
+            { conceptId: '195967001', term: 'Asthma', association: 'POSSIBLY_EQUIVALENT_TO', alreadyInSet: true },
+            { conceptId: '233678006', term: 'Childhood asthma', association: 'SAME_AS', alreadyInSet: false },
+          ],
+          keptBefore: false,
+        },
+      ],
+    };
+    const DONE: ValueSetUpgrade = {
+      id: 3,
+      fromVersion: '2025-07-01',
+      toVersion: '2026-01-01',
+      fromBranch: 'MAIN/2025-07-01',
+      toBranch: 'MAIN/2026-01-01',
+      upgradedAt: '2026-11-17T10:00:00Z',
+      publishedVersion: 1,
+      changeCounts: { INACTIVATED: 1, REPLACEMENT_ADDED: 1, REPLACEMENT_DECLINED: 1, TERM_CHANGED: 1 },
+    };
+
+    async function openUpgradeDialog(): Promise<void> {
+      open(OLD, [], [], AVAILABLE);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+      expect(page.textContent).toContain('A newer release of SNOMEDCT is available');
+      button(page, 'Upgrade to 2026-01-01')?.click();
+      await fixture.whenStable();
+      http.expectOne('/api/value-sets/7/upgrade/preview').flush(PREVIEW);
+      await fixture.whenStable();
+    }
+
+    it('shows what would change, with every replacement accepted, and saves nothing yet', async () => {
+      await openUpgradeDialog();
+      const dialog = page.querySelector('dialog')!;
+
+      expect(dialog.textContent).toContain('Upgrade to SNOMEDCT 2026-01-01');
+      expect(dialog.textContent).toContain('1 of 2 concepts are inactive');
+      expect(dialog.textContent).toContain('Duplicate');
+      expect(dialog.textContent).toContain('already in the list');
+      const boxes = dialog.querySelectorAll<HTMLInputElement>('td.candidate input[type="checkbox"]');
+      expect(boxes).toHaveLength(2);
+      expect(Array.from(boxes).every((box) => box.checked)).toBe(true);
+      http.expectNone({ method: 'POST', url: '/api/value-sets/7/upgrade' });
+    });
+
+    it('sends only the accepted replacements, publishes, then offers the change report', async () => {
+      await openUpgradeDialog();
+      const dialog = page.querySelector('dialog')!;
+
+      dialog.querySelectorAll<HTMLInputElement>('td.candidate input[type="checkbox"]')[0].click();
+      dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1].click();
+      await fixture.whenStable();
+      const note = dialog.querySelector<HTMLInputElement>('#upgrade-note')!;
+      note.value = 'Moved to January';
+      note.dispatchEvent(new Event('input'));
+      button(dialog, 'Upgrade')?.click();
+
+      const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/upgrade' });
+      expect(request.request.body).toEqual({
+        targetVersion: '2026-01-01',
+        acceptedReplacements: [{ inactiveConceptId: '1234567', replacementConceptId: '233678006' }],
+        keptInactiveConceptIds: [],
+        publish: true,
+        note: 'Moved to January',
+      });
+      request.flush({ valueSet: { ...OLD, branch: 'MAIN/2026-01-01', codeSystemVersion: '2026-01-01' }, upgrade: DONE });
+      http.expectOne('/api/value-sets/7').flush({ ...OLD, branch: 'MAIN/2026-01-01', codeSystemVersion: '2026-01-01' });
+      http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
+      http.expectOne('/api/value-sets/7/upgrades').flush([DONE]);
+      http.expectOne('/api/value-sets/7/upgrade').flush(NO_UPGRADE);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      expect(dialog.textContent).toContain('Published as version 1.');
+      expect(dialog.querySelector('a[download]')?.getAttribute('href')).toBe('/api/value-sets/7/upgrades/3/report');
+      expect(page.textContent).not.toContain('A newer release of SNOMEDCT is available');
+    });
+
+    it('keeps the preview open and explains why when the upgrade is refused', async () => {
+      await openUpgradeDialog();
+      button(page.querySelector('dialog')!, 'Upgrade')?.click();
+      http
+        .expectOne({ method: 'POST', url: '/api/value-sets/7/upgrade' })
+        .flush({ detail: 'Release 2026-02-01 of SNOMEDCT came out after the preview.' }, { status: 409, statusText: 'Conflict' });
+      await fixture.whenStable();
+
+      const alert = page.querySelector('dialog [role="alert"]');
+      expect(alert?.textContent).toContain('could not be saved');
+      expect(alert?.textContent).toContain('came out after the preview');
+      expect(page.querySelector('dialog')?.textContent).toContain('Retired asthma concept');
+    });
+
+    it('keeps a long list compact, with search, a filter and accept or decline for what is shown', async () => {
+      const many: UpgradePreview = {
+        ...PREVIEW,
+        conceptCountBefore: 12,
+        termChanges: [],
+        inactivated: Array.from({ length: 10 }, (_, index) => ({
+          conceptId: String(1000000 + index),
+          term: index < 3 ? `Retired fracture ${index}` : `Retired asthma ${index}`,
+          reason: 'OUTDATED',
+          replacements:
+            index === 9
+              ? []
+              : [{ conceptId: String(2000000 + index), term: `Current ${index}`, association: 'REPLACED_BY', alreadyInSet: false }],
+          keptBefore: false,
+        })),
+      };
+      open(OLD, [], [], AVAILABLE);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+      button(page, 'Upgrade to 2026-01-01')?.click();
+      await fixture.whenStable();
+      http.expectOne('/api/value-sets/7/upgrade/preview').flush(many);
+      await fixture.whenStable();
+      const dialog = page.querySelector('dialog')!;
+
+      expect(dialog.querySelector('.stats')?.textContent?.replace(/\s+/g, ' ')).toContain('9 replacements will be added');
+      expect(dialog.querySelectorAll('tbody tr')).toHaveLength(10);
+
+      const search = dialog.querySelector<HTMLInputElement>('#upgrade-search')!;
+      search.value = 'fracture';
+      search.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+      expect(dialog.querySelectorAll('tbody tr')).toHaveLength(3);
+      button(dialog, 'Add no replacements shown')?.click();
+      await fixture.whenStable();
+      expect(dialog.querySelector('.stats')?.textContent?.replace(/\s+/g, ' ')).toContain('6 replacements will be added');
+
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+      const filter = dialog.querySelector<HTMLSelectElement>('#upgrade-filter')!;
+      filter.value = 'unreplaced';
+      filter.dispatchEvent(new Event('change'));
+      await fixture.whenStable();
+      expect(dialog.querySelectorAll('tbody tr')).toHaveLength(1);
+      expect(dialog.querySelector('tbody')?.textContent).toContain('No replacement suggested');
+
+      button(dialog, 'Upgrade')?.click();
+      const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/upgrade' });
+      expect(request.request.body.acceptedReplacements).toHaveLength(6);
+      expect(request.request.body.acceptedReplacements.map((r: { inactiveConceptId: string }) => r.inactiveConceptId)).not.toContain('1000000');
+    });
+
+    it('removes inactive concepts by default but keeps any the owner unticks, and remembers earlier keeps', async () => {
+      const twoInactive: UpgradePreview = {
+        ...PREVIEW,
+        inactivated: [
+          { ...PREVIEW.inactivated[0] },
+          { conceptId: '7654321', term: 'Kept last time', reason: 'OUTDATED', replacements: [], keptBefore: true },
+        ],
+      };
+      open(OLD, [], [], AVAILABLE);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+      button(page, 'Upgrade to 2026-01-01')?.click();
+      await fixture.whenStable();
+      http.expectOne('/api/value-sets/7/upgrade/preview').flush(twoInactive);
+      await fixture.whenStable();
+      const dialog = page.querySelector('dialog')!;
+
+      const remove = (term: string) =>
+        dialog.querySelector<HTMLInputElement>(`input[aria-label="Remove ${term}"]`)!;
+      expect(remove('Retired asthma concept').checked).toBe(true);
+      expect(remove('Kept last time').checked).toBe(false);
+      expect(dialog.textContent).toContain('kept, flagged inactive');
+
+      remove('Retired asthma concept').click();
+      await fixture.whenStable();
+      expect(dialog.querySelector('.stats')?.textContent?.replace(/\s+/g, ' ')).toContain('0 will be removed');
+
+      button(dialog, 'Remove all inactive')?.click();
+      await fixture.whenStable();
+      remove('Kept last time').click();
+      button(dialog, 'Upgrade')?.click();
+      const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/upgrade' });
+      expect(request.request.body.keptInactiveConceptIds).toEqual(['7654321']);
+    });
+
+    it('flags a concept kept as inactive in the concept list', async () => {
+      open(OLD);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush({
+        items: [
+          { conceptId: '195967001', preferredTerm: 'Asthma', fullySpecifiedName: 'Asthma (disorder)', language: 'en', active: true },
+          { conceptId: '1234567', preferredTerm: 'Retired asthma concept', fullySpecifiedName: 'Retired', language: 'en', active: false },
+        ],
+        total: 2,
+        offset: 0,
+        limit: 50,
+      });
+      await fixture.whenStable();
+
+      const rows = Array.from(page.querySelectorAll('tbody tr'));
+      expect(rows[0].querySelector('.badge-warning')).toBeNull();
+      expect(rows[1].querySelector('.badge-warning')?.textContent).toBe('Inactive');
+    });
+
+    it('lists past upgrades with their change report for anyone who can see the set', async () => {
+      open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY' }, [VERSION_1], [{ ...DONE, publishedVersion: null }]);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      expect(page.textContent).toContain('2025-07-01 → 2026-01-01');
+      expect(page.textContent).toContain('saved as a draft');
+      expect(page.textContent).toContain('1 inactive and taken out, 1 replacement added, 1 replacement declined, 1 term changed');
+      expect(page.querySelector('a[href="/api/value-sets/7/upgrades/3/report"]')).not.toBeNull();
+      expect(button(page, 'Upgrade to')).toBeUndefined();
+    });
+  });
+
+  it('names the code system and the release the set is built on', async () => {
+    open({ ...SET, branch: 'MAIN/2025-07-01', codeSystemVersion: '2025-07-01' });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    const facts = page.querySelector('.facts')!;
+    expect(facts.textContent).toContain('International Edition');
+    expect(facts.textContent).toContain('(SNOMEDCT)');
+    expect(facts.textContent).toContain('2025-07-01');
   });
 });

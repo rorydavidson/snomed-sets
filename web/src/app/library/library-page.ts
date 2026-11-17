@@ -49,7 +49,8 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                   <th scope="col">Name</th>
                   <th scope="col">Tags</th>
                   <th scope="col">Defined by</th>
-                  <th scope="col">Code system</th>
+                  <th scope="col">Edition</th>
+                  <th scope="col">Release</th>
                   <th scope="col">Owner</th>
                   <th scope="col">Updated</th>
                 </tr>
@@ -86,7 +87,14 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                       </ul>
                     </td>
                     <td>{{ set.type === 'MANUAL' ? 'Picked list' : 'ECL' }}</td>
-                    <td>{{ set.codeSystem }}</td>
+                    <td [title]="set.codeSystem">{{ editionName(set) }}</td>
+                    <td class="no-wrap">
+                      @if (set.codeSystemVersion) {
+                        {{ set.codeSystemVersion }}
+                      } @else {
+                        <span class="muted" title="Built on the live branch, not a release">Live branch</span>
+                      }
+                    </td>
                     <td>{{ set.ownedByMe ? 'You' : set.ownerName }}</td>
                     <td class="no-wrap">{{ set.updatedAt | date: 'd MMM y' }}</td>
                   </tr>
@@ -107,6 +115,8 @@ export class LibraryPage implements OnInit {
   protected readonly valueSets = signal<ValueSet[] | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly query = signal('');
+  /** Display names of editions, by code system short name. Empty until loaded, or if Snowstorm cannot say. */
+  private readonly editionNames = signal<Record<string, string>>({});
 
   /** Deprecated value sets are listed and marked, so people can see they are not for new use. */
   protected readonly hideDeprecated = signal(false);
@@ -142,6 +152,16 @@ export class LibraryPage implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    // Only for display names: the short name is shown instead if this fails.
+    this.api.codeSystems().subscribe({
+      next: (codeSystems) =>
+        this.editionNames.set(Object.fromEntries(codeSystems.map((codeSystem) => [codeSystem.shortName, codeSystem.name]))),
+      error: () => undefined,
+    });
+  }
+
+  protected editionName(set: ValueSet): string {
+    return this.editionNames()[set.codeSystem] ?? set.codeSystem;
   }
 
   protected load(): void {

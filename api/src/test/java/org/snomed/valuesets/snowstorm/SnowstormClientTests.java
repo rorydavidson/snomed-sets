@@ -81,13 +81,13 @@ class SnowstormClientTests {
 	void listsCodeSystemsWithTheirBranchAndLatestVersion() {
 		server.expect(requestTo("https://snowstorm.test/codesystems")).andRespond(withSuccess("""
 				{"items":[
-				  {"shortName":"SNOMEDCT","branchPath":"MAIN","latestVersion":{"version":"2026-01-01"}},
+				  {"shortName":"SNOMEDCT","branchPath":"MAIN","latestVersion":{"version":"2026-01-01","branchPath":"MAIN/2026-01-01"}},
 				  {"shortName":"SNOMEDCT-BE","name":"Belgian Edition","branchPath":"MAIN/SNOMEDCT-BE"}]}
 				""", MediaType.APPLICATION_JSON));
 
 		assertThat(client.codeSystems()).containsExactly(
-				new CodeSystem("SNOMEDCT", "SNOMEDCT", "MAIN", "2026-01-01"),
-				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", null));
+				new CodeSystem("SNOMEDCT", "SNOMEDCT", "MAIN", "2026-01-01", "MAIN/2026-01-01"),
+				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", null, null));
 	}
 
 	@Test
@@ -140,5 +140,69 @@ class SnowstormClientTests {
 					assertThat(e.isCausedByRequest()).isTrue();
 					assertThat(e).hasMessage("Concept 999999999 was not found in this code system.");
 				});
+	}
+
+	@Test
+	void readsTheInactivationReasonAndHistoricalAssociations() {
+		server.expect(requestTo("https://snowstorm.test/browser/MAIN/2026-01-01/concepts/1234567"))
+				.andRespond(withSuccess("""
+						{"conceptId":"1234567","active":false,"inactivationIndicator":"DUPLICATE",
+						 "associationTargets":{"SAME_AS":["233678006"]},
+						 "fsn":{"term":"Retired (disorder)","lang":"en"},"pt":{"term":"Retired","lang":"en"}}
+						""", MediaType.APPLICATION_JSON));
+
+		Inactivation inactivation = client.inactivation("1234567", "MAIN/2026-01-01");
+
+		assertThat(inactivation.active()).isFalse();
+		assertThat(inactivation.indicator()).isEqualTo("DUPLICATE");
+		assertThat(inactivation.associationTargets()).containsEntry("SAME_AS", List.of("233678006"));
+		server.verify();
+	}
+
+	@Test
+	void asksForSeveralConceptsByIdentifierSoInactiveOnesAreLeftOutRatherThanRefused() {
+		server.expect(requestTo(
+				"https://snowstorm.test/MAIN/2026-07-01/concepts?conceptIds=195967001&conceptIds=90653005&activeFilter=true&offset=0&limit=2"))
+				.andRespond(withSuccess("""
+						{"items":[{"conceptId":"195967001","active":true,"pt":{"term":"Asthma","lang":"en"},
+						  "fsn":{"term":"Asthma (disorder)","lang":"en"}}],"total":1,"limit":2,"offset":0}
+						""", MediaType.APPLICATION_JSON));
+
+		ExpansionPage page = client.activeConcepts(List.of("195967001", "90653005"), "MAIN/2026-07-01");
+
+		assertThat(page.items()).extracting(ExpansionPage.Concept::conceptId).containsExactly("195967001");
+		server.verify();
+	}
+
+	@Test
+	void listsTheReleasesOfACodeSystemNewestFirst() {
+		server.expect(requestTo("https://snowstorm.test/codesystems/SNOMEDCT/versions"))
+				.andRespond(withSuccess("""
+						{"items":[{"version":"2026-01-01","branchPath":"MAIN/2026-01-01"},
+						          {"version":"2026-07-01","branchPath":"MAIN/2026-07-01"},
+						          {"version":"2025-01-01","branchPath":"../escape"}]}
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.codeSystemVersions("SNOMEDCT")).containsExactly(
+				new CodeSystemVersion("2026-07-01", "MAIN/2026-07-01"),
+				new CodeSystemVersion("2026-01-01", "MAIN/2026-01-01"));
+		assertThatThrownBy(() -> client.codeSystemVersions("../admin")).isInstanceOf(SnowstormException.class);
+		server.verify();
+	}
+
+	@Test
+	void findsTheModuleThatNamesAnExtensionEdition() {
+		server.expect(requestTo("https://snowstorm.test/codesystems/SNOMEDCT-NO"))
+				.andRespond(withSuccess("""
+						{"shortName":"SNOMEDCT-NO","modules":[
+						  {"conceptId":"900000000000012004","moduleId":"900000000000012004"},
+						  {"conceptId":"57091000202101","moduleId":"51000202101"},
+						  {"conceptId":"51000202101","moduleId":"51000202101"},
+						  {"conceptId":"900000000000207008","moduleId":"900000000000012004"}]}
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.editionModuleId("SNOMEDCT-NO")).isEqualTo("51000202101");
+		assertThat(client.editionModuleId("SNOMEDCT")).isEqualTo("900000000000207008");
+		server.verify();
 	}
 }

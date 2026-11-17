@@ -2,8 +2,17 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Observable, catchError, debounceTime, distinctUntilChanged, map, of, startWith, switchMap } from 'rxjs';
-import { CodeSystem, Concept, ExpansionPage, ValueSet, ValueSetApi, ValueSetDraft, describeError } from '../core/value-set-api';
+import { Observable, catchError, debounceTime, distinctUntilChanged, filter, map, of, startWith, switchMap } from 'rxjs';
+import {
+  CodeSystem,
+  CodeSystemVersion,
+  Concept,
+  ExpansionPage,
+  ValueSet,
+  ValueSetApi,
+  ValueSetDraft,
+  describeError,
+} from '../core/value-set-api';
 import { ConceptDetails } from './concept-details';
 import { ConceptPicker } from './concept-picker';
 import { TagInput } from './tag-input';
@@ -81,13 +90,43 @@ type Preview =
                 @if (id === null) {
                   <select id="code-system" formControlName="codeSystem">
                     @for (codeSystem of codeSystems(); track codeSystem.shortName) {
-                      <option [value]="codeSystem.shortName">{{ describe(codeSystem) }}</option>
+                      <option [value]="codeSystem.shortName">{{ codeSystem.name }}</option>
                     }
                   </select>
                   <p class="meta">This cannot be changed after the value set is created.</p>
                 } @else {
                   <p id="code-system">{{ form.controls.codeSystem.value }}</p>
                   <p class="meta">Fixed when the value set was created.</p>
+                }
+              </div>
+
+              <div class="field">
+                <label for="code-system-version">Release</label>
+                @if (id === null) {
+                  @if (versions(); as list) {
+                    @if (list.length > 0) {
+                      <select id="code-system-version" formControlName="codeSystemVersion">
+                        @for (release of list; track release.version) {
+                          <option [value]="release.version">{{ release.version }}{{ $first ? ' (latest)' : '' }}</option>
+                        }
+                      </select>
+                      <p class="meta">
+                        Choose an earlier release to build against SNOMED CT as it was then. The value set can be
+                        upgraded to a newer release later.
+                      </p>
+                    } @else if (versionsError()) {
+                      <p id="code-system-version" role="alert">
+                        The releases could not be loaded, so the latest release will be used.
+                      </p>
+                    } @else {
+                      <p id="code-system-version">This code system has no release yet, so its latest content is used.</p>
+                    }
+                  } @else {
+                    <p id="code-system-version" class="muted" role="status">Loading releases…</p>
+                  }
+                } @else {
+                  <p id="code-system-version">{{ editingRelease() ?? 'Live branch, not a release' }}</p>
+                  <p class="meta">Move it to a newer release with Upgrade on the value set page.</p>
                 }
               </div>
 
@@ -152,6 +191,9 @@ type Preview =
                             </button>
                             @if (concept.language) {
                               <span class="lang" [attr.title]="'Preferred term language: ' + concept.language">{{ concept.language }}</span>
+                            }
+                            @if (concept.active === false) {
+                              <span class="badge badge-warning" title="Kept in the list after this release made it inactive">Inactive</span>
                             }
                           </td>
                           <td>
@@ -243,6 +285,8 @@ export class ValueSetEditorPage implements OnInit {
     description: [''],
     ecl: ['', [Validators.required, Validators.pattern(/\S/)]],
     codeSystem: ['SNOMEDCT'],
+    /** Empty for a code system with no releases listed, which then uses its latest content. */
+    codeSystemVersion: [''],
     shared: [false],
   });
 
@@ -262,16 +306,47 @@ export class ValueSetEditorPage implements OnInit {
   protected readonly tags = signal<string[]>([]);
   protected readonly knownTags = signal<string[]>([]);
   protected readonly codeSystems = signal<CodeSystem[]>([]);
+  /** The releases of the chosen code system, newest first. Null while they load. */
+  protected readonly versions = signal<CodeSystemVersion[] | null>(null);
+  protected readonly versionsError = signal(false);
+  /** When editing, the release the value set is on, fixed apart from by an upgrade. */
+  protected readonly editingRelease = signal<string | null>(null);
   /** The Snowstorm branch of the chosen code system, used for the preview and for concept search. */
   protected readonly branch = signal('MAIN');
 
   constructor() {
-    const { ecl, codeSystem, type } = this.form.controls;
+    const { ecl, codeSystem, codeSystemVersion, type } = this.form.controls;
     type.valueChanges.pipe(takeUntilDestroyed()).subscribe((chosen) => this.useType(chosen));
-    codeSystem.valueChanges.pipe(takeUntilDestroyed()).subscribe((chosen) => {
-      const match = this.codeSystems().find((candidate) => candidate.shortName === chosen);
-      if (match) {
-        this.branch.set(match.branchPath);
+    // Choosing a code system loads its releases and picks the latest; the preview and concept
+    // search then run against the chosen release's branch.
+    codeSystem.valueChanges
+      .pipe(
+        filter(() => this.id === null),
+        switchMap((chosen) => {
+          this.versions.set(null);
+          this.versionsError.set(false);
+          return this.api.codeSystemVersions(chosen).pipe(
+            map((versions) => ({ chosen, versions, failed: false })),
+            catchError(() => of({ chosen, versions: [] as CodeSystemVersion[], failed: true })),
+          );
+        }),
+        takeUntilDestroyed(),
+      )
+      .subscribe(({ chosen, versions, failed }) => {
+        const match = this.codeSystems().find((candidate) => candidate.shortName === chosen);
+        this.versionsError.set(failed);
+        this.versions.set(versions);
+        if (versions.length > 0) {
+          codeSystemVersion.setValue(versions[0].version);
+        } else {
+          codeSystemVersion.setValue('');
+          this.branch.set(match?.latestVersionBranch ?? match?.branchPath ?? 'MAIN');
+        }
+      });
+    codeSystemVersion.valueChanges.pipe(takeUntilDestroyed()).subscribe((chosen) => {
+      const release = this.versions()?.find((candidate) => candidate.version === chosen);
+      if (release) {
+        this.branch.set(release.branchPath);
       }
     });
     // Wait for a pause in typing, and drop the answer to an earlier definition if a newer one is pending.
@@ -300,13 +375,6 @@ export class ValueSetEditorPage implements OnInit {
       next: (set) => this.startEditing(set),
       error: (error: unknown) => this.loadError.set(describeError(error)),
     });
-  }
-
-  protected describe(codeSystem: CodeSystem): string {
-    const version = codeSystem.latestVersion ? `, version ${codeSystem.latestVersion}` : '';
-    return codeSystem.name === codeSystem.shortName
-      ? `${codeSystem.shortName}${version}`
-      : `${codeSystem.name} (${codeSystem.shortName}${version})`;
   }
 
   protected showError(control: 'name' | 'ecl'): boolean {
@@ -350,6 +418,9 @@ export class ValueSetEditorPage implements OnInit {
       tags: this.tags(),
       conceptIds: this.manual() ? this.members().map((concept) => concept.conceptId) : [],
     };
+    if (this.id === null) {
+      draft.codeSystemVersion = value.codeSystemVersion === '' ? null : value.codeSystemVersion;
+    }
     this.saving.set(true);
     this.saveError.set(null);
     const request = this.id === null ? this.api.create(draft) : this.api.update(this.id, draft);
@@ -379,10 +450,12 @@ export class ValueSetEditorPage implements OnInit {
       return;
     }
     this.branch.set(set.branch);
+    this.editingRelease.set(set.codeSystemVersion);
     this.tags.set(set.tags);
     this.form.setValue({
       type: set.type,
       codeSystem: set.codeSystem,
+      codeSystemVersion: set.codeSystemVersion ?? '',
       name: set.name,
       description: set.description,
       ecl: set.ecl,

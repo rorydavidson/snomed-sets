@@ -55,7 +55,11 @@ public class ValueSet {
 	@Column(nullable = false, length = 4000)
 	private String ecl;
 
-	/** Branch path of the code system, taken from Snowstorm when the value set is created. */
+	/**
+	 * Branch path the content is read from. Normally a release branch such as MAIN/2026-01-01,
+	 * changed only by an upgrade. Value sets created before releases were used, and code
+	 * systems with no release, are on the live branch of the code system instead.
+	 */
 	@Column(nullable = false, length = 200)
 	private String branch;
 
@@ -145,6 +149,25 @@ public class ValueSet {
 	public void revertEclTo(String publishedEcl) {
 		this.ecl = publishedEcl;
 		this.updatedAt = Instant.now();
+	}
+
+	/** Moves the value set onto another release of its code system. */
+	public void moveTo(String releaseBranch) {
+		this.branch = releaseBranch;
+		this.updatedAt = Instant.now();
+	}
+
+	/**
+	 * The release a branch is frozen at, for example 2026-01-01 for MAIN/2026-01-01, or null
+	 * for a live branch. Snowstorm names every release branch after the release date.
+	 */
+	public static String releaseOf(String branch) {
+		String last = branch.substring(branch.lastIndexOf('/') + 1);
+		return last.matches("\\d{4}-\\d{2}-\\d{2}") ? last : null;
+	}
+
+	public String getRelease() {
+		return releaseOf(branch);
 	}
 
 	public void markPublished() {

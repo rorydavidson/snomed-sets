@@ -183,6 +183,41 @@ export interface UpgradePreview {
   }[];
 }
 
+/** One identifier from an imported list, with the term the list gave it if it had a column of terms. */
+export interface IdentifierEntry {
+  identifier: string;
+  term: string | null;
+}
+
+export type IdentifierRejection = 'NOT_AN_IDENTIFIER' | 'INVALID_CHECK_DIGIT' | 'NOT_A_CONCEPT' | 'NOT_IN_RELEASE';
+
+/** What an imported list of identifiers holds on a release. Nothing has been saved. */
+export interface IdentifierCheck {
+  branch: string;
+  entryCount: number;
+  /** Identifiers naming a concept already named earlier in the list. */
+  duplicateCount: number;
+  found: {
+    conceptId: string;
+    preferredTerm: string | null;
+    fullySpecifiedName: string | null;
+    language: string | null;
+    /** Set when the list gave a description identifier, which was turned into its concept. */
+    descriptionId: string | null;
+    suppliedTerm: string | null;
+    /** The list's term is neither the preferred term nor the FSN. It may still be a synonym. */
+    termDiffers: boolean;
+  }[];
+  inactive: {
+    conceptId: string;
+    term: string | null;
+    reason: string | null;
+    descriptionId: string | null;
+    replacements: UpgradeReplacement[];
+  }[];
+  rejected: { identifier: string; reason: IdentifierRejection }[];
+}
+
 export type UpgradeChangeType =
   | 'ADDED'
   | 'REMOVED'
@@ -338,6 +373,16 @@ export class ValueSetApi {
 
   upgrades(id: number): Observable<ValueSetUpgrade[]> {
     return this.http.get<ValueSetUpgrade[]>(`/api/value-sets/${id}/upgrades`);
+  }
+
+  /** Checks a list of identifiers against a release before it goes into a hand-picked list. Saves nothing. */
+  checkIdentifiers(branch: string, entries: IdentifierEntry[]): Observable<IdentifierCheck> {
+    return this.http.post<IdentifierCheck>('/api/identifier-checks', { branch, entries });
+  }
+
+  /** Every concept an ECL expression matches now, in the same shape, to add to a hand-picked list once. */
+  checkEclImport(branch: string, ecl: string): Observable<IdentifierCheck> {
+    return this.http.post<IdentifierCheck>('/api/identifier-checks/ecl', { branch, ecl });
   }
 
   /** Expands a definition that has not been saved yet. */

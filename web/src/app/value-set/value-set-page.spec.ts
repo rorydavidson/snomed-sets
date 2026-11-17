@@ -125,6 +125,21 @@ describe('ValueSetPage', () => {
     expect(page.textContent).toContain('Showing 51 to 100 of 120 concepts');
   });
 
+  it('offers the owner of a hand-picked list an import of more identifiers', async () => {
+    open({ ...SET, type: 'MANUAL', ecl: '' });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    const link = Array.from(page.querySelectorAll('a')).find((a) => a.textContent?.includes('Import concepts'));
+    expect(link?.getAttribute('href')).toBe('/value-sets/7/edit?import=concepts');
+  });
+
+  it('offers no identifier import for a set defined by ECL', async () => {
+    open(SET);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    expect(page.textContent).not.toContain('Import concepts');
+  });
+
   it('keeps the definition visible when only the expansion fails', async () => {
     open(SET);
     http

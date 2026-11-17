@@ -31,6 +31,24 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   when the set is saved, so `<< 195967001` is stored as `<< 195967001 |Asthma|`.
 - **Hand-picked list**: search for concepts by text, add several at once, or add all the children of
   one or more results. Each result shows how many children it has. Up to 2,000 concepts.
+- **Imported concepts**: start a hand-picked list by importing concepts, and import more into it
+  whenever you like with Import concepts, on the set page or in the editor. The review points out
+  which concepts are already in the list (with a filter to show only those, or only the new ones),
+  and only new ones are added. There are two sources:
+  - **A list of identifiers**: paste them, or choose a plain text, CSV or TSV file (this app's own
+    downloads included) or a FHIR ValueSet. `id |term|` lines copied from ECL work too. The file is
+    read in the browser: only the identifiers, and the terms if you pick a term column, are sent.
+    The server checks them against the chosen release: active concepts are found, and a term that
+    is neither the preferred term nor the FSN is pointed out; description identifiers become their
+    concepts; inactive concepts are not added, but their replacements from the historical
+    association reference sets are offered, all ticked to start with; identifiers with a wrong check
+    digit, relationship identifiers and identifiers the release does not have are listed with the
+    reason; repeats are counted once. Up to 5,000 identifiers can be checked at once.
+  - **An ECL expression**: every concept it matches in the release is added as it is today. The
+    list does not follow the expression afterwards; for that, create a set defined by ECL. An
+    expression matching more than 2,000 concepts is refused.
+
+  The review can be downloaded as a CSV. A list holds at most 2,000 concepts.
 - **Tags**: up to ten per set, typed in or picked from tags already in use.
 - **Sharing**: a set is private to its owner until shared with the community.
 

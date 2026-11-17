@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
   ExpansionPage,
+  SavedEcl,
   UpgradeAvailability,
   ValueSet,
   ValueSetApi,
@@ -259,12 +260,50 @@ const PAGE_SIZE = 50;
                 {{ definitionLabel() }} Code system {{ set.codeSystem }}, {{ releaseLabel(definition().branch) }}.
                 Terms are as they were in that release when each concept was added or upgraded.
               </p>
-              @if (signedIn()) {
+              @if (set.ownedByMe) {
                 <p>
                   <button type="button" class="button button-secondary button-small" (click)="suggestingEcl.set(true)">
-                    Suggest an ECL expression
+                    {{ savedEcl() ? 'Suggest a new ECL expression' : 'Suggest an ECL expression' }}
                   </button>
                 </p>
+              }
+              @if (savedEcl(); as saved) {
+                <div class="saved-ecl">
+                  <h3>Kept ECL expression, for reference</h3>
+                  @if (!saved.current) {
+                    <div class="warning-panel" role="status">
+                      <p>
+                        The list has changed since this was saved, so the figures below no longer hold. Only you can see
+                        it until it is suggested again.
+                      </p>
+                    </div>
+                  }
+                  <pre class="ecl ecl-block">{{ saved.ecl }}</pre>
+                  <p class="meta">
+                    @if (saved.exact) {
+                      Matched all {{ saved.conceptCount }} active concepts in the list exactly
+                    } @else {
+                      Not an exact match: missed {{ saved.missingCount }} of the list's {{ saved.conceptCount }} active
+                      concepts and matched {{ saved.extraCount }} that are not in it
+                    }
+                    when checked against {{ set.codeSystem }}, {{ saved.codeSystemVersion ?? 'live branch' }}, on
+                    {{ saved.savedAt | date: 'd MMM y' }}.
+                    @if (saved.inactiveCount > 0) {
+                      {{ saved.inactiveCount }} inactive {{ saved.inactiveCount === 1 ? 'concept' : 'concepts' }} in the list
+                      cannot be matched by any expression.
+                    }
+                  </p>
+                  <p class="meta">
+                    Worked out automatically and not reviewed by a terminologist. It does not define this value set: the
+                    hand-picked list does, and is what is downloaded. Run on another release, the expression can match
+                    different concepts.
+                  </p>
+                  @if (set.ownedByMe) {
+                    <button type="button" class="link-button" [disabled]="busy()" (click)="removeSavedEcl()">
+                      Remove kept expression
+                    </button>
+                  }
+                </div>
               }
             } @else {
               <pre class="ecl ecl-block">{{ definition().ecl }}</pre>
@@ -422,7 +461,12 @@ const PAGE_SIZE = 50;
           />
         }
         @if (suggestingEcl()) {
-          <app-ecl-suggestion-dialog [valueSetId]="set.id" [name]="set.name" (closed)="suggestingEcl.set(false)" />
+          <app-ecl-suggestion-dialog
+            [valueSetId]="set.id"
+            [name]="set.name"
+            (saved)="savedEcl.set($event)"
+            (closed)="suggestingEcl.set(false)"
+          />
         }
         @if (shownConcept(); as conceptId) {
           <app-concept-details [conceptId]="conceptId" [branch]="set.branch" (closed)="shownConcept.set(null)" />
@@ -463,6 +507,7 @@ export class ValueSetPage implements OnInit {
   protected readonly upgrading = signal(false);
   /** True while the dialog suggesting an ECL expression for a hand-picked list is open. */
   protected readonly suggestingEcl = signal(false);
+  protected readonly savedEcl = signal<SavedEcl | null>(null);
   protected readonly describeChanges = describeChanges;
 
   /** The concept whose details are open, if any. */
@@ -659,6 +704,20 @@ export class ValueSetPage implements OnInit {
     });
   }
 
+  protected removeSavedEcl(): void {
+    this.busy.set(true);
+    this.api.removeSavedEcl(this.id).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.savedEcl.set(null);
+      },
+      error: (error: unknown) => {
+        this.busy.set(false);
+        this.failAction('The kept expression could not be removed', error);
+      },
+    });
+  }
+
   protected delete(): void {
     this.busy.set(true);
     this.api.delete(this.id).subscribe({
@@ -683,6 +742,13 @@ export class ValueSetPage implements OnInit {
       next: (set) => {
         this.valueSet.set(set);
         this.loadExpansion(0);
+        if (set.type === 'MANUAL') {
+          // Reference only: the page works the same without it.
+          this.api.savedEcl(this.id).subscribe({
+            next: (saved) => this.savedEcl.set(saved),
+            error: () => this.savedEcl.set(null),
+          });
+        }
         if (withUpgrades && set.ownedByMe) {
           // Only a hint: if Snowstorm cannot say, the page works as before without the button.
           this.api.upgradeAvailability(this.id).subscribe({

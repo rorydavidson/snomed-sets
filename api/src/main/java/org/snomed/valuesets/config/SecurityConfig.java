@@ -30,6 +30,7 @@ public class SecurityConfig {
 		"/api/value-sets/{id}/versions",
 		"/api/value-sets/{id}/versions/{number}/expansion",
 		"/api/value-sets/{id}/download",
+		"/api/value-sets/{id}/saved-ecl",
 	};
 
 	/** The normal sign-in: SNOMED International accounts through Keycloak. */

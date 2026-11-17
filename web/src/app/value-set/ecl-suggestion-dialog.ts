@@ -1,6 +1,6 @@
 import { Component, ElementRef, OnInit, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
-import { EclPrefill, EclSuggestion, ValueSetApi, describeError } from '../core/value-set-api';
+import { EclPrefill, EclSuggestion, SavedEcl, ValueSetApi, describeError } from '../core/value-set-api';
 
 type State =
   | { status: 'loading' }
@@ -153,6 +153,11 @@ type State =
                 @if (copied()) {
                   <p class="meta" role="status">Copied.</p>
                 }
+                @if (saveState() === 'saved') {
+                  <p class="meta" role="status">Kept with this value set. The hand-picked list is still its definition.</p>
+                } @else if (saveError(); as message) {
+                  <p class="field-error" role="alert">It could not be kept: {{ message }}</p>
+                }
               </div>
             }
           }
@@ -163,6 +168,14 @@ type State =
               Create an ECL value set from this
             </button>
             <button type="button" class="button button-secondary" (click)="copy(result.ecl)">Copy expression</button>
+            <button
+              type="button"
+              class="button button-secondary"
+              [disabled]="!result.fitsDefinition || saveState() !== 'idle'"
+              (click)="keep(result)"
+            >
+              {{ saveState() === 'saved' ? 'Kept with this value set' : 'Keep with this value set' }}
+            </button>
           }
           <button type="button" class="button button-secondary" (click)="close()">Close</button>
         </div>
@@ -178,9 +191,13 @@ export class EclSuggestionDialog implements OnInit {
   /** The list's name, used to name the new value set. */
   readonly name = input.required<string>();
   readonly closed = output<void>();
+  /** The expression the owner chose to keep with the list, as the server checked it. */
+  readonly saved = output<SavedEcl>();
 
   protected readonly state = signal<State>({ status: 'loading' });
   protected readonly copied = signal(false);
+  protected readonly saveState = signal<'idle' | 'saving' | 'saved'>('idle');
+  protected readonly saveError = signal<string | null>(null);
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 
@@ -226,6 +243,21 @@ export class EclSuggestionDialog implements OnInit {
 
   protected copy(ecl: string): void {
     void navigator.clipboard?.writeText(ecl).then(() => this.copied.set(true));
+  }
+
+  protected keep(result: EclSuggestion): void {
+    this.saveState.set('saving');
+    this.saveError.set(null);
+    this.api.saveEcl(this.valueSetId(), result.ecl).subscribe({
+      next: (saved) => {
+        this.saveState.set('saved');
+        this.saved.emit(saved);
+      },
+      error: (error: unknown) => {
+        this.saveState.set('idle');
+        this.saveError.set(describeError(error));
+      },
+    });
   }
 
   protected createFrom(result: EclSuggestion): void {

@@ -25,7 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Works out an ECL expression that matches a hand-picked list, so the list can become a value
- * set defined by ECL. Nothing is saved.
+ * set defined by ECL. The owner may keep one with the set for reference; see {@link SavedEcl}.
+ *
+ * Working one out is expensive, so only the owner of the set may ask.
  *
  * The list is covered from the top of the hierarchy down. A member whose descendants are all in
  * the list becomes {@code << X}. One whose subtree is missing a few concepts, or a few whole
@@ -54,30 +56,85 @@ public class EclSuggestionService {
 	private final ValueSetService valueSetService;
 	private final SnowstormClient snowstorm;
 	private final ConceptLookup lookup;
+	private final SavedEclRepository savedEcls;
 
-	public EclSuggestionService(ValueSetService valueSetService, SnowstormClient snowstorm, ConceptLookup lookup) {
+	public EclSuggestionService(ValueSetService valueSetService, SnowstormClient snowstorm, ConceptLookup lookup,
+			SavedEclRepository savedEcls) {
 		this.valueSetService = valueSetService;
 		this.snowstorm = snowstorm;
 		this.lookup = lookup;
+		this.savedEcls = savedEcls;
 	}
 
 	public EclSuggestion suggest(long id, CurrentUser user) {
+		ValueSet valueSet = ownedHandPicked(id, user);
+		ValueSetService.CurrentList list = valueSetService.currentList(valueSet, user);
+		List<Concept> active = activeIn(list);
+		Work work = new Work(list.branch(), active);
+		work.cover(work.topsOf(work.members));
+		work.collapseSiblings();
+		return work.checked(valueSet, work.expression(), inactiveIn(list));
+	}
+
+	/**
+	 * Keeps an expression with the set for reference. It is checked again here against the list
+	 * as it is now, so what is saved about how well it matches is never taken from the browser.
+	 * Checking is a few counts, far cheaper than working an expression out.
+	 */
+	public SavedEclView save(long id, String ecl, CurrentUser user) {
+		ValueSet valueSet = ownedHandPicked(id, user);
+		ValueSetService.CurrentList list = valueSetService.currentList(valueSet, user);
+		EclSuggestion checked = new Work(list.branch(), activeIn(list)).checked(valueSet, ecl.strip(), inactiveIn(list));
+		SavedEcl saved = savedEcls.save(new SavedEcl(valueSet.getId(), checked, conceptIdsOf(list)));
+		return SavedEclView.of(saved, true);
+	}
+
+	/**
+	 * The saved expression, if there is one the caller may see. The owner always sees it. Anyone
+	 * else sees it only if it was checked against exactly the list they are shown, so nothing
+	 * about the owner's unpublished draft is revealed.
+	 */
+	public Optional<SavedEclView> saved(long id, CurrentUser user) {
 		ValueSet valueSet = valueSetService.findVisible(id, user);
+		return savedEcls.findByValueSetId(valueSet.getId()).flatMap(saved -> {
+			ValueSetService.CurrentList list = valueSetService.currentList(valueSet, user);
+			boolean current = saved.getBranch().equals(list.branch())
+					&& saved.getListFingerprint().equals(SavedEcl.fingerprint(conceptIdsOf(list)));
+			if (!current && !valueSet.isOwnedBy(user.subject())) {
+				return Optional.empty();
+			}
+			return Optional.of(SavedEclView.of(saved, current));
+		});
+	}
+
+	public void remove(long id, CurrentUser user) {
+		ValueSet valueSet = ownedHandPicked(id, user);
+		savedEcls.findByValueSetId(valueSet.getId()).ifPresent(savedEcls::delete);
+	}
+
+	private ValueSet ownedHandPicked(long id, CurrentUser user) {
+		ValueSet valueSet = valueSetService.findOwned(id, user);
 		if (!valueSet.isManual()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This value set is already defined by ECL.");
 		}
-		ValueSetService.CurrentList list = valueSetService.currentList(valueSet, user);
+		return valueSet;
+	}
+
+	private static List<Concept> activeIn(ValueSetService.CurrentList list) {
 		List<Concept> active = list.concepts().stream().filter(Concept::active).toList();
-		List<Concept> inactive = list.concepts().stream().filter(concept -> !concept.active()).toList();
 		if (active.isEmpty()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
 					"The list has no active concepts, so there is nothing for an expression to match.");
 		}
+		return active;
+	}
 
-		Work work = new Work(list.branch(), active);
-		work.cover(work.topsOf(work.members));
-		work.collapseSiblings();
-		return work.checked(valueSet, work.expression(), inactive);
+	private static List<Concept> inactiveIn(ValueSetService.CurrentList list) {
+		return list.concepts().stream().filter(concept -> !concept.active()).toList();
+	}
+
+	private static List<String> conceptIdsOf(ValueSetService.CurrentList list) {
+		return list.concepts().stream().map(Concept::conceptId).toList();
 	}
 
 	/** One clause covering part of the hierarchy, or one exception to it. */

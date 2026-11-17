@@ -57,16 +57,23 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
     expression matching more than 2,000 concepts is refused.
 
   The review can be downloaded as a CSV. A list holds at most 2,000 concepts.
-- **Suggest an ECL expression**: for a hand-picked list, anyone who can see it can have an
-  expression worked out that matches it, from where its concepts sit in the hierarchy. A member
-  whose whole subtree is listed becomes `<< X`; one missing a few concepts or branches becomes
-  `<< X MINUS (...)` when that is shorter than naming its members; members that are every child of
+- **Suggest an ECL expression**: for a hand-picked list, the owner can have an expression worked
+  out that matches it, from where its concepts sit in the hierarchy. Only the owner can ask, because
+  it is expensive. A member whose whole subtree is listed becomes `<< X`; one missing a few
+  concepts or branches becomes `<< X MINUS (...)` when that is shorter than naming its members; members that are every child of
   a concept outside the list become `< P` or `<! P`; anything else is named on its own. The
   expression is expanded and compared with the list before it is shown, so it says whether it
   matches exactly and lists any differences. Inactive concepts kept in the list cannot be matched
   by ECL and are pointed out. The expression can be copied, or used to start a new ECL value set
   on the same code system and release; the hand-picked list is left as it is. An ECL set follows
   its expression, so new concepts below its clauses join it when it is upgraded.
+- **Keeping a suggested expression**: the owner can keep one with the hand-picked list for
+  reference. The server checks it again against the list before saving, and stores how well it
+  matched, the release, the date and how many inactive concepts it cannot cover. The set page shows
+  it with those caveats: it was worked out automatically, is not reviewed by a terminologist, does
+  not define the set and is not downloaded. When the list changes, the owner is told the figures no
+  longer hold. Others see it only while it matches exactly the version they are shown, so nothing
+  about an unpublished draft is revealed.
 - **Tags**: up to ten per set, typed in or picked from tags already in use.
 - **Sharing**: a set is private to its owner until shared with the community.
 

@@ -76,3 +76,9 @@ Frontend:
 ```bash
 cd web && npm install && npx ng test --watch=false
 ```
+
+### Continuous integration
+
+Every pull request, and every push to `main`, runs the backend tests, the frontend tests and
+production build, and builds both Docker images (`.github/workflows/ci.yml`). The live Snowstorm
+tests are skipped there.

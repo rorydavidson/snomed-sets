@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import org.snomed.valuesets.snowstorm.ExpansionPage;
@@ -40,6 +41,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 public class ValueSetController {
 
 	private static final int MAX_PAGE_SIZE = 100;
+	/** A version number, or "draft" for the owner's working draft. */
+	private static final String VERSION_PARAM = "draft|[1-9]\\d{0,5}";
 
 	private final ValueSetService service;
 	private final SnowstormClient snowstorm;
@@ -123,10 +126,11 @@ public class ValueSetController {
 		return service.expansion(id, user, offset, limit);
 	}
 
-	/** The latest published version of a shared value set, in the Global Patient Set file layout. */
+	/** A published version, or with version=draft the owner's working draft, in the Global Patient Set file layout. */
 	@GetMapping("/value-sets/{id}/download")
-	public ResponseEntity<String> download(@PathVariable long id, CurrentUser user) {
-		GpsFile file = service.download(id, user);
+	public ResponseEntity<String> download(@PathVariable long id,
+			@RequestParam(required = false) @Pattern(regexp = VERSION_PARAM) String version, CurrentUser user) {
+		GpsFile file = service.download(id, version, user);
 		return ResponseEntity.ok()
 				.contentType(new MediaType("text", "tab-separated-values", StandardCharsets.UTF_8))
 				.header(HttpHeaders.CONTENT_DISPOSITION,
@@ -136,10 +140,11 @@ public class ValueSetController {
 
 	/** The same version as a FHIR R4 ValueSet resource. */
 	@GetMapping(value = "/value-sets/{id}/download", params = "format=fhir")
-	public ResponseEntity<Map<String, Object>> downloadFhir(@PathVariable long id, CurrentUser user) {
+	public ResponseEntity<Map<String, Object>> downloadFhir(@PathVariable long id,
+			@RequestParam(required = false) @Pattern(regexp = VERSION_PARAM) String version, CurrentUser user) {
 		// The proxy's forwarded headers are honoured, so this is the address people use.
 		String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
-		FhirValueSet file = service.downloadFhir(id, user, baseUrl);
+		FhirValueSet file = service.downloadFhir(id, version, user, baseUrl);
 		return ResponseEntity.ok()
 				.contentType(MediaType.parseMediaType(FhirValueSet.MEDIA_TYPE))
 				.header(HttpHeaders.CONTENT_DISPOSITION,

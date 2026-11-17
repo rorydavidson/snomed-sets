@@ -448,7 +448,7 @@ class ValueSetApiTests {
 	}
 
 	@Test
-	void onlySharedPublishedSetsCanBeDownloadedAndOnlyWhenSignedIn() throws Exception {
+	void aSetWithNoPublishedVersionHasNothingToDownloadExceptItsDraftAndOnlyWhenSignedIn() throws Exception {
 		long unpublished = createSetOwnedBy("alice", "COMMUNITY");
 		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("bob")))
 				.andExpect(status().isConflict());
@@ -456,8 +456,7 @@ class ValueSetApiTests {
 
 		jdbc.update("UPDATE value_set SET visibility = 'PRIVATE' WHERE id = ?", unpublished);
 		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("alice")))
-				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.detail").value("Only value sets shared with the community can be downloaded."));
+				.andExpect(status().isConflict());
 		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("bob")))
 				.andExpect(status().isNotFound());
 	}
@@ -1195,10 +1194,51 @@ class ValueSetApiTests {
 	}
 
 	@Test
-	void aPrivateSetCannotBeDownloadedAsFhirEither() throws Exception {
+	void theOwnerCanDownloadTheWorkingDraftOfAPrivateSetButNobodyElseCan() throws Exception {
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
 		long id = createSetOwnedBy("alice", "PRIVATE");
-		mvc.perform(get("/api/value-sets/{id}/download", id).param("format", "fhir").with(signedInAs("alice")))
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "draft").with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Disposition", "attachment; filename=\"owned-set-draft.tsv\""))
+				.andExpect(content().string(containsString("195967001\tAsthma (disorder)\tAsthma\t1\n")));
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "draft").param("format", "fhir")
+				.with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value("draft"))
+				.andExpect(jsonPath("$.status").value("draft"))
+				.andExpect(jsonPath("$.expansion.total").value(2));
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "draft").with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
+
+		jdbc.update("UPDATE value_set SET visibility = 'COMMUNITY' WHERE id = ?", id);
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "draft").with(signedInAs("bob")))
 				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void anyoneWhoCanSeeASetCanDownloadAnOlderVersion() throws Exception {
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		given(snowstorm.expand("<< 233678006", "MAIN", 0, 1000)).willReturn(pageOf(CHILDHOOD_ASTHMA));
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		publish(id, "alice", "First");
+		jdbc.update("UPDATE value_set SET ecl = '<< 233678006' WHERE id = ?", id);
+		publish(id, "alice", "Narrower");
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "1").with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Disposition", "attachment; filename=\"owned-set-v1.tsv\""))
+				.andExpect(content().string(containsString("195967001\t")));
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "1").param("format", "fhir")
+				.with(signedInAs("bob")))
+				.andExpect(jsonPath("$.version").value("1"))
+				.andExpect(jsonPath("$.compose.include[0].filter[0].value").value("<< 195967001"));
+		mvc.perform(get("/api/value-sets/{id}/download", id).with(signedInAs("bob")))
+				.andExpect(header().string("Content-Disposition", "attachment; filename=\"owned-set-v2.tsv\""));
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "9").with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "latest").with(signedInAs("bob")))
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test

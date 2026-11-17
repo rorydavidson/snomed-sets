@@ -1,7 +1,6 @@
 package org.snomed.valuesets.valueset;
 
 import java.text.Normalizer;
-import java.util.Collection;
 import java.util.Locale;
 
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
@@ -17,15 +16,15 @@ public record GpsFile(String fileName, String content) {
 
 	private static final String HEADER = "SNOMED CT ID\tFSN (en-us)\tPT (en-us)\tActive\n";
 
-	static GpsFile of(ValueSet valueSet, int versionNumber, Collection<Concept> concepts) {
+	static GpsFile of(DownloadContent download) {
 		StringBuilder content = new StringBuilder(HEADER);
-		for (Concept concept : concepts) {
+		for (Concept concept : download.concepts()) {
 			content.append(concept.conceptId()).append('\t')
 					.append(cell(concept.fullySpecifiedName())).append('\t')
 					.append(cell(concept.preferredTerm())).append('\t')
 					.append(concept.active() ? "1" : "0").append('\n');
 		}
-		return new GpsFile(fileNameFor(valueSet.getName(), versionNumber, "tsv"), content.toString());
+		return new GpsFile(fileNameFor(download.valueSet().getName(), download.fileLabel(), "tsv"), content.toString());
 	}
 
 	/** A term must not break the row it is in. */
@@ -34,11 +33,12 @@ public record GpsFile(String fileName, String content) {
 	}
 
 	/** Lower-case ASCII letters, digits and hyphens only, so the name is safe in a response header. */
-	static String fileNameFor(String valueSetName, int versionNumber, String extension) {
+	/** @param label v3 for a version, or draft */
+	static String fileNameFor(String valueSetName, String label, String extension) {
 		String slug = Normalizer.normalize(valueSetName, Normalizer.Form.NFKD)
 				.replaceAll("[^A-Za-z0-9]+", "-")
 				.replaceAll("^-+|-+$", "")
 				.toLowerCase(Locale.ROOT);
-		return (slug.isEmpty() ? "value-set" : slug) + "-v" + versionNumber + "." + extension;
+		return (slug.isEmpty() ? "value-set" : slug) + "-" + label + "." + extension;
 	}
 }

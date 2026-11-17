@@ -236,25 +236,23 @@ public class ValueSetService {
 	}
 
 	/**
-	 * The latest published version as a file. Only value sets shared with the community
-	 * can be downloaded, and only what has been published: a download should be something
-	 * stable that can be referred to, not a draft.
+	 * A version of a value set as a TSV file in the Global Patient Set layout.
+	 *
+	 * @param version a version number; "draft" for the working draft, which only the owner may
+	 *        download; or null for the version other people are shown
 	 */
-	public GpsFile download(long id, CurrentUser user) {
-		Download download = downloadable(id, user);
-		return GpsFile.of(download.valueSet(), download.version().getVersionNumber(), download.concepts());
+	public GpsFile download(long id, String version, CurrentUser user) {
+		return GpsFile.of(downloadable(id, version, user));
 	}
 
 	/**
-	 * The same published version as a FHIR R4 ValueSet resource, with its definition and its
-	 * stored concept list as the expansion.
+	 * The same, as a FHIR R4 ValueSet resource, with the definition and the concept list as the expansion.
 	 *
 	 * @param baseUrl where this application is reached, used for the resource's canonical URL
 	 */
-	public FhirValueSet downloadFhir(long id, CurrentUser user, String baseUrl) {
-		Download download = downloadable(id, user);
-		return FhirValueSet.of(download.valueSet(), download.version(), download.concepts(), baseUrl,
-				editionModuleOf(download.valueSet().getCodeSystem()));
+	public FhirValueSet downloadFhir(long id, String version, CurrentUser user, String baseUrl) {
+		DownloadContent download = downloadable(id, version, user);
+		return FhirValueSet.of(download, baseUrl, editionModuleOf(download.valueSet().getCodeSystem()));
 	}
 
 	/** The edition's module, for the SNOMED CT version URI. A download still works without it. */
@@ -267,25 +265,32 @@ public class ValueSetService {
 		}
 	}
 
-	private record Download(ValueSet valueSet, ValueSetVersion version, Collection<Concept> concepts) {
-	}
-
-	private Download downloadable(long id, CurrentUser user) {
+	/**
+	 * Anyone who can see a value set may download any of its published versions. The working
+	 * draft is the owner's, so only the owner may download it, private or not.
+	 */
+	private DownloadContent downloadable(long id, String version, CurrentUser user) {
+		if (DownloadContent.DRAFT.equals(version)) {
+			ValueSet valueSet = findOwned(id, user);
+			Collection<Concept> concepts = valueSet.isManual()
+					? workingList(valueSet)
+					: expandFully(valueSet.getEcl(), valueSet.getBranch());
+			return DownloadContent.draftOf(valueSet, concepts);
+		}
 		ValueSet valueSet = findVisible(id, user);
-		if (valueSet.getVisibility() != ValueSet.Visibility.COMMUNITY) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-					"Only value sets shared with the community can be downloaded.");
-		}
-		ValueSetVersion latest = latestVersionOf(valueSet);
-		if (latest == null) {
+		ValueSetVersion chosen = version == null
+				? latestVersionOf(valueSet)
+				: versions.findByValueSetIdAndVersionNumber(valueSet.getId(), Integer.parseInt(version))
+						.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
+		if (chosen == null) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
-					"This value set has not been published yet, so there is nothing to download.");
+					"This value set has not been published yet, so there is no version to download.");
 		}
-		Collection<Concept> concepts = latest.isContentFrozen()
+		Collection<Concept> concepts = chosen.isContentFrozen()
 				? members.findByValueSetIdAndVersionNumberOrderByPreferredTermAscConceptIdAsc(valueSet.getId(),
-						latest.getVersionNumber()).stream().map(ValueSetMember::toConcept).toList()
-				: expandFully(latest.getEcl(), latest.getBranch());
-		return new Download(valueSet, latest, concepts);
+						chosen.getVersionNumber()).stream().map(ValueSetMember::toConcept).toList()
+				: expandFully(chosen.getEcl(), chosen.getBranch());
+		return DownloadContent.of(valueSet, chosen, concepts);
 	}
 
 	public VersionView publish(long id, String note, CurrentUser user) {

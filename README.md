@@ -79,11 +79,15 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 
 ### Downloading
 
-- Anyone signed in can download a published community set in the Global Patient Set layout: a
-  tab-separated file of SNOMED CT ID, FSN (en-us), PT (en-us) and Active.
-- The same version can be downloaded as a FHIR R4 `ValueSet` resource in JSON. Its compose holds
-  the definition (the ECL as a SNOMED CT `constraint` filter, or the hand-picked concepts) and its
-  expansion holds the concept list stored when the version was published. The SNOMED CT edition and
+- The download buttons fetch whatever the set page is showing. Anyone who can see a set can
+  download any of its published versions, the version in use or an older one picked from the history.
+  The owner can also download the working draft, whether the set is shared or private.
+- The Global Patient Set layout is a tab-separated file of SNOMED CT ID, FSN (en-us), PT (en-us)
+  and Active.
+- The FHIR download is an R4 `ValueSet` resource in JSON. Its compose holds the definition (the ECL
+  as a SNOMED CT `constraint` filter, or the hand-picked concepts) and its expansion holds the
+  concept list: the one stored when the version was published, or for a draft its current content.
+  A draft has `version` and `status` set to `draft`. The SNOMED CT edition and
   release are given as a version URI, for example
   `http://snomed.info/sct/900000000000207008/version/20260101`, and left out for a set on the live
   branch. The owner's name is not included.

@@ -300,19 +300,37 @@ describe('ValueSetPage', () => {
     expect(dialog.querySelector('.cv-step')).toBeNull();
   });
 
-  it('offers a download only for a published set that is shared with the community', async () => {
-    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [VERSION_1]);
+  function downloadLinks(): (string | null)[] {
+    return Array.from(page.querySelectorAll<HTMLAnchorElement>('a[download]')).map((link) => link.getAttribute('href'));
+  }
+
+  it('downloads the version in use, or an older one once it is chosen from the history', async () => {
+    const VERSION_2: ValueSetVersion = { ...VERSION_1, number: 2 };
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [VERSION_2, VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
     await fixture.whenStable();
 
-    const links = Array.from(page.querySelectorAll<HTMLAnchorElement>('a[download]')).map((link) => link.getAttribute('href'));
-    expect(links).toEqual(['/api/value-sets/7/download', '/api/value-sets/7/download?format=fhir']);
+    expect(downloadLinks()).toEqual(['/api/value-sets/7/download?version=2', '/api/value-sets/7/download?version=2&format=fhir']);
     expect(page.textContent).toContain('Download version 2 (TSV)');
     expect(page.textContent).toContain('Download version 2 (FHIR JSON)');
+
+    button(page, 'Version 1')?.click();
+    http.expectOne('/api/value-sets/7/versions/1/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    expect(downloadLinks()).toEqual(['/api/value-sets/7/download?version=1', '/api/value-sets/7/download?version=1&format=fhir']);
   });
 
-  it('offers no download for a private or unpublished set', async () => {
-    open({ ...SET, status: 'PUBLISHED', latestVersion: 1 }, [VERSION_1]);
+  it('lets the owner download the working draft, private or not', async () => {
+    open({ ...SET, visibility: 'PRIVATE', latestVersion: null });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(downloadLinks()).toEqual(['/api/value-sets/7/download?version=draft', '/api/value-sets/7/download?version=draft&format=fhir']);
+    expect(page.textContent).toContain('Download working draft (TSV)');
+  });
+
+  it('offers no download of a set someone else has not published', async () => {
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY' });
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
     await fixture.whenStable();
 

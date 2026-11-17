@@ -106,17 +106,17 @@ const PAGE_SIZE = 50;
           </ul>
         }
 
-        @if (set.visibility === 'COMMUNITY' && set.latestVersion !== null) {
+        @if (downloadTarget(); as target) {
           <div class="actions">
-            <a class="button button-secondary" [href]="'/api/value-sets/' + set.id + '/download'" download>
-              Download version {{ set.latestVersion }} (TSV)
+            <a class="button button-secondary" [href]="downloadUrl(target, false)" download>
+              Download {{ downloadLabel(target) }} (TSV)
             </a>
-            <a class="button button-secondary" [href]="'/api/value-sets/' + set.id + '/download?format=fhir'" download>
-              Download version {{ set.latestVersion }} (FHIR JSON)
+            <a class="button button-secondary" [href]="downloadUrl(target, true)" download>
+              Download {{ downloadLabel(target) }} (FHIR JSON)
             </a>
             <span class="meta">
-              TSV in the Global Patient Set layout: SNOMED CT ID, FSN, PT and active flag, in US English.
-              FHIR R4 ValueSet with the definition and the published concept list as its expansion.
+              Downloads what is shown below. TSV in the Global Patient Set layout: SNOMED CT ID, FSN, PT and
+              active flag, in US English. FHIR R4 ValueSet with the definition and the concept list as its expansion.
             </span>
           </div>
         }
@@ -486,6 +486,34 @@ export class ValueSetPage implements OnInit {
         this.codeSystemNames.set(Object.fromEntries(codeSystems.map((codeSystem) => [codeSystem.shortName, codeSystem.name]))),
       error: () => undefined,
     });
+  }
+
+  /**
+   * What the download buttons fetch: the version being looked at. For the owner that may be the
+   * working draft. Null when there is nothing to download yet.
+   */
+  protected readonly downloadTarget = computed<number | 'draft' | null>(() => {
+    const set = this.valueSet();
+    if (set === null) {
+      return null;
+    }
+    const chosen = this.selectedVersion();
+    if (chosen !== null) {
+      return chosen;
+    }
+    if (set.ownedByMe && (set.unpublishedChanges || set.latestVersion === null)) {
+      return 'draft';
+    }
+    return set.latestVersion;
+  });
+
+  protected downloadUrl(target: number | 'draft', fhir: boolean): string {
+    const format = fhir ? '&format=fhir' : '';
+    return `/api/value-sets/${this.id}/download?version=${target}${format}`;
+  }
+
+  protected downloadLabel(target: number | 'draft'): string {
+    return target === 'draft' ? 'working draft' : `version ${target}`;
   }
 
   protected releaseLabel(branch: string): string {

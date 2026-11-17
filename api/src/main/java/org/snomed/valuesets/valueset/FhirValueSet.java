@@ -11,7 +11,7 @@ import java.util.Map;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 
 /**
- * A published version as a FHIR R4 ValueSet resource.
+ * A published version, or the owner's working draft, as a FHIR R4 ValueSet resource.
  *
  * The compose holds the definition: the ECL expression as a SNOMED CT "constraint" filter, or
  * the hand-picked concepts. The expansion holds the concept list stored when the version was
@@ -27,24 +27,25 @@ public record FhirValueSet(String fileName, Map<String, Object> resource) {
 	public static final String MEDIA_TYPE = "application/fhir+json";
 	static final String SNOMED_SYSTEM = "http://snomed.info/sct";
 
-	static FhirValueSet of(ValueSet valueSet, ValueSetVersion version, Collection<Concept> concepts, String baseUrl,
-			String editionModuleId) {
-		String snomedVersion = snomedVersion(editionModuleId, ValueSet.releaseOf(version.getBranch()));
+	static FhirValueSet of(DownloadContent download, String baseUrl, String editionModuleId) {
+		ValueSet valueSet = download.valueSet();
+		Collection<Concept> concepts = download.concepts();
+		String snomedVersion = snomedVersion(editionModuleId, ValueSet.releaseOf(download.branch()));
 
 		Map<String, Object> resource = new LinkedHashMap<>();
 		resource.put("resourceType", "ValueSet");
 		resource.put("id", String.valueOf(valueSet.getId()));
 		resource.put("url", trimSlash(baseUrl) + "/value-sets/" + valueSet.getId());
-		resource.put("version", String.valueOf(version.getVersionNumber()));
+		resource.put("version", download.label());
 		resource.put("name", computableName(valueSet.getName()));
 		resource.put("title", valueSet.getName());
-		resource.put("status", valueSet.isDeprecated() || version.isDeprecated() ? "retired" : "active");
+		resource.put("status", download.status());
 		resource.put("experimental", false);
-		resource.put("date", version.getPublishedAt().toString());
+		resource.put("date", download.date().toString());
 		putIfPresent(resource, "description", valueSet.getDescription());
-		resource.put("compose", Map.of("include", List.of(include(valueSet, version, concepts, snomedVersion))));
-		resource.put("expansion", expansion(version, concepts, snomedVersion));
-		return new FhirValueSet(GpsFile.fileNameFor(valueSet.getName(), version.getVersionNumber(), "json"), resource);
+		resource.put("compose", Map.of("include", List.of(include(valueSet, download.ecl(), concepts, snomedVersion))));
+		resource.put("expansion", expansion(download, snomedVersion));
+		return new FhirValueSet(GpsFile.fileNameFor(valueSet.getName(), download.fileLabel(), "json"), resource);
 	}
 
 	/**
@@ -59,7 +60,7 @@ public record FhirValueSet(String fileName, Map<String, Object> resource) {
 		return SNOMED_SYSTEM + "/" + editionModuleId + "/version/" + release.replace("-", "");
 	}
 
-	private static Map<String, Object> include(ValueSet valueSet, ValueSetVersion version, Collection<Concept> concepts,
+	private static Map<String, Object> include(ValueSet valueSet, String ecl, Collection<Concept> concepts,
 			String snomedVersion) {
 		Map<String, Object> include = new LinkedHashMap<>();
 		include.put("system", SNOMED_SYSTEM);
@@ -73,15 +74,15 @@ public record FhirValueSet(String fileName, Map<String, Object> resource) {
 			}).toList());
 		}
 		else {
-			include.put("filter", List.of(Map.of("property", "constraint", "op", "=", "value", version.getEcl())));
+			include.put("filter", List.of(Map.of("property", "constraint", "op", "=", "value", ecl)));
 		}
 		return include;
 	}
 
-	private static Map<String, Object> expansion(ValueSetVersion version, Collection<Concept> concepts,
-			String snomedVersion) {
+	private static Map<String, Object> expansion(DownloadContent download, String snomedVersion) {
+		Collection<Concept> concepts = download.concepts();
 		Map<String, Object> expansion = new LinkedHashMap<>();
-		expansion.put("timestamp", version.getPublishedAt().toString());
+		expansion.put("timestamp", download.date().toString());
 		expansion.put("total", concepts.size());
 		List<Map<String, Object>> contains = new ArrayList<>();
 		for (Concept concept : concepts) {

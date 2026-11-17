@@ -478,6 +478,31 @@ describe('ValueSetEditorPage', () => {
     expect(page.textContent).toContain('Allergic asthma');
   });
 
+  it('starts a new ECL value set from a suggested expression, on the release it was worked out against', () => {
+    history.replaceState(
+      {
+        eclPrefill: {
+          name: 'Picked asthma codes (ECL)',
+          description: 'Defined by ECL worked out from the hand-picked list "Picked asthma codes".',
+          ecl: '<< 195967001 |Asthma|',
+          codeSystem: 'SNOMEDCT',
+          codeSystemVersion: '2025-07-01',
+        },
+      },
+      '',
+    );
+    try {
+      const fixture = create({});
+      const page = fixture.nativeElement as HTMLElement;
+      expect(page.querySelector<HTMLInputElement>('#name')!.value).toBe('Picked asthma codes (ECL)');
+      expect(page.querySelector<HTMLTextAreaElement>('#ecl')!.value).toBe('<< 195967001 |Asthma|');
+      expect(page.querySelector<HTMLSelectElement>('#code-system-version')!.value).toBe('2025-07-01');
+      expect(page.querySelector<HTMLInputElement>('input[type="radio"][value="ECL"]')!.checked).toBe(true);
+    } finally {
+      history.replaceState(null, '');
+    }
+  });
+
   it('loads the existing list when editing a hand-picked value set', () => {
     const fixture = create({ id: '7' });
     const page = fixture.nativeElement as HTMLElement;

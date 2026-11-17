@@ -49,6 +49,16 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
     expression matching more than 2,000 concepts is refused.
 
   The review can be downloaded as a CSV. A list holds at most 2,000 concepts.
+- **Suggest an ECL expression**: for a hand-picked list, anyone who can see it can have an
+  expression worked out that matches it, from where its concepts sit in the hierarchy. A member
+  whose whole subtree is listed becomes `<< X`; one missing a few concepts or branches becomes
+  `<< X MINUS (...)` when that is shorter than naming its members; members that are every child of
+  a concept outside the list become `< P` or `<! P`; anything else is named on its own. The
+  expression is expanded and compared with the list before it is shown, so it says whether it
+  matches exactly and lists any differences. Inactive concepts kept in the list cannot be matched
+  by ECL and are pointed out. The expression can be copied, or used to start a new ECL value set
+  on the same code system and release; the hand-picked list is left as it is. An ECL set follows
+  its expression, so new concepts below its clauses join it when it is upgraded.
 - **Tags**: up to ten per set, typed in or picked from tags already in use.
 - **Sharing**: a set is private to its owner until shared with the community.
 

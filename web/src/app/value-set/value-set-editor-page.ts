@@ -7,6 +7,7 @@ import {
   CodeSystem,
   CodeSystemVersion,
   Concept,
+  EclPrefill,
   ExpansionPage,
   ValueSet,
   ValueSetApi,
@@ -300,6 +301,8 @@ export class ValueSetEditorPage implements OnInit {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute).snapshot;
   private readonly idParam = this.route.paramMap.get('id');
+  /** Set when a new ECL value set starts from an expression suggested for a hand-picked list. */
+  private readonly prefill = this.idParam === null ? eclPrefillFrom(history.state) : null;
   /** Set when the set page's Import concepts button led here, to open the import straight away. */
   private readonly startWithImport = this.route.queryParamMap?.get('import') === 'concepts';
 
@@ -369,7 +372,10 @@ export class ValueSetEditorPage implements OnInit {
         this.versionsError.set(failed);
         this.versions.set(versions);
         if (versions.length > 0) {
-          codeSystemVersion.setValue(versions[0].version);
+          // A suggestion was worked out against one release, so the new set starts on that one.
+          const wanted = this.prefill?.codeSystem === chosen ? this.prefill.codeSystemVersion : null;
+          const release = versions.find((candidate) => candidate.version === wanted) ?? versions[0];
+          codeSystemVersion.setValue(release.version);
         } else {
           codeSystemVersion.setValue('');
           this.branch.set(match?.latestVersionBranch ?? match?.branchPath ?? 'MAIN');
@@ -471,7 +477,14 @@ export class ValueSetEditorPage implements OnInit {
       return;
     }
     this.codeSystems.set(codeSystems);
-    const preferred = codeSystems.find((candidate) => candidate.shortName === 'SNOMEDCT') ?? codeSystems[0];
+    const prefill = this.prefill;
+    const preferred =
+      codeSystems.find((candidate) => candidate.shortName === prefill?.codeSystem) ??
+      codeSystems.find((candidate) => candidate.shortName === 'SNOMEDCT') ??
+      codeSystems[0];
+    if (prefill) {
+      this.form.patchValue({ type: 'ECL', name: prefill.name, description: prefill.description, ecl: prefill.ecl });
+    }
     this.form.controls.codeSystem.setValue(preferred.shortName);
     this.loaded.set(true);
   }
@@ -555,4 +568,26 @@ export class ValueSetEditorPage implements OnInit {
       startWith<Preview>({ status: 'loading' }),
     );
   }
+}
+
+/** The suggestion passed in the navigation state, checked as it could be anything a page put there. */
+function eclPrefillFrom(state: unknown): EclPrefill | null {
+  if (typeof state !== 'object' || state === null || !('eclPrefill' in state)) {
+    return null;
+  }
+  const value = (state as { eclPrefill: unknown }).eclPrefill;
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const { name, description, ecl, codeSystem, codeSystemVersion } = value as Record<string, unknown>;
+  if (typeof name !== 'string' || typeof description !== 'string' || typeof ecl !== 'string' || typeof codeSystem !== 'string') {
+    return null;
+  }
+  return {
+    name,
+    description,
+    ecl,
+    codeSystem,
+    codeSystemVersion: typeof codeSystemVersion === 'string' ? codeSystemVersion : null,
+  };
 }

@@ -218,6 +218,41 @@ export interface IdentifierCheck {
   rejected: { identifier: string; reason: IdentifierRejection }[];
 }
 
+/** An ECL expression worked out to match a hand-picked list, checked by expanding it. Nothing is saved. */
+export interface EclSuggestion {
+  codeSystem: string;
+  codeSystemVersion: string | null;
+  branch: string;
+  ecl: string;
+  /** Clauses covering part of the hierarchy, such as << X. */
+  structuredClauses: number;
+  /** Concepts named one by one. */
+  namedConcepts: number;
+  /** Active concepts in the list. */
+  conceptCount: number;
+  exact: boolean;
+  /** Some of the list's concepts the expression misses. */
+  missing: Concept[];
+  missingCount: number;
+  /** Some of the concepts the expression matches that the list does not have. */
+  extra: Concept[];
+  extraCount: number;
+  /** Inactive concepts kept in the list, which no ECL expression can match. */
+  leftOut: Concept[];
+  /** False when the expression is longer than a value set definition may be. */
+  fitsDefinition: boolean;
+  maxLength: number;
+}
+
+/** What the editor fills in when a new ECL value set starts from a suggestion. */
+export interface EclPrefill {
+  name: string;
+  description: string;
+  ecl: string;
+  codeSystem: string;
+  codeSystemVersion: string | null;
+}
+
 export type UpgradeChangeType =
   | 'ADDED'
   | 'REMOVED'
@@ -383,6 +418,11 @@ export class ValueSetApi {
   /** Every concept an ECL expression matches now, in the same shape, to add to a hand-picked list once. */
   checkEclImport(branch: string, ecl: string): Observable<IdentifierCheck> {
     return this.http.post<IdentifierCheck>('/api/identifier-checks/ecl', { branch, ecl });
+  }
+
+  /** Works out an ECL expression matching a hand-picked list. Saves nothing. */
+  eclSuggestion(id: number): Observable<EclSuggestion> {
+    return this.http.get<EclSuggestion>(`/api/value-sets/${id}/ecl-suggestion`);
   }
 
   /** Expands a definition that has not been saved yet. */

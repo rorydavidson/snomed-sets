@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
@@ -23,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -1433,5 +1435,44 @@ class ValueSetApiTests {
 				.with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.detail", containsString("matches 120000 concepts")));
+	}
+
+	@Test
+	void aHandPickedListThatIsAWholeSubtreeIsSuggestedAsOneClause() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "MANUAL", "", RELEASE, ASTHMA, CHILDHOOD_ASTHMA, RETIRED);
+		jdbc.update("UPDATE value_set_member SET active = FALSE WHERE concept_id = ?", RETIRED.conceptId());
+		Set<String> members = Set.of("195967001", "233678006");
+		given(snowstorm.expandLong(eq("< (195967001 OR 233678006)"), eq(RELEASE), eq(0), anyInt(), eq(members)))
+				.willReturn(pageOf(CHILDHOOD_ASTHMA));
+		given(snowstorm.expandLong(eq(">! (<! (195967001))"), eq(RELEASE), eq(0), anyInt(), eq(List.of("195967001"))))
+				.willReturn(pageOf(ASTHMA));
+		given(snowstorm.expandLong("<< 195967001", RELEASE, 0, 1)).willReturn(new ExpansionPage(List.of(ASTHMA), 2, 0, 1));
+		given(snowstorm.expandLong(eq("<< 195967001"), eq(RELEASE), eq(0), eq(1), eq(members)))
+				.willReturn(new ExpansionPage(List.of(ASTHMA), 2, 0, 1));
+		given(snowstorm.expandLong("<< 195967001 |Asthma|", RELEASE, 0, 1))
+				.willReturn(new ExpansionPage(List.of(ASTHMA), 2, 0, 1));
+		given(snowstorm.expandLong(eq("<< 195967001 |Asthma|"), eq(RELEASE), eq(0), anyInt(), eq(members)))
+				.willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+
+		mvc.perform(get("/api/value-sets/{id}/ecl-suggestion", id).with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ecl").value("<< 195967001 |Asthma|"))
+				.andExpect(jsonPath("$.exact").value(true))
+				.andExpect(jsonPath("$.structuredClauses").value(1))
+				.andExpect(jsonPath("$.namedConcepts").value(0))
+				.andExpect(jsonPath("$.conceptCount").value(2))
+				.andExpect(jsonPath("$.codeSystemVersion").value("2026-01-01"))
+				.andExpect(jsonPath("$.fitsDefinition").value(true))
+				.andExpect(jsonPath("$.leftOut[*].conceptId", contains(RETIRED.conceptId())));
+	}
+
+	@Test
+	void anEclSuggestionIsOnlyForHandPickedListsTheCallerCanSee() throws Exception {
+		long ecl = insertSet("alice", "PRIVATE", "ECL", "<< 195967001", RELEASE);
+		mvc.perform(get("/api/value-sets/{id}/ecl-suggestion", ecl).with(signedInAs("alice")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("This value set is already defined by ECL."));
+		mvc.perform(get("/api/value-sets/{id}/ecl-suggestion", ecl).with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
 	}
 }

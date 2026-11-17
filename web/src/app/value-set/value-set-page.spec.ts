@@ -133,6 +133,67 @@ describe('ValueSetPage', () => {
     expect(link?.getAttribute('href')).toBe('/value-sets/7/edit?import=concepts');
   });
 
+  it('suggests an ECL expression for a hand-picked list and starts a new ECL set from it', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    open({ ...SET, type: 'MANUAL', ecl: '', branch: 'MAIN/2026-01-01', codeSystemVersion: '2026-01-01' });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Suggest an ECL expression')?.click();
+    await fixture.whenStable();
+    http.expectOne('/api/value-sets/7/ecl-suggestion').flush({
+      codeSystem: 'SNOMEDCT',
+      codeSystemVersion: '2026-01-01',
+      branch: 'MAIN/2026-01-01',
+      ecl: '(<< 195967001 |Asthma| MINUS << 389145006 |Allergic asthma|)',
+      structuredClauses: 1,
+      namedConcepts: 0,
+      conceptCount: 51,
+      exact: true,
+      missing: [],
+      missingCount: 0,
+      extra: [],
+      extraCount: 0,
+      leftOut: [{ conceptId: '1234567', preferredTerm: 'Retired asthma concept', fullySpecifiedName: null, active: false }],
+      fitsDefinition: true,
+      maxLength: 4000,
+    });
+    await fixture.whenStable();
+
+    const dialog = page.querySelector('dialog')!;
+    expect(dialog.textContent).toContain('Matches all 51 concepts in the list exactly.');
+    expect(dialog.textContent).toContain('1 clause covering part of the hierarchy');
+    expect(dialog.querySelector('pre')?.textContent).toContain('MINUS << 389145006');
+    expect(dialog.textContent).toContain('1 inactive concept is kept in the list');
+
+    button(page, 'Create an ECL value set from this')?.click();
+    expect(navigate).toHaveBeenCalledWith(['/value-sets/new'], {
+      state: {
+        eclPrefill: {
+          name: `${SET.name} (ECL)`,
+          description: `Defined by ECL worked out from the hand-picked list "${SET.name}".`,
+          ecl: '(<< 195967001 |Asthma| MINUS << 389145006 |Allergic asthma|)',
+          codeSystem: 'SNOMEDCT',
+          codeSystemVersion: '2026-01-01',
+        },
+      },
+    });
+  });
+
+  it('explains when no expression can be worked out', async () => {
+    open({ ...SET, type: 'MANUAL', ecl: '' });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+    button(page, 'Suggest an ECL expression')?.click();
+    await fixture.whenStable();
+    http
+      .expectOne('/api/value-sets/7/ecl-suggestion')
+      .flush({ detail: 'The list has no active concepts, so there is nothing for an expression to match.' }, { status: 400, statusText: 'Bad Request' });
+    await fixture.whenStable();
+    expect(page.querySelector('dialog [role="alert"]')?.textContent).toContain('no active concepts');
+    expect(button(page, 'Create an ECL value set from this')).toBeUndefined();
+  });
+
   it('offers no identifier import for a set defined by ECL', async () => {
     open(SET);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);

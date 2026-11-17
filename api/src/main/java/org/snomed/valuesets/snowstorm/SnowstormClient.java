@@ -3,6 +3,7 @@ package org.snomed.valuesets.snowstorm;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
@@ -170,8 +171,44 @@ public class SnowstormClient {
 	/** Why a concept was made inactive and what the historical association reference sets point to instead. */
 	public Inactivation inactivation(String conceptId, String branch) {
 		BrowserConcept concept = browserConcept(conceptId, branch, US_ENGLISH);
-		return new Inactivation(concept.active(), concept.inactivationIndicator(),
+		return new Inactivation(concept.active(), termOf(concept.pt()), concept.inactivationIndicator(),
 				concept.associationTargets() == null ? Map.of() : concept.associationTargets());
+	}
+
+	/**
+	 * The concept a description belongs to, for when someone has copied a description
+	 * identifier instead of a concept identifier. Empty when the branch has no such description.
+	 */
+	public Optional<String> conceptIdOfDescription(String descriptionId, String branch) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		if (!descriptionId.matches("\\d{6,18}")) {
+			throw new SnowstormException("Description identifier is not valid: " + descriptionId, true, null);
+		}
+		SnowstormDescription description;
+		try {
+			description = restClient.get()
+					.uri(uriBuilder -> uriBuilder
+							.pathSegment(branch.split("/"))
+							.pathSegment("descriptions", descriptionId)
+							.build())
+					.retrieve()
+					.body(SnowstormDescription.class);
+		}
+		catch (RestClientResponseException e) {
+			if (e.getStatusCode().is4xxClientError()) {
+				return Optional.empty();
+			}
+			throw new SnowstormException("Snowstorm returned an error.", false, e);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+		}
+		return Optional.ofNullable(description).map(SnowstormDescription::conceptId);
+	}
+
+	record SnowstormDescription(String descriptionId, String conceptId) {
 	}
 
 	private BrowserConcept browserConcept(String conceptId, String branch, String acceptLanguage) {

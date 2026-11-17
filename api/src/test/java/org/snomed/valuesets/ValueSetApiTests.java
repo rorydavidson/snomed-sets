@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -1049,7 +1050,7 @@ class ValueSetApiTests {
 		Map<String, List<String>> targets = new LinkedHashMap<>();
 		targets.put("SAME_AS", List.of("233678006"));
 		targets.put("POSSIBLY_EQUIVALENT_TO", List.of("389145006", "195967001"));
-		given(snowstorm.inactivation("1234567", RELEASE)).willReturn(new Inactivation(false, "DUPLICATE", targets));
+		given(snowstorm.inactivation("1234567", RELEASE)).willReturn(new Inactivation(false, "Old term", "DUPLICATE", targets));
 		given(snowstorm.activeConcepts(List.of("233678006", "389145006", "195967001"), RELEASE))
 				.willReturn(pageOf(CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA, ASTHMA));
 	}
@@ -1325,5 +1326,112 @@ class ValueSetApiTests {
 				.andExpect(jsonPath("$.names.61000202103").value("Norwegian Bokmål language reference set"))
 				.andExpect(jsonPath("$.descriptions[0].moduleId").value("51000202101"))
 				.andExpect(jsonPath("$.internationalModules", contains("900000000000207008")));
+	}
+
+	private static final Concept DIABETES = new Concept("44054006", "Type 2 diabetes mellitus",
+			"Type 2 diabetes mellitus (disorder)", "en");
+
+	private static String identifierCheck(String branch, String entries) {
+		return """
+				{"branch": "%s", "entries": [%s]}
+				""".formatted(branch, entries);
+	}
+
+	@Test
+	void checkingImportedIdentifiersSortsThemIntoFoundInactiveAndRejected() throws Exception {
+		given(snowstorm.conceptIdOfDescription("301484010", RELEASE)).willReturn(Optional.of("389145006"));
+		given(snowstorm.activeConcepts(List.of("195967001", "233678006", "100000000", "10000006", "389145006"), RELEASE))
+				.willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA));
+		Map<String, List<String>> targets = new LinkedHashMap<>();
+		targets.put("SAME_AS", List.of("233678006"));
+		targets.put("REPLACED_BY", List.of("44054006"));
+		given(snowstorm.inactivation("100000000", RELEASE))
+				.willReturn(new Inactivation(false, "Retired concept", "OUTDATED", targets));
+		given(snowstorm.inactivation("10000006", RELEASE))
+				.willThrow(new SnowstormException("Concept 10000006 was not found in this code system.", true, null));
+		given(snowstorm.activeConcepts(List.of("233678006", "44054006"), RELEASE))
+				.willReturn(pageOf(CHILDHOOD_ASTHMA, DIABETES));
+
+		mvc.perform(post("/api/identifier-checks").contentType(MediaType.APPLICATION_JSON)
+				.content(identifierCheck(RELEASE, """
+						{"identifier": "195967001", "term": "ASTHMA"},
+						{"identifier": "233678006", "term": "Asthma in children"},
+						{"identifier": " 195967001 "},
+						{"identifier": "301484010"},
+						{"identifier": "100000000"},
+						{"identifier": "abc"},
+						{"identifier": "195967002"},
+						{"identifier": "100022"},
+						{"identifier": "10000006"}
+						"""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.entryCount").value(9))
+				.andExpect(jsonPath("$.duplicateCount").value(1))
+				.andExpect(jsonPath("$.found[*].conceptId", contains("195967001", "233678006", "389145006")))
+				.andExpect(jsonPath("$.found[0].termDiffers").value(false))
+				.andExpect(jsonPath("$.found[1].termDiffers").value(true))
+				.andExpect(jsonPath("$.found[1].suppliedTerm").value("Asthma in children"))
+				.andExpect(jsonPath("$.found[2].descriptionId").value("301484010"))
+				.andExpect(jsonPath("$.inactive", hasSize(1)))
+				.andExpect(jsonPath("$.inactive[0].term").value("Retired concept"))
+				.andExpect(jsonPath("$.inactive[0].reason").value("OUTDATED"))
+				.andExpect(jsonPath("$.inactive[0].replacements[*].conceptId", contains("44054006", "233678006")))
+				.andExpect(jsonPath("$.inactive[0].replacements[1].alreadyInSet").value(true))
+				.andExpect(jsonPath("$.rejected[*].identifier", contains("abc", "195967002", "100022", "10000006")))
+				.andExpect(jsonPath("$.rejected[*].reason",
+						contains("NOT_AN_IDENTIFIER", "INVALID_CHECK_DIGIT", "NOT_A_CONCEPT", "NOT_IN_RELEASE")));
+	}
+
+	@Test
+	void aDescriptionThatIsNotInTheReleaseIsRejected() throws Exception {
+		mvc.perform(post("/api/identifier-checks").contentType(MediaType.APPLICATION_JSON)
+				.content(identifierCheck(RELEASE, "{\"identifier\": \"301484010\"}"))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.rejected[0].identifier").value("301484010"))
+				.andExpect(jsonPath("$.rejected[0].reason").value("NOT_IN_RELEASE"));
+	}
+
+	@Test
+	void anIdentifierCheckNeedsAValidBranchAndSomeIdentifiers() throws Exception {
+		mvc.perform(post("/api/identifier-checks").contentType(MediaType.APPLICATION_JSON)
+				.content(identifierCheck("MAIN/../secrets", "{\"identifier\": \"195967001\"}"))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+		mvc.perform(post("/api/identifier-checks").contentType(MediaType.APPLICATION_JSON)
+				.content(identifierCheck(RELEASE, ""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void anEclExpressionCanFillAHandPickedListOnce() throws Exception {
+		given(snowstorm.expand("< 195967001", RELEASE, 0, 2000))
+				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA), 2, 0, 2000));
+
+		mvc.perform(post("/api/identifier-checks/ecl").contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"branch": "%s", "ecl": "< 195967001"}
+						""".formatted(RELEASE))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.entryCount").value(2))
+				.andExpect(jsonPath("$.found[*].conceptId", contains("233678006", "389145006")))
+				.andExpect(jsonPath("$.inactive", hasSize(0)));
+	}
+
+	@Test
+	void anEclExpressionMatchingMoreThanAListCanHoldIsRefused() throws Exception {
+		given(snowstorm.expand("<< 404684003", RELEASE, 0, 2000))
+				.willReturn(new ExpansionPage(List.of(ASTHMA), 120000, 0, 2000));
+
+		mvc.perform(post("/api/identifier-checks/ecl").contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"branch": "%s", "ecl": "<< 404684003"}
+						""".formatted(RELEASE))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail", containsString("matches 120000 concepts")));
 	}
 }

@@ -11,24 +11,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.Inactivation;
-import org.snomed.valuesets.snowstorm.SnowstormClient;
-import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.snomed.valuesets.user.CurrentUser;
 import org.snomed.valuesets.valueset.UpgradePreview.Availability;
 import org.snomed.valuesets.valueset.UpgradePreview.Change;
 import org.snomed.valuesets.valueset.UpgradePreview.InactiveMember;
-import org.snomed.valuesets.valueset.UpgradePreview.Replacement;
 import org.snomed.valuesets.valueset.UpgradePreview.TermChange;
 import org.snomed.valuesets.valueset.UpgradePreview.UpgradeView;
 import org.snomed.valuesets.valueset.ValueSetUpgradeChange.Type;
@@ -47,10 +39,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ValueSetUpgradeService {
 
-	private static final int SNOWSTORM_BATCH_SIZE = 100;
-	/** Inactive concepts are looked up one by one, so a few at a time to spare Snowstorm. */
-	private static final int PARALLEL_LOOKUPS = 8;
-	private static final String NOT_IN_RELEASE = "NOT_IN_RELEASE";
 	private static final Comparator<Concept> BY_TERM = Comparator
 			.comparing(Concept::preferredTerm, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
 			.thenComparing(Concept::conceptId);
@@ -60,18 +48,18 @@ public class ValueSetUpgradeService {
 	private final ValueSetMemberRepository members;
 	private final ValueSetUpgradeRepository upgrades;
 	private final ValueSetUpgradeChangeRepository changes;
-	private final SnowstormClient snowstorm;
+	private final ConceptLookup lookup;
 	private final TransactionTemplate transaction;
 
 	public ValueSetUpgradeService(ValueSetService valueSetService, ValueSetRepository valueSets,
 			ValueSetMemberRepository members, ValueSetUpgradeRepository upgrades,
-			ValueSetUpgradeChangeRepository changes, SnowstormClient snowstorm, TransactionTemplate transaction) {
+			ValueSetUpgradeChangeRepository changes, ConceptLookup lookup, TransactionTemplate transaction) {
 		this.valueSetService = valueSetService;
 		this.valueSets = valueSets;
 		this.members = members;
 		this.upgrades = upgrades;
 		this.changes = changes;
-		this.snowstorm = snowstorm;
+		this.lookup = lookup;
 		this.transaction = transaction;
 	}
 
@@ -208,7 +196,7 @@ public class ValueSetUpgradeService {
 
 	private Plan planHandPicked(ValueSet valueSet, String toBranch) {
 		List<Concept> current = valueSetService.workingList(valueSet);
-		Map<String, Concept> active = activeConcepts(current.stream().map(Concept::conceptId).toList(), toBranch);
+		Map<String, Concept> active = lookup.activeConcepts(current.stream().map(Concept::conceptId).toList(), toBranch);
 
 		// Stored terms are replaced by the new release's, so the list reads as the release does.
 		List<Concept> retained = current.stream()
@@ -218,31 +206,19 @@ public class ValueSetUpgradeService {
 		Set<String> retainedIds = retained.stream().map(Concept::conceptId).collect(Collectors.toSet());
 		List<Concept> inactive = current.stream().filter(concept -> !retainedIds.contains(concept.conceptId())).toList();
 
-		Map<String, Inactivation> inactivations = inactivations(inactive, toBranch);
-		Set<String> targetIds = inactivations.values().stream()
-				.flatMap(inactivation -> inactivation.associationTargets().values().stream())
-				.flatMap(List::stream)
-				.collect(Collectors.toCollection(LinkedHashSet::new));
-		// A suggested replacement that is itself inactive in the new release is not offered.
-		Map<String, Concept> activeTargets = activeConcepts(List.copyOf(targetIds), toBranch);
+		Map<String, Inactivation> inactivations = lookup.inactivations(
+				inactive.stream().map(Concept::conceptId).toList(), toBranch);
+		ConceptLookup.Replacements replacements = lookup.replacements(inactivations, toBranch, retainedIds);
 
 		List<InactiveMember> inactivated = inactive.stream().map(concept -> {
 			Inactivation inactivation = inactivations.get(concept.conceptId());
-			List<Replacement> replacements = new ArrayList<>();
-			// Sorted by association so the same release always gives the same order.
-			new TreeMap<>(inactivation.associationTargets()).forEach((association, targets) -> targets.stream()
-					.distinct()
-					.filter(activeTargets::containsKey)
-					.map(activeTargets::get)
-					.forEach(target -> replacements.add(new Replacement(target.conceptId(), target.preferredTerm(),
-							association, retainedIds.contains(target.conceptId())))));
-			return new InactiveMember(concept.conceptId(), concept.preferredTerm(), inactivation.indicator(), replacements,
-					!concept.active());
+			return new InactiveMember(concept.conceptId(), concept.preferredTerm(), inactivation.indicator(),
+					replacements.byConcept().get(concept.conceptId()), !concept.active());
 		}).toList();
 
 		Map<String, Concept> before = byId(current);
 		return new Plan(previewOf(valueSet, toBranch, current.size(), List.of(), List.of(), termChanges(before, retained),
-				inactivated), retained, byId(inactive), activeTargets, List.of());
+				inactivated), retained, byId(inactive), replacements.concepts(), List.of());
 	}
 
 	private static UpgradePreview previewOf(ValueSet valueSet, String toBranch, long countBefore, List<Concept> added,
@@ -260,57 +236,6 @@ public class ValueSetUpgradeService {
 				.map(concept -> new TermChange(concept.conceptId(), before.get(concept.conceptId()).preferredTerm(),
 						concept.preferredTerm()))
 				.toList();
-	}
-
-	/** The given concepts that are active on a branch, with their terms there. */
-	private Map<String, Concept> activeConcepts(List<String> conceptIds, String branch) {
-		Map<String, Concept> found = new HashMap<>();
-		for (int start = 0; start < conceptIds.size(); start += SNOWSTORM_BATCH_SIZE) {
-			List<String> batch = conceptIds.subList(start, Math.min(start + SNOWSTORM_BATCH_SIZE, conceptIds.size()));
-			snowstorm.activeConcepts(batch, branch).items().forEach(concept -> found.put(concept.conceptId(), concept));
-		}
-		return found;
-	}
-
-	/** Snowstorm has no call for many concepts' associations at once, so they are asked for side by side. */
-	private Map<String, Inactivation> inactivations(List<Concept> inactive, String branch) {
-		Map<String, Future<Inactivation>> pending = new LinkedHashMap<>();
-		try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_LOOKUPS, Thread.ofVirtual().factory())) {
-			inactive.forEach(concept -> pending.put(concept.conceptId(),
-					executor.submit(() -> inactivationOf(concept.conceptId(), branch))));
-		}
-		Map<String, Inactivation> found = new HashMap<>();
-		pending.forEach((conceptId, future) -> found.put(conceptId, resultOf(future)));
-		return found;
-	}
-
-	private Inactivation inactivationOf(String conceptId, String branch) {
-		try {
-			return snowstorm.inactivation(conceptId, branch);
-		}
-		catch (SnowstormException e) {
-			if (e.isCausedByRequest()) {
-				// The concept is not in this release at all, for example one from another extension.
-				return new Inactivation(false, NOT_IN_RELEASE, Map.of());
-			}
-			throw e;
-		}
-	}
-
-	private static Inactivation resultOf(Future<Inactivation> future) {
-		try {
-			return future.get();
-		}
-		catch (ExecutionException e) {
-			if (e.getCause() instanceof SnowstormException snowstormFailure) {
-				throw snowstormFailure;
-			}
-			throw new IllegalStateException(e.getCause());
-		}
-		catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			throw new SnowstormException("Looking up inactive concepts was interrupted.", false, e);
-		}
 	}
 
 	/** Checks that every accepted replacement is one the plan suggested, and returns them as keys. */

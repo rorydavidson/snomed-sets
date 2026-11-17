@@ -3,6 +3,7 @@ package org.snomed.valuesets.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,6 +18,19 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
  */
 @Configuration
 public class SecurityConfig {
+
+	/**
+	 * What a visitor may read without signing in. The service narrows these to published
+	 * community value sets, and the download to the Global Patient Set layout.
+	 */
+	private static final String[] PUBLIC_READS = {
+		"/api/value-sets",
+		"/api/value-sets/{id}",
+		"/api/value-sets/{id}/expansion",
+		"/api/value-sets/{id}/versions",
+		"/api/value-sets/{id}/versions/{number}/expansion",
+		"/api/value-sets/{id}/download",
+	};
 
 	/** The normal sign-in: SNOMED International accounts through Keycloak. */
 	@Bean
@@ -51,6 +65,7 @@ public class SecurityConfig {
 		http
 			.authorizeHttpRequests(requests -> requests
 				.requestMatchers("/actuator/health/**").permitAll()
+				.requestMatchers(HttpMethod.GET, PUBLIC_READS).permitAll()
 				.anyRequest().authenticated())
 			// Cookie-based CSRF token that the Angular HttpClient echoes back as a header.
 			.csrf(csrf -> csrf.spa())

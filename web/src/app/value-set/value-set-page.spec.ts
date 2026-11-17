@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { Session } from '../core/session';
 import { Concept, UpgradeAvailability, UpgradePreview, ValueSet, ValueSetUpgrade, ValueSetVersion } from '../core/value-set-api';
 import { ValueSetPage } from './value-set-page';
 
@@ -101,6 +102,27 @@ describe('ValueSetPage', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me' });
+  });
+
+  it('lets a visitor who has not signed in read a published set and download it only as GPS', async () => {
+    TestBed.inject(Session).state.set({ status: 'signedOut' });
+    const published: ValueSet = { ...SET, type: 'MANUAL', ecl: '', ownedByMe: false, ownerName: null, status: 'PUBLISHED', visibility: 'COMMUNITY', latestVersion: 1 };
+    fixture = TestBed.createComponent(ValueSetPage);
+    page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    // No calls that need a session: no code systems, upgrades or concept details.
+    http.expectOne('/api/value-sets/7').flush(published);
+    http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush({ items: concepts(1, 1), total: 1, offset: 0, limit: 50 });
+    await fixture.whenStable();
+
+    const downloads = Array.from(page.querySelectorAll<HTMLAnchorElement>('a[download]')).map((a) => a.getAttribute('href'));
+    expect(downloads).toEqual(['/api/value-sets/7/download?version=1']);
+    expect(button(page, 'Edit')).toBeUndefined();
+    expect(page.querySelector('a[href="/value-sets/7/edit"]')).toBeNull();
+    expect(page.querySelector('tbody .link-button')).toBeNull();
+    expect(button(page, 'Suggest an ECL expression')).toBeUndefined();
   });
 
   afterEach(() => http.verify());

@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ValueSet } from '../core/value-set-api';
+import { Session } from '../core/session';
 import { LibraryPage } from './library-page';
 
 const ASTHMA: ValueSet = {
@@ -36,6 +37,7 @@ describe('LibraryPage', () => {
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me' });
   });
 
   it('lists value sets with a link to each', async () => {
@@ -100,6 +102,20 @@ describe('LibraryPage', () => {
     await fixture.whenStable();
     expect(names()).toEqual(['Asthma diagnoses']);
     expect(page.textContent).toContain('1 value set');
+  });
+
+  it('shows a visitor who has not signed in the library without owners or a way to create', async () => {
+    TestBed.inject(Session).state.set({ status: 'signedOut' });
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([{ ...ASTHMA, ownerName: null }]);
+    await fixture.whenStable();
+
+    expect(page.querySelector('a.set-name')?.textContent).toContain('Asthma diagnoses');
+    expect(page.textContent).not.toContain('New value set');
+    expect(page.querySelector('th')?.parentElement?.textContent).not.toContain('Owner');
+    expect(page.querySelector<HTMLAnchorElement>('a[href="/sign-in"]')).not.toBeNull();
   });
 
   it('shows the backend explanation and a retry when loading fails', async () => {

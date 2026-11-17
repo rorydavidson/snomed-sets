@@ -10,6 +10,11 @@
       </nav>
       <span class="who">{{ state.name }}</span>
       <button type="button" class="button button-on-dark" (click)="session.signOut()">Sign out</button>
+    } @else if (state.status === 'signedOut') {
+      <nav aria-label="Primary">
+        <a routerLink="/">Library</a>
+      </nav>
+      <a class="button button-on-dark" [href]="signInUrl">Sign in</a>
     }
   }
 </header>
@@ -17,18 +22,6 @@
 @switch (session.state().status) {
   @case ('loading') {
     <main class="page"><p class="muted" role="status">Loading…</p></main>
-  }
-  @case ('signedOut') {
-    <main class="page sign-in">
-      <img src="logo.svg" alt="" width="72" height="72" />
-      <p class="overline">Community library</p>
-      <h1 class="display">shared value sets</h1>
-      <p class="lead">
-        Find, build and share SNOMED CT value sets with the community. Sign in with your SNOMED
-        International account to continue.
-      </p>
-      <a class="button button-primary" [href]="signInUrl">Sign in</a>
-    </main>
   }
   @case ('error') {
     <main class="page">
@@ -38,7 +31,8 @@
       </div>
     </main>
   }
-  @case ('signedIn') {
+  @default {
+    <!-- Signed in, or browsing the published library without signing in. -->
     <router-outlet />
   }
 }

@@ -36,7 +36,9 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 				valueSet.getDescription(),
 				showPublished ? latest.getEcl() : valueSet.getEcl(),
 				branch, ValueSet.releaseOf(branch),
-				valueSet.getStatus(), valueSet.getVisibility(), valueSet.getOwnerName(), owner,
+				valueSet.getStatus(), valueSet.getVisibility(),
+				// People who have not signed in are not shown who made a set.
+				user.isSignedIn() ? valueSet.getOwnerName() : null, owner,
 				valueSet.getUpdatedAt(), latest == null ? null : latest.getVersionNumber(),
 				owner && unpublishedChanges, valueSet.getTags(), valueSet.isDeprecated(),
 				// The version in use is only deprecated when there is no other to fall back to.

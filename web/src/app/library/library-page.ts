@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { SIGN_IN_URL, Session } from '../core/session';
 import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 
 @Component({
@@ -10,8 +11,17 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
     <main class="page">
       <div class="card-heading">
         <h1 class="grow-heading">Library</h1>
-        <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
+        @if (signedIn()) {
+          <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
+        }
       </div>
+      @if (!signedIn()) {
+        <p class="lead">
+          Published SNOMED CT value sets shared with the community. Anyone can view them and download
+          them in the Global Patient Set layout.
+          <a [href]="signInUrl">Sign in</a> with your SNOMED International account to build and share your own.
+        </p>
+      }
 
       @if (error(); as message) {
         <div class="error-panel" role="alert">
@@ -51,7 +61,9 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                   <th scope="col">Defined by</th>
                   <th scope="col">Edition</th>
                   <th scope="col">Release</th>
-                  <th scope="col">Owner</th>
+                  @if (signedIn()) {
+                    <th scope="col">Owner</th>
+                  }
                   <th scope="col">Updated</th>
                 </tr>
               </thead>
@@ -95,7 +107,9 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
                         <span class="muted" title="Built on the live branch, not a release">Live branch</span>
                       }
                     </td>
-                    <td>{{ set.ownedByMe ? 'You' : set.ownerName }}</td>
+                    @if (signedIn()) {
+                      <td>{{ set.ownedByMe ? 'You' : set.ownerName }}</td>
+                    }
                     <td class="no-wrap">{{ set.updatedAt | date: 'd MMM y' }}</td>
                   </tr>
                 }
@@ -111,6 +125,10 @@ import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 })
 export class LibraryPage implements OnInit {
   private readonly api = inject(ValueSetApi);
+  private readonly session = inject(Session);
+
+  protected readonly signedIn = computed(() => this.session.state().status === 'signedIn');
+  protected readonly signInUrl = SIGN_IN_URL;
 
   protected readonly valueSets = signal<ValueSet[] | null>(null);
   protected readonly error = signal<string | null>(null);

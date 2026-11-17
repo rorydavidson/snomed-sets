@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -457,7 +458,8 @@ class ValueSetApiTests {
 		long unpublished = createSetOwnedBy("alice", "COMMUNITY");
 		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("bob")))
 				.andExpect(status().isConflict());
-		mvc.perform(get("/api/value-sets/{id}/download", unpublished)).andExpect(status().isUnauthorized());
+		// Not published, so to someone who has not signed in it does not exist.
+		mvc.perform(get("/api/value-sets/{id}/download", unpublished)).andExpect(status().isNotFound());
 
 		jdbc.update("UPDATE value_set SET visibility = 'PRIVATE' WHERE id = ?", unpublished);
 		mvc.perform(get("/api/value-sets/{id}/download", unpublished).with(signedInAs("alice")))
@@ -810,8 +812,9 @@ class ValueSetApiTests {
 	}
 
 	@Test
-	void apiRequiresSignIn() throws Exception {
-		mvc.perform(get("/api/value-sets")).andExpect(status().isUnauthorized());
+	void apiRequiresSignInExceptForReadingPublishedSets() throws Exception {
+		mvc.perform(get("/api/value-sets/{id}/members", 1)).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/tags")).andExpect(status().isUnauthorized());
 	}
 
 	@Test
@@ -821,6 +824,75 @@ class ValueSetApiTests {
 				.andExpect(jsonPath("$", hasSize(3)))
 				.andExpect(jsonPath("$[*].name", not(hasItem(PRIVATE_SAMPLE))))
 				.andExpect(jsonPath("$[0].ownedByMe").value(false));
+	}
+
+	@Test
+	void visitorsWhoHaveNotSignedInSeeOnlyPublishedCommunitySetsWithoutOwnerNames() throws Exception {
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		long published = createSetOwnedBy("alice", "COMMUNITY");
+		publish(published, "alice", "");
+		long privatePublished = createSetOwnedBy("bob", "PRIVATE");
+		publish(privatePublished, "bob", "");
+		long communityDraft = createSetOwnedBy("carol", "COMMUNITY");
+
+		mvc.perform(get("/api/value-sets"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[*].id", hasItem((int) published)))
+				.andExpect(jsonPath("$[*].id", not(hasItem((int) privatePublished))))
+				.andExpect(jsonPath("$[*].id", not(hasItem((int) communityDraft))))
+				.andExpect(jsonPath("$[*].status", not(hasItem("DRAFT"))))
+				.andExpect(jsonPath("$[0].ownerName").value(nullValue()))
+				.andExpect(jsonPath("$[0].ownedByMe").value(false));
+
+		mvc.perform(get("/api/value-sets/{id}", privatePublished)).andExpect(status().isNotFound());
+		mvc.perform(get("/api/value-sets/{id}", communityDraft)).andExpect(status().isNotFound());
+		mvc.perform(get("/api/value-sets/{id}/download", communityDraft)).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void visitorsWhoHaveNotSignedInCanViewAPublishedSetAndDownloadItOnlyAsGps() throws Exception {
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		publish(id, "alice", "");
+
+		mvc.perform(get("/api/value-sets/{id}", id))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.latestVersion").value(1))
+				.andExpect(jsonPath("$.ownerName").value(nullValue()));
+		mvc.perform(get("/api/value-sets/{id}/versions", id)).andExpect(status().isOk());
+		mvc.perform(get("/api/value-sets/{id}/expansion", id))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.total").value(2));
+		mvc.perform(get("/api/value-sets/{id}/versions/1/expansion", id)).andExpect(status().isOk());
+		mvc.perform(get("/api/value-sets/{id}/download", id))
+				.andExpect(status().isOk())
+				.andExpect(content().string(containsString("195967001")));
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("format", "fhir"))
+				.andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("version", "draft"))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void visitorsWhoHaveNotSignedInCannotChangeAnythingOrUseTheOtherEndpoints() throws Exception {
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		publish(id, "alice", "");
+
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON).content(NEW_SET).with(csrf()))
+				.andExpect(status().isUnauthorized());
+		mvc.perform(delete("/api/value-sets/{id}", id).with(csrf())).andExpect(status().isUnauthorized());
+		mvc.perform(post("/api/value-sets/{id}/versions", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"note\": \"\"}").with(csrf()))
+				.andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/value-sets/{id}/members", id)).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/me")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/tags")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/code-systems")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/concepts").param("term", "asthma")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/concepts/195967001")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/ecl/expansion").param("ecl", "<< 195967001")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

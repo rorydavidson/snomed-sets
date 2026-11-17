@@ -8,6 +8,14 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 
 ## What it does
 
+### Without signing in
+
+- Anyone can open the library and see the value sets that have been published and shared with
+  the community. Drafts and private sets are not shown, and nor is who made a set.
+- A published set can be opened to read its definition, versions and concept lists, and downloaded
+  in the Global Patient Set layout. Other formats, concept details and everything that changes a
+  set need a SNOMED International account.
+
 ### Library
 
 - Every value set you own, and every set others have shared with the community, in one compact table.

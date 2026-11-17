@@ -12,6 +12,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.snomed.valuesets.snowstorm.CodeSystem;
+import org.snomed.valuesets.snowstorm.CodeSystemVersion;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
@@ -80,7 +81,9 @@ public class ValueSetService {
 	public ValueSetView create(ValueSetDefinition definition, CurrentUser user) {
 		requireEclIfNeeded(definition);
 		boolean manual = definition.type() == ValueSet.DefinitionType.MANUAL;
-		String branch = branchOf(definition.codeSystem());
+		String branch = definition.codeSystemVersion() == null
+				? releaseBranchOf(definition.codeSystem())
+				: releaseBranchOf(definition.codeSystem(), definition.codeSystemVersion());
 		List<Concept> concepts = manual ? resolveConcepts(definition, branch, List.of()) : List.of();
 		String ecl = manual ? "" : withTerms(definition.ecl(), branch);
 
@@ -238,6 +241,36 @@ public class ValueSetService {
 	 * stable that can be referred to, not a draft.
 	 */
 	public GpsFile download(long id, CurrentUser user) {
+		Download download = downloadable(id, user);
+		return GpsFile.of(download.valueSet(), download.version().getVersionNumber(), download.concepts());
+	}
+
+	/**
+	 * The same published version as a FHIR R4 ValueSet resource, with its definition and its
+	 * stored concept list as the expansion.
+	 *
+	 * @param baseUrl where this application is reached, used for the resource's canonical URL
+	 */
+	public FhirValueSet downloadFhir(long id, CurrentUser user, String baseUrl) {
+		Download download = downloadable(id, user);
+		return FhirValueSet.of(download.valueSet(), download.version(), download.concepts(), baseUrl,
+				editionModuleOf(download.valueSet().getCodeSystem()));
+	}
+
+	/** The edition's module, for the SNOMED CT version URI. A download still works without it. */
+	private String editionModuleOf(String codeSystem) {
+		try {
+			return snowstorm.editionModuleId(codeSystem);
+		}
+		catch (SnowstormException e) {
+			return null;
+		}
+	}
+
+	private record Download(ValueSet valueSet, ValueSetVersion version, Collection<Concept> concepts) {
+	}
+
+	private Download downloadable(long id, CurrentUser user) {
 		ValueSet valueSet = findVisible(id, user);
 		if (valueSet.getVisibility() != ValueSet.Visibility.COMMUNITY) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -252,7 +285,7 @@ public class ValueSetService {
 				? members.findByValueSetIdAndVersionNumberOrderByPreferredTermAscConceptIdAsc(valueSet.getId(),
 						latest.getVersionNumber()).stream().map(ValueSetMember::toConcept).toList()
 				: expandFully(latest.getEcl(), latest.getBranch());
-		return GpsFile.of(valueSet, latest.getVersionNumber(), concepts);
+		return new Download(valueSet, latest, concepts);
 	}
 
 	public VersionView publish(long id, String note, CurrentUser user) {
@@ -267,39 +300,47 @@ public class ValueSetService {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
 					"Nothing has changed since version " + latest.getVersionNumber() + ".");
 		}
-		// Numbers are never reused, so a deprecated version still counts.
-		int number = all.isEmpty() ? 1 : all.get(0).getVersionNumber() + 1;
 		if (valueSet.isManual()) {
-			return publishHandPicked(valueSet, number, note);
+			requireMembers(members.countByValueSetIdAndVersionNumber(valueSet.getId(), ValueSetMember.WORKING_LIST));
+			return VersionView.of(transaction.execute(status -> recordVersion(valueSet, null, note)));
 		}
 		// Only an ECL definition that Snowstorm can expand may be published.
 		Collection<Concept> concepts = expandFully(valueSet.getEcl(), valueSet.getBranch());
-
-		ValueSetVersion published = transaction.execute(status -> {
-			valueSet.markPublished();
-			valueSets.save(valueSet);
-			storeVersionContent(valueSet, number, concepts);
-			return versions.save(new ValueSetVersion(valueSet, number, concepts.size(), note));
-		});
-		return VersionView.of(published);
+		return VersionView.of(transaction.execute(status -> recordVersion(valueSet, concepts, note)));
 	}
 
-	private VersionView publishHandPicked(ValueSet valueSet, int number, String note) {
-		long count = members.countByValueSetIdAndVersionNumber(valueSet.getId(), ValueSetMember.WORKING_LIST);
+	static void requireMembers(long count) {
 		if (count == 0) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Add at least one concept before publishing.");
 		}
-		ValueSetVersion published = transaction.execute(status -> {
-			valueSet.markPublished();
-			valueSets.save(valueSet);
+	}
+
+	/**
+	 * Stores the current definition as the next version. Must run inside a transaction.
+	 *
+	 * @param eclContent what an ECL definition expands to now; null for a hand-picked list,
+	 *        whose working list is copied instead
+	 */
+	ValueSetVersion recordVersion(ValueSet valueSet, Collection<Concept> eclContent, String note) {
+		List<ValueSetVersion> all = allVersionsOf(valueSet);
+		// Numbers are never reused, so a deprecated version still counts.
+		int number = all.isEmpty() ? 1 : all.get(0).getVersionNumber() + 1;
+		valueSet.markPublished();
+		valueSets.save(valueSet);
+		long count;
+		if (eclContent == null) {
 			members.copyWorkingListToVersion(valueSet.getId(), number);
-			return versions.save(new ValueSetVersion(valueSet, number, count, note));
-		});
-		return VersionView.of(published);
+			count = members.countByValueSetIdAndVersionNumber(valueSet.getId(), number);
+		}
+		else {
+			storeVersionContent(valueSet, number, eclContent);
+			count = eclContent.size();
+		}
+		return versions.save(new ValueSetVersion(valueSet, number, count, note));
 	}
 
 	/** Every concept an ECL expression matches right now. */
-	private Collection<Concept> expandFully(String ecl, String branch) {
+	Collection<Concept> expandFully(String ecl, String branch) {
 		// Keyed by concept so a concept that shows up on two pages is stored once.
 		Map<String, Concept> concepts = new LinkedHashMap<>();
 		ExpansionPage page;
@@ -331,7 +372,7 @@ public class ValueSetService {
 				.toList());
 	}
 
-	private ValueSetView view(ValueSet valueSet, ValueSetVersion latest, CurrentUser user) {
+	ValueSetView view(ValueSet valueSet, ValueSetVersion latest, CurrentUser user) {
 		// Working this out costs a query for a hand-picked set, and only the owner is told.
 		boolean unpublishedChanges = latest != null && valueSet.isOwnedBy(user.subject())
 				&& differsFrom(valueSet, latest);
@@ -339,11 +380,15 @@ public class ValueSetService {
 	}
 
 	private boolean differsFrom(ValueSet valueSet, ValueSetVersion version) {
+		// A move to another release is a change even when the concepts stayed the same.
+		if (!version.getBranch().equals(valueSet.getBranch())) {
+			return true;
+		}
 		if (valueSet.isManual()) {
 			return !members.findConceptIds(valueSet.getId(), ValueSetMember.WORKING_LIST)
 					.equals(members.findConceptIds(valueSet.getId(), version.getVersionNumber()));
 		}
-		return !version.getEcl().equals(valueSet.getEcl()) || !version.getBranch().equals(valueSet.getBranch());
+		return !version.getEcl().equals(valueSet.getEcl());
 	}
 
 	/**
@@ -368,14 +413,33 @@ public class ValueSetService {
 		return withTerms.length() <= MAX_ECL_LENGTH ? withTerms : ecl;
 	}
 
-	/** The branch a code system's content is on, according to Snowstorm. */
-	private String branchOf(String codeSystem) {
-		return snowstorm.codeSystems().stream()
-				.filter(candidate -> candidate.shortName().equals(codeSystem))
-				.map(CodeSystem::branchPath)
+	/**
+	 * The branch of the newest release of a code system, so a new value set does not change
+	 * with content that has not been released yet. A code system with no release yet has
+	 * only its live branch.
+	 */
+	private String releaseBranchOf(String codeSystem) {
+		CodeSystem found = codeSystem(codeSystem);
+		return found.latestVersionBranch() != null ? found.latestVersionBranch() : found.branchPath();
+	}
+
+	/** The branch of a chosen release, which must be one Snowstorm lists for the code system. */
+	private String releaseBranchOf(String codeSystem, String version) {
+		CodeSystem found = codeSystem(codeSystem);
+		return snowstorm.codeSystemVersions(found.shortName()).stream()
+				.filter(candidate -> candidate.version().equals(version))
+				.map(CodeSystemVersion::branchPath)
 				.findFirst()
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-						"Snowstorm has no code system called " + codeSystem + "."));
+						codeSystem + " has no release " + version + "."));
+	}
+
+	CodeSystem codeSystem(String shortName) {
+		return snowstorm.codeSystems().stream()
+				.filter(candidate -> candidate.shortName().equals(shortName))
+				.findFirst()
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+						"Snowstorm has no code system called " + shortName + "."));
 	}
 
 	private static void requireEclIfNeeded(ValueSetDefinition definition) {
@@ -410,13 +474,13 @@ public class ValueSetService {
 		return requested.stream().map(known::get).toList();
 	}
 
-	private void saveWorkingList(ValueSet valueSet, List<Concept> concepts) {
+	void saveWorkingList(ValueSet valueSet, List<Concept> concepts) {
 		List<ValueSetMember> rows = new ArrayList<>();
 		concepts.forEach(concept -> rows.add(new ValueSetMember(valueSet.getId(), concept)));
 		members.saveAll(rows);
 	}
 
-	private List<Concept> workingList(ValueSet valueSet) {
+	List<Concept> workingList(ValueSet valueSet) {
 		return members.findByValueSetIdAndVersionNumberOrderByPreferredTermAscConceptIdAsc(valueSet.getId(),
 				ValueSetMember.WORKING_LIST).stream().map(ValueSetMember::toConcept).toList();
 	}
@@ -433,7 +497,7 @@ public class ValueSetService {
 		return versions.findByValueSetIdOrderByVersionNumberDesc(valueSet.getId());
 	}
 
-	private ValueSetVersion latestVersionOf(ValueSet valueSet) {
+	ValueSetVersion latestVersionOf(ValueSet valueSet) {
 		return versionInUse(allVersionsOf(valueSet));
 	}
 
@@ -451,14 +515,14 @@ public class ValueSetService {
 				.orElse(newestFirst.isEmpty() ? null : newestFirst.get(0));
 	}
 
-	private ValueSet findVisible(long id, CurrentUser user) {
+	ValueSet findVisible(long id, CurrentUser user) {
 		// A set the caller may not see is reported as missing, so its existence is not revealed.
 		return valueSets.findVisibleById(id, user.subject())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Value set not found"));
 	}
 
 	/** Only the owner may change, publish or delete a set, even one that everybody can see. */
-	private ValueSet findOwned(long id, CurrentUser user) {
+	ValueSet findOwned(long id, CurrentUser user) {
 		ValueSet valueSet = findVisible(id, user);
 		if (!valueSet.isOwnedBy(user.subject())) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can change this value set.");

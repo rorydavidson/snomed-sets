@@ -20,6 +20,8 @@ import jakarta.validation.constraints.Size;
  *        Like the type, it cannot be changed once the value set exists.
  * @param ecl the definition of an ECL value set; ignored for a hand-picked one
  * @param tags free-text labels, at most ten
+ * @param codeSystemVersion the release to build a new value set on, for example 2026-01-01; the
+ *        latest when left out. Ignored when editing: a value set moves to another release only by an upgrade.
  * @param conceptIds the full list of a hand-picked value set; ignored for an ECL one.
  *        Only identifiers are accepted. The terms are looked up in Snowstorm, so a
  *        person cannot attach a made-up term to a concept.
@@ -31,11 +33,13 @@ public record ValueSetDefinition(ValueSet.DefinitionType type,
 		@Size(max = 100) String codeSystem,
 		@NotNull ValueSet.Visibility visibility,
 		@Size(max = MAX_MEMBERS) List<@NotNull @Pattern(regexp = CONCEPT_ID_REGEX) String> conceptIds,
-		@Size(max = MAX_TAGS) List<@Pattern(regexp = TAG_REGEX) String> tags) {
+		@Size(max = MAX_TAGS) List<@Pattern(regexp = TAG_REGEX) String> tags,
+		@Pattern(regexp = RELEASE_REGEX) String codeSystemVersion) {
 
 	public static final String INTERNATIONAL_EDITION = "SNOMEDCT";
 	public static final int MAX_MEMBERS = 2000;
 	public static final String CONCEPT_ID_REGEX = "\\d{6,18}";
+	public static final String RELEASE_REGEX = "\\d{4}-\\d{2}-\\d{2}";
 	public static final int MAX_TAGS = 10;
 	/** Letters, digits, spaces, hyphens and underscores, starting with a letter or digit. At most 40 characters. */
 	public static final String TAG_REGEX = "[\\p{L}\\p{N}][\\p{L}\\p{N} _-]{0,39}";

@@ -2,6 +2,7 @@ package org.snomed.valuesets.valueset;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 /** Access rules live in {@link ValueSetService}; this class only maps HTTP to it. */
 @Validated
@@ -130,6 +132,19 @@ public class ValueSetController {
 				.header(HttpHeaders.CONTENT_DISPOSITION,
 						ContentDisposition.attachment().filename(file.fileName()).build().toString())
 				.body(file.content());
+	}
+
+	/** The same version as a FHIR R4 ValueSet resource. */
+	@GetMapping(value = "/value-sets/{id}/download", params = "format=fhir")
+	public ResponseEntity<Map<String, Object>> downloadFhir(@PathVariable long id, CurrentUser user) {
+		// The proxy's forwarded headers are honoured, so this is the address people use.
+		String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+		FhirValueSet file = service.downloadFhir(id, user, baseUrl);
+		return ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType(FhirValueSet.MEDIA_TYPE))
+				.header(HttpHeaders.CONTENT_DISPOSITION,
+						ContentDisposition.attachment().filename(file.fileName()).build().toString())
+				.body(file.resource());
 	}
 
 	@GetMapping("/value-sets/{id}/versions")

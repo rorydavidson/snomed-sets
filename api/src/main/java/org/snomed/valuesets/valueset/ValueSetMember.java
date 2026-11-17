@@ -42,6 +42,10 @@ public class ValueSetMember {
 	@Column(name = "fully_specified_name", nullable = false, length = 500)
 	private String fullySpecifiedName;
 
+	/** False for a concept kept in a hand-picked list after the release it is on made it inactive. */
+	@Column(nullable = false)
+	private boolean active;
+
 	protected ValueSetMember() {
 		// for JPA
 	}
@@ -53,6 +57,7 @@ public class ValueSetMember {
 		this.preferredTerm = concept.preferredTerm() == null ? "" : concept.preferredTerm();
 		this.preferredTermLanguage = languageOf(concept);
 		this.fullySpecifiedName = concept.fullySpecifiedName() == null ? "" : concept.fullySpecifiedName();
+		this.active = concept.active();
 	}
 
 	/** Snowstorm's content is English unless it says otherwise. */
@@ -61,7 +66,7 @@ public class ValueSetMember {
 	}
 
 	public ExpansionPage.Concept toConcept() {
-		return new ExpansionPage.Concept(conceptId, preferredTerm, fullySpecifiedName, preferredTermLanguage);
+		return new ExpansionPage.Concept(conceptId, preferredTerm, fullySpecifiedName, preferredTermLanguage, active);
 	}
 
 	public String getConceptId() {

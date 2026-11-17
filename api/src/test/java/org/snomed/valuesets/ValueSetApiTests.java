@@ -1,6 +1,7 @@
 package org.snomed.valuesets;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
@@ -18,14 +19,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.snomed.valuesets.snowstorm.CodeSystem;
+import org.snomed.valuesets.snowstorm.CodeSystemVersion;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
+import org.snomed.valuesets.snowstorm.Inactivation;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +74,9 @@ class ValueSetApiTests {
 	@MockitoBean
 	SnowstormClient snowstorm;
 
+	/** Where a value set created through the API is put: the latest International Edition release. */
+	private static final String RELEASE = "MAIN/2026-01-01";
+
 	private static final String NEW_SET = """
 			{"name": "Childhood asthma", "description": "Asthma with onset in childhood.",
 			 "ecl": "<< 233678006", "branch": "MAIN", "visibility": "PRIVATE"}
@@ -83,8 +91,9 @@ class ValueSetApiTests {
 	@BeforeEach
 	void snowstormHasTwoCodeSystems() {
 		given(snowstorm.codeSystems()).willReturn(List.of(
-				new CodeSystem("SNOMEDCT", "International Edition", "MAIN", "2026-01-01"),
-				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", "2026-03-15")));
+				new CodeSystem("SNOMEDCT", "International Edition", "MAIN", "2026-01-01", "MAIN/2026-01-01"),
+				new CodeSystem("SNOMEDCT-BE", "Belgian Edition", "MAIN/SNOMEDCT-BE", "2026-03-15",
+						"MAIN/SNOMEDCT-BE/2026-03-15")));
 	}
 
 	@AfterEach
@@ -205,7 +214,7 @@ class ValueSetApiTests {
 	}
 
 	private long createHandPicked(String subject, String visibility) throws Exception {
-		given(snowstorm.expand("195967001 OR 233678006", "MAIN", 0, 100))
+		given(snowstorm.expand("195967001 OR 233678006", RELEASE, 0, 100))
 				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA, ASTHMA), 2, 0, 100));
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
 				.content(handPicked(visibility, "195967001", "233678006")).with(signedInAs(subject)).with(csrf()))
@@ -234,7 +243,7 @@ class ValueSetApiTests {
 
 	@Test
 	void handPickedSetRejectsAConceptSnowstormDoesNotKnow() throws Exception {
-		given(snowstorm.expand("195967001 OR 999999999", "MAIN", 0, 100))
+		given(snowstorm.expand("195967001 OR 999999999", RELEASE, 0, 100))
 				.willReturn(new ExpansionPage(List.of(ASTHMA), 1, 0, 100));
 
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
@@ -249,7 +258,7 @@ class ValueSetApiTests {
 	@Test
 	void editingAHandPickedListOnlyLooksUpTheNewConcepts() throws Exception {
 		long id = createHandPicked("alice", "PRIVATE");
-		given(snowstorm.expand("389145006", "MAIN", 0, 100))
+		given(snowstorm.expand("389145006", RELEASE, 0, 100))
 				.willReturn(new ExpansionPage(List.of(ALLERGIC_ASTHMA), 1, 0, 100));
 
 		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
@@ -319,7 +328,7 @@ class ValueSetApiTests {
 				.with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.codeSystem").value("SNOMEDCT-BE"))
-				.andExpect(jsonPath("$.branch").value("MAIN/SNOMEDCT-BE"));
+				.andExpect(jsonPath("$.branch").value("MAIN/SNOMEDCT-BE/2026-03-15"));
 		long id = jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = 'alice'", Long.class);
 
 		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
@@ -330,7 +339,7 @@ class ValueSetApiTests {
 				.content(belgian.replace("Childhood asthma", "Renamed"))
 				.with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.branch").value("MAIN/SNOMEDCT-BE"));
+				.andExpect(jsonPath("$.branch").value("MAIN/SNOMEDCT-BE/2026-03-15"));
 	}
 
 	@Test
@@ -343,7 +352,7 @@ class ValueSetApiTests {
 
 	@Test
 	void savingWritesTheTermAfterIdentifiersTypedWithoutOne() throws Exception {
-		given(snowstorm.expand("233678006", "MAIN", 0, 100))
+		given(snowstorm.expand("233678006", RELEASE, 0, 100))
 				.willReturn(new ExpansionPage(List.of(CHILDHOOD_ASTHMA), 1, 0, 100));
 
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
@@ -354,7 +363,7 @@ class ValueSetApiTests {
 
 	@Test
 	void savingStillWorksWhenSnowstormCannotSupplyTheTerms() throws Exception {
-		given(snowstorm.expand("233678006", "MAIN", 0, 100))
+		given(snowstorm.expand("233678006", RELEASE, 0, 100))
 				.willThrow(new SnowstormException("Snowstorm could not be reached.", false, null));
 
 		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON).content(NEW_SET)
@@ -876,5 +885,375 @@ class ValueSetApiTests {
 	@Test
 	void signOutWithoutCsrfTokenIsRefused() throws Exception {
 		mvc.perform(post("/logout").with(oidcLogin())).andExpect(status().isForbidden());
+	}
+
+	// Upgrading to a newer release
+
+	private static final String OLD_RELEASE = "MAIN/2025-07-01";
+	private static final Concept OLD_ASTHMA_TERM = new Concept("195967001", "Asthma (old term)", "Asthma (disorder)", "en");
+	private static final Concept RETIRED = new Concept("1234567", "Retired asthma concept", "Retired (disorder)", "en");
+
+	private long insertSet(String subject, String visibility, String type, String ecl, String branch,
+			Concept... members) {
+		jdbc.update("""
+				INSERT INTO value_set (name, description, definition_type, code_system, ecl, branch, status,
+				                       visibility, owner_subject, owner_name, created_at, updated_at)
+				VALUES ('Upgrade me', '', ?, 'SNOMEDCT', ?, ?, 'DRAFT', ?, ?, 'Owner', NOW(6), NOW(6))
+				""", type, ecl, branch, visibility, subject);
+		long id = jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = ?", Long.class, subject);
+		for (Concept member : members) {
+			jdbc.update("""
+					INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term,
+					                              preferred_term_language, fully_specified_name)
+					VALUES (?, 0, ?, ?, 'en', ?)
+					""", id, member.conceptId(), member.preferredTerm(), member.fullySpecifiedName());
+		}
+		return id;
+	}
+
+	private static String upgradeRequest(String targetVersion, boolean publish, String... accepted) {
+		StringBuilder replacements = new StringBuilder();
+		for (int i = 0; i < accepted.length; i += 2) {
+			replacements.append(i == 0 ? "" : ",").append("""
+					{"inactiveConceptId": "%s", "replacementConceptId": "%s"}""".formatted(accepted[i], accepted[i + 1]));
+		}
+		return """
+				{"targetVersion": "%s", "publish": %s, "note": "Moved to the January release",
+				 "acceptedReplacements": [%s]}
+				""".formatted(targetVersion, publish, replacements);
+	}
+
+	private void eclChangesBetweenReleases() {
+		given(snowstorm.expand("<< 195967001", OLD_RELEASE, 0, 1000)).willReturn(pageOf(OLD_ASTHMA_TERM, CHILDHOOD_ASTHMA));
+		given(snowstorm.expand("<< 195967001", RELEASE, 0, 1000)).willReturn(pageOf(ASTHMA, ALLERGIC_ASTHMA));
+	}
+
+	@Test
+	void theOwnerIsToldWhenANewerReleaseIsAvailable() throws Exception {
+		long id = insertSet("alice", "COMMUNITY", "ECL", "<< 195967001", OLD_RELEASE);
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.available").value(true))
+				.andExpect(jsonPath("$.currentVersion").value("2025-07-01"))
+				.andExpect(jsonPath("$.latestVersion").value("2026-01-01"));
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.codeSystemVersion").value("2025-07-01"));
+		mvc.perform(get("/api/value-sets/{id}/upgrade", id).with(signedInAs("bob")))
+				.andExpect(status().isForbidden());
+		mvc.perform(get("/api/value-sets/{id}/upgrade/preview", id).with(signedInAs("bob")))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void aSetOnTheLatestReleaseHasNothingToUpgradeTo() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "ECL", "<< 195967001", RELEASE);
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.available").value(false));
+		mvc.perform(get("/api/value-sets/{id}/upgrade/preview", id).with(signedInAs("alice")))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.detail").value("This value set is already on the latest release of SNOMEDCT, 2026-01-01."));
+	}
+
+	@Test
+	void aSetOnTheLiveBranchCanBeMovedOntoTheLatestRelease() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.available").value(true))
+				.andExpect(jsonPath("$.currentVersion").doesNotExist());
+	}
+
+	@Test
+	void previewingAnEclUpgradeShowsWhatWouldChangeWithoutSavingAnything() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "ECL", "<< 195967001", OLD_RELEASE);
+		eclChangesBetweenReleases();
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade/preview", id).with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.fromVersion").value("2025-07-01"))
+				.andExpect(jsonPath("$.toVersion").value("2026-01-01"))
+				.andExpect(jsonPath("$.conceptCountBefore").value(2))
+				.andExpect(jsonPath("$.added[*].conceptId", contains("389145006")))
+				.andExpect(jsonPath("$.removed[*].conceptId", contains("233678006")))
+				.andExpect(jsonPath("$.termChanges[0].oldTerm").value("Asthma (old term)"))
+				.andExpect(jsonPath("$.termChanges[0].newTerm").value("Asthma"));
+
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.branch").value(OLD_RELEASE));
+		mvc.perform(get("/api/value-sets/{id}/upgrades", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$", hasSize(0)));
+	}
+
+	@Test
+	void upgradingAnEclSetAndPublishingKeepsAReportEveryoneWhoSeesTheSetCanDownload() throws Exception {
+		long id = insertSet("alice", "COMMUNITY", "ECL", "<< 195967001", OLD_RELEASE);
+		eclChangesBetweenReleases();
+
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content(upgradeRequest("2026-01-01", true)).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.valueSet.branch").value(RELEASE))
+				.andExpect(jsonPath("$.valueSet.latestVersion").value(1))
+				.andExpect(jsonPath("$.upgrade.publishedVersion").value(1))
+				.andExpect(jsonPath("$.upgrade.changeCounts.ADDED").value(1))
+				.andExpect(jsonPath("$.upgrade.changeCounts.REMOVED").value(1))
+				.andExpect(jsonPath("$.upgrade.changeCounts.TERM_CHANGED").value(1));
+
+		mvc.perform(get("/api/value-sets/{id}/versions/1/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.items[*].conceptId", contains("389145006", "195967001")));
+		long upgradeId = jdbc.queryForObject("SELECT id FROM value_set_upgrade WHERE value_set_id = ?", Long.class, id);
+		mvc.perform(get("/api/value-sets/{id}/upgrades", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$[0].fromVersion").value("2025-07-01"))
+				.andExpect(jsonPath("$[0].toVersion").value("2026-01-01"));
+		mvc.perform(get("/api/value-sets/{id}/upgrades/{upgradeId}/report", id, upgradeId).with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Disposition",
+						"attachment; filename=\"upgrade-me-upgrade-2025-07-01-to-2026-01-01.csv\""))
+				.andExpect(content().string(containsString("ADDED,\"389145006\",\"Allergic asthma\",,,\r\n")))
+				.andExpect(content().string(containsString("REMOVED,\"233678006\",\"Childhood asthma\",,,\r\n")))
+				.andExpect(content().string(containsString(
+						"TERM_CHANGED,\"195967001\",\"Asthma\",,\"Asthma (old term)\",\r\n")));
+	}
+
+	@Test
+	void upgradeReportsOfAPrivateSetAreHiddenFromOthers() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "ECL", "<< 195967001", OLD_RELEASE);
+		eclChangesBetweenReleases();
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content(upgradeRequest("2026-01-01", false)).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.upgrade.publishedVersion").doesNotExist());
+		long upgradeId = jdbc.queryForObject("SELECT id FROM value_set_upgrade WHERE value_set_id = ?", Long.class, id);
+
+		mvc.perform(get("/api/value-sets/{id}/upgrades", id).with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
+		mvc.perform(get("/api/value-sets/{id}/upgrades/{upgradeId}/report", id, upgradeId).with(signedInAs("bob")))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void anUpgradeIsRefusedIfANewerReleaseCameOutAfterThePreview() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "ECL", "<< 195967001", OLD_RELEASE);
+
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content(upgradeRequest("2025-12-01", false)).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isConflict());
+		mvc.perform(get("/api/value-sets/{id}", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.branch").value(OLD_RELEASE));
+	}
+
+	private void retiredConceptHasReplacements() {
+		given(snowstorm.activeConcepts(List.of("195967001", "1234567"), RELEASE)).willReturn(pageOf(ASTHMA));
+		Map<String, List<String>> targets = new LinkedHashMap<>();
+		targets.put("SAME_AS", List.of("233678006"));
+		targets.put("POSSIBLY_EQUIVALENT_TO", List.of("389145006", "195967001"));
+		given(snowstorm.inactivation("1234567", RELEASE)).willReturn(new Inactivation(false, "DUPLICATE", targets));
+		given(snowstorm.activeConcepts(List.of("233678006", "389145006", "195967001"), RELEASE))
+				.willReturn(pageOf(CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA, ASTHMA));
+	}
+
+	@Test
+	void previewingAHandPickedUpgradeSuggestsReplacementsForInactiveConcepts() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "MANUAL", "", OLD_RELEASE, OLD_ASTHMA_TERM, RETIRED);
+		retiredConceptHasReplacements();
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade/preview", id).with(signedInAs("alice")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.type").value("MANUAL"))
+				.andExpect(jsonPath("$.inactivated", hasSize(1)))
+				.andExpect(jsonPath("$.inactivated[0].conceptId").value("1234567"))
+				.andExpect(jsonPath("$.inactivated[0].reason").value("DUPLICATE"))
+				.andExpect(jsonPath("$.inactivated[0].replacements[*].conceptId",
+						contains("389145006", "195967001", "233678006")))
+				.andExpect(jsonPath("$.inactivated[0].replacements[0].association").value("POSSIBLY_EQUIVALENT_TO"))
+				.andExpect(jsonPath("$.inactivated[0].replacements[1].alreadyInSet").value(true))
+				.andExpect(jsonPath("$.termChanges[0].newTerm").value("Asthma"));
+	}
+
+	@Test
+	void upgradingAHandPickedSetAddsOnlyTheAcceptedReplacements() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "MANUAL", "", OLD_RELEASE, OLD_ASTHMA_TERM, RETIRED);
+		retiredConceptHasReplacements();
+
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content(upgradeRequest("2026-01-01", false, "1234567", "233678006")).with(signedInAs("alice"))
+				.with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.upgrade.changeCounts.INACTIVATED").value(1))
+				.andExpect(jsonPath("$.upgrade.changeCounts.REPLACEMENT_ADDED").value(1))
+				.andExpect(jsonPath("$.upgrade.changeCounts.REPLACEMENT_DECLINED").value(1));
+
+		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$[*].conceptId", contains("195967001", "233678006")))
+				.andExpect(jsonPath("$[0].preferredTerm").value("Asthma"))
+				.andExpect(jsonPath("$[1].fullySpecifiedName").value("Childhood asthma (disorder)"));
+		long upgradeId = jdbc.queryForObject("SELECT id FROM value_set_upgrade WHERE value_set_id = ?", Long.class, id);
+		mvc.perform(get("/api/value-sets/{id}/upgrades/{upgradeId}/report", id, upgradeId).with(signedInAs("alice")))
+				.andExpect(content().string(containsString(
+						"INACTIVATED,\"1234567\",\"Retired asthma concept\",,,\"DUPLICATE\"\r\n"
+								+ "REPLACEMENT_DECLINED,\"389145006\",\"Allergic asthma\",\"1234567\",\"Retired asthma concept\",\"POSSIBLY_EQUIVALENT_TO\"\r\n"
+								+ "REPLACEMENT_ADDED,\"233678006\",\"Childhood asthma\",\"1234567\",\"Retired asthma concept\",\"SAME_AS\"\r\n")));
+	}
+
+	@Test
+	void anUpgradeCannotAddAConceptThatWasNotSuggested() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "MANUAL", "", OLD_RELEASE, OLD_ASTHMA_TERM, RETIRED);
+		retiredConceptHasReplacements();
+
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content(upgradeRequest("2026-01-01", false, "1234567", "44054006")).with(signedInAs("alice"))
+				.with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("44054006 is not a suggested replacement for 1234567."));
+		mvc.perform(get("/api/value-sets/{id}/members", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$[*].conceptId", contains("195967001", "1234567")));
+	}
+
+	@Test
+	void aNewSetCanBeBuiltOnAnEarlierReleaseAndIsThenOfferedTheUpgrade() throws Exception {
+		given(snowstorm.codeSystemVersions("SNOMEDCT")).willReturn(List.of(
+				new CodeSystemVersion("2026-01-01", RELEASE), new CodeSystemVersion("2025-07-01", OLD_RELEASE)));
+
+		mvc.perform(get("/api/code-systems/SNOMEDCT/versions").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[*].version", contains("2026-01-01", "2025-07-01")));
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(NEW_SET.replace("\"branch\": \"MAIN\"", "\"codeSystemVersion\": \"2025-07-01\""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.branch").value(OLD_RELEASE))
+				.andExpect(jsonPath("$.codeSystemVersion").value("2025-07-01"));
+		long id = jdbc.queryForObject("SELECT id FROM value_set WHERE owner_subject = 'alice'", Long.class);
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.available").value(true));
+		// Editing never moves the set to another release; only an upgrade does.
+		mvc.perform(put("/api/value-sets/{id}", id).contentType(MediaType.APPLICATION_JSON)
+				.content(NEW_SET.replace("\"branch\": \"MAIN\"", "\"codeSystemVersion\": \"2026-01-01\""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.branch").value(OLD_RELEASE));
+	}
+
+	@Test
+	void aReleaseTheCodeSystemDoesNotHaveIsRefused() throws Exception {
+		given(snowstorm.codeSystemVersions("SNOMEDCT")).willReturn(List.of(new CodeSystemVersion("2026-01-01", RELEASE)));
+
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(NEW_SET.replace("\"branch\": \"MAIN\"", "\"codeSystemVersion\": \"2024-01-01\""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value("SNOMEDCT has no release 2024-01-01."));
+		mvc.perform(post("/api/value-sets").contentType(MediaType.APPLICATION_JSON)
+				.content(NEW_SET.replace("\"branch\": \"MAIN\"", "\"codeSystemVersion\": \"January\""))
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void aSharedHandPickedSetDownloadsAsAFhirValueSetPinnedToItsRelease() throws Exception {
+		given(snowstorm.editionModuleId("SNOMEDCT")).willReturn("900000000000207008");
+		long id = createHandPicked("alice", "COMMUNITY");
+		publish(id, "alice", "");
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("format", "fhir").with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Type", "application/fhir+json"))
+				.andExpect(header().string("Content-Disposition", "attachment; filename=\"picked-asthma-codes-v1.json\""))
+				.andExpect(jsonPath("$.resourceType").value("ValueSet"))
+				.andExpect(jsonPath("$.id").value(String.valueOf(id)))
+				.andExpect(jsonPath("$.url").value("http://localhost/value-sets/" + id))
+				.andExpect(jsonPath("$.version").value("1"))
+				.andExpect(jsonPath("$.name").value("PickedAsthmaCodes"))
+				.andExpect(jsonPath("$.status").value("active"))
+				.andExpect(jsonPath("$.description").doesNotExist())
+				.andExpect(jsonPath("$.compose.include[0].system").value("http://snomed.info/sct"))
+				.andExpect(jsonPath("$.compose.include[0].version")
+						.value("http://snomed.info/sct/900000000000207008/version/20260101"))
+				.andExpect(jsonPath("$.compose.include[0].concept[*].code", contains("195967001", "233678006")))
+				.andExpect(jsonPath("$.expansion.total").value(2))
+				.andExpect(jsonPath("$.expansion.contains[0].display").value("Asthma"))
+				// Kept out because the file may travel beyond the people who can see the set.
+				.andExpect(jsonPath("$.publisher").doesNotExist());
+	}
+
+	@Test
+	void anEclSetOnTheLiveBranchDownloadsAsAFhirValueSetWithItsConstraintAndNoRelease() throws Exception {
+		given(snowstorm.editionModuleId("SNOMEDCT")).willReturn("900000000000207008");
+		given(snowstorm.expand("<< 195967001", "MAIN", 0, 1000)).willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		long id = createSetOwnedBy("alice", "COMMUNITY");
+		publish(id, "alice", "First");
+
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("format", "fhir").with(signedInAs("bob")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.compose.include[0].version").doesNotExist())
+				.andExpect(jsonPath("$.compose.include[0].filter[0].property").value("constraint"))
+				.andExpect(jsonPath("$.compose.include[0].filter[0].op").value("="))
+				.andExpect(jsonPath("$.compose.include[0].filter[0].value").value("<< 195967001"))
+				.andExpect(jsonPath("$.compose.include[0].concept").doesNotExist())
+				.andExpect(jsonPath("$.expansion.contains", hasSize(2)));
+	}
+
+	@Test
+	void aPrivateSetCannotBeDownloadedAsFhirEither() throws Exception {
+		long id = createSetOwnedBy("alice", "PRIVATE");
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("format", "fhir").with(signedInAs("alice")))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void anInactiveConceptTheOwnerKeepsStaysInTheListFlaggedInEveryDownload() throws Exception {
+		given(snowstorm.editionModuleId("SNOMEDCT")).willReturn("900000000000207008");
+		long id = insertSet("alice", "COMMUNITY", "MANUAL", "", OLD_RELEASE, OLD_ASTHMA_TERM, RETIRED);
+		retiredConceptHasReplacements();
+
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"targetVersion": "2026-01-01", "publish": true, "note": "",
+						 "acceptedReplacements": [], "keptInactiveConceptIds": ["1234567"]}
+						""").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.upgrade.changeCounts.INACTIVE_KEPT").value(1))
+				.andExpect(jsonPath("$.upgrade.changeCounts.INACTIVATED").doesNotExist())
+				.andExpect(jsonPath("$.upgrade.changeCounts.REPLACEMENT_DECLINED").value(2));
+
+		mvc.perform(get("/api/value-sets/{id}/expansion", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.items[?(@.conceptId == '1234567')].active").value(false))
+				.andExpect(jsonPath("$.items[?(@.conceptId == '195967001')].active").value(true));
+		mvc.perform(get("/api/value-sets/{id}/download", id).with(signedInAs("bob")))
+				.andExpect(content().string(containsString("1234567\tRetired (disorder)\tRetired asthma concept\t0\n")))
+				.andExpect(content().string(containsString("195967001\tAsthma (disorder)\tAsthma\t1\n")));
+		mvc.perform(get("/api/value-sets/{id}/download", id).param("format", "fhir").with(signedInAs("bob")))
+				.andExpect(jsonPath("$.expansion.contains[?(@.code == '1234567')].inactive").value(true))
+				.andExpect(jsonPath("$.expansion.contains[?(@.code == '195967001')].inactive").isEmpty());
+		long upgradeId = jdbc.queryForObject("SELECT id FROM value_set_upgrade WHERE value_set_id = ?", Long.class, id);
+		mvc.perform(get("/api/value-sets/{id}/upgrades/{upgradeId}/report", id, upgradeId).with(signedInAs("bob")))
+				.andExpect(content().string(containsString(
+						"INACTIVE_KEPT,\"1234567\",\"Retired asthma concept\",,,\"DUPLICATE\"\r\n")));
+	}
+
+	@Test
+	void onlyAConceptThatIsInactiveCanBeKeptAsInactive() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "MANUAL", "", OLD_RELEASE, OLD_ASTHMA_TERM, RETIRED);
+		retiredConceptHasReplacements();
+
+		mvc.perform(post("/api/value-sets/{id}/upgrade", id).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"targetVersion": "2026-01-01", "publish": false, "acceptedReplacements": [],
+						 "keptInactiveConceptIds": ["195967001"]}
+						""").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail")
+						.value("195967001 is not an inactive concept in this value set, so it cannot be kept as one."));
+	}
+
+	@Test
+	void aConceptKeptInAnEarlierUpgradeIsMarkedSoInTheNextPreview() throws Exception {
+		long id = insertSet("alice", "PRIVATE", "MANUAL", "", OLD_RELEASE, OLD_ASTHMA_TERM, RETIRED);
+		jdbc.update("UPDATE value_set_member SET active = FALSE WHERE value_set_id = ? AND concept_id = '1234567'", id);
+		retiredConceptHasReplacements();
+
+		mvc.perform(get("/api/value-sets/{id}/upgrade/preview", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.inactivated[0].keptBefore").value(true));
 	}
 }

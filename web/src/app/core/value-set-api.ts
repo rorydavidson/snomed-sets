@@ -219,6 +219,26 @@ export interface IdentifierCheck {
   rejected: { identifier: string; reason: IdentifierRejection }[];
 }
 
+/**
+ * An ECL expression the owner kept with a hand-picked list, for reference. The list stays the
+ * definition. The figures are from the server's own check when it was saved.
+ */
+export interface SavedEcl {
+  ecl: string;
+  codeSystemVersion: string | null;
+  branch: string;
+  exact: boolean;
+  /** Active concepts in the list when it was checked. */
+  conceptCount: number;
+  missingCount: number;
+  extraCount: number;
+  /** Inactive concepts in the list, which no expression can match. */
+  inactiveCount: number;
+  savedAt: string;
+  /** False when the list has changed since. Only the owner is ever shown one that is not current. */
+  current: boolean;
+}
+
 /** An ECL expression worked out to match a hand-picked list, checked by expanding it. Nothing is saved. */
 export interface EclSuggestion {
   codeSystem: string;
@@ -421,9 +441,23 @@ export class ValueSetApi {
     return this.http.post<IdentifierCheck>('/api/identifier-checks/ecl', { branch, ecl });
   }
 
-  /** Works out an ECL expression matching a hand-picked list. Saves nothing. */
+  /** Works out an ECL expression matching a hand-picked list. Owner only. Saves nothing. */
   eclSuggestion(id: number): Observable<EclSuggestion> {
     return this.http.get<EclSuggestion>(`/api/value-sets/${id}/ecl-suggestion`);
+  }
+
+  /** The expression kept with a hand-picked list, or null if there is none the caller may see. */
+  savedEcl(id: number): Observable<SavedEcl | null> {
+    return this.http.get<SavedEcl | null>(`/api/value-sets/${id}/saved-ecl`);
+  }
+
+  /** Keeps an expression with the list. The server checks it again before saving. */
+  saveEcl(id: number, ecl: string): Observable<SavedEcl> {
+    return this.http.put<SavedEcl>(`/api/value-sets/${id}/saved-ecl`, { ecl });
+  }
+
+  removeSavedEcl(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/value-sets/${id}/saved-ecl`);
   }
 
   /** Expands a definition that has not been saved yet. */

@@ -37,8 +37,16 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 ### Viewing concepts
 
 - Concept lists show each concept's preferred term and the language it is given in (US English by default).
-- Clicking a concept opens its details: where it sits in the hierarchy, its defining relationships
-  grouped as they are modelled, its expression (with a copy button) and all of its descriptions.
+- Clicking a concept opens its details. The header gives its preferred term in the edition's own
+  language (Norwegian for the Norwegian Edition, for example), its fully specified name, and whether
+  it comes from the International Edition or a national extension, with the module's name.
+- The Overview tab lists its names by language, the edition's language first with the preferred
+  term picked out, and shows where it sits as a compact outline: its parents as chips, then its
+  kinds as a short list with a filter and "show all" for long ones. Every related concept can be
+  clicked to move to it, and a trail leads back.
+- The Definition tab has its defining relationships grouped as they are modelled and its
+  expression, with a copy button. The Descriptions tab lists every description by language, with
+  the language reference sets it is preferred or acceptable in and the module it comes from.
 
 ### Publishing and versions
 

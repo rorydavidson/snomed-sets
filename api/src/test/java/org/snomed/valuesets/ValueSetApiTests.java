@@ -1547,4 +1547,91 @@ class ValueSetApiTests {
 		mvc.perform(get("/api/value-sets/{id}/ecl-suggestion", ecl).with(signedInAs("bob")))
 				.andExpect(status().isNotFound());
 	}
+
+	@Test
+	void onlyTheOwnerMayAskForAnEclSuggestionBecauseItIsExpensive() throws Exception {
+		long id = insertSet("alice", "COMMUNITY", "MANUAL", "", RELEASE, ASTHMA, CHILDHOOD_ASTHMA);
+
+		mvc.perform(get("/api/value-sets/{id}/ecl-suggestion", id).with(signedInAs("bob")))
+				.andExpect(status().isForbidden());
+		publish(id, "alice", "");
+		mvc.perform(get("/api/value-sets/{id}/ecl-suggestion", id)).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void theOwnerCanKeepAnExpressionWhichIsCheckedOnTheServerAndShownOnlyWhileItFitsTheListPeopleSee()
+			throws Exception {
+		String ecl = "<< 195967001 |Asthma|";
+		long id = insertSet("alice", "COMMUNITY", "MANUAL", "", RELEASE, ASTHMA, CHILDHOOD_ASTHMA);
+		given(snowstorm.expandLong(ecl, RELEASE, 0, 1)).willReturn(new ExpansionPage(List.of(ASTHMA), 3, 0, 1));
+		given(snowstorm.expandLong(eq(ecl), eq(RELEASE), eq(0), anyInt(), eq(Set.of("195967001", "233678006"))))
+				.willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+		given(snowstorm.expandLong(eq(ecl), eq(RELEASE), eq(0), anyInt()))
+				.willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA, ALLERGIC_ASTHMA));
+		String body = "{\"ecl\": \"" + ecl + "\"}";
+
+		mvc.perform(put("/api/value-sets/{id}/saved-ecl", id).contentType(MediaType.APPLICATION_JSON).content(body)
+				.with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isForbidden());
+		// The browser's word is not taken: the server's own check finds one concept too many.
+		mvc.perform(put("/api/value-sets/{id}/saved-ecl", id).contentType(MediaType.APPLICATION_JSON).content(body)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ecl").value(ecl))
+				.andExpect(jsonPath("$.exact").value(false))
+				.andExpect(jsonPath("$.extraCount").value(1))
+				.andExpect(jsonPath("$.missingCount").value(0))
+				.andExpect(jsonPath("$.codeSystemVersion").value("2026-01-01"))
+				.andExpect(jsonPath("$.current").value(true));
+
+		publish(id, "alice", "");
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.current").value(true));
+
+		// The owner's draft moves on: the owner is told, others still see it against the published list.
+		jdbc.update("""
+				INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term,
+				                              preferred_term_language, fully_specified_name)
+				VALUES (?, 0, ?, ?, 'en', ?)
+				""", id, ALLERGIC_ASTHMA.conceptId(), ALLERGIC_ASTHMA.preferredTerm(),
+				ALLERGIC_ASTHMA.fullySpecifiedName());
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.current").value(false));
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id).with(signedInAs("bob")))
+				.andExpect(jsonPath("$.current").value(true));
+
+		mvc.perform(delete("/api/value-sets/{id}/saved-ecl", id).with(signedInAs("bob")).with(csrf()))
+				.andExpect(status().isForbidden());
+		mvc.perform(delete("/api/value-sets/{id}/saved-ecl", id).with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isNoContent());
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id)).andExpect(status().isNoContent());
+	}
+
+	@Test
+	void anExpressionKeptAgainstAnUnpublishedDraftIsNotShownToOthersOnceTheyAreShownAVersion() throws Exception {
+		String ecl = "<< 195967001 |Asthma|";
+		long id = insertSet("alice", "COMMUNITY", "MANUAL", "", RELEASE, ASTHMA);
+		publish(id, "alice", "");
+		jdbc.update("""
+				INSERT INTO value_set_member (value_set_id, version_number, concept_id, preferred_term,
+				                              preferred_term_language, fully_specified_name)
+				VALUES (?, 0, ?, ?, 'en', ?)
+				""", id, CHILDHOOD_ASTHMA.conceptId(), CHILDHOOD_ASTHMA.preferredTerm(),
+				CHILDHOOD_ASTHMA.fullySpecifiedName());
+		given(snowstorm.expandLong(ecl, RELEASE, 0, 1)).willReturn(new ExpansionPage(List.of(ASTHMA), 2, 0, 1));
+		given(snowstorm.expandLong(eq(ecl), eq(RELEASE), eq(0), anyInt(), eq(Set.of("195967001", "233678006"))))
+				.willReturn(pageOf(ASTHMA, CHILDHOOD_ASTHMA));
+
+		mvc.perform(put("/api/value-sets/{id}/saved-ecl", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"ecl\": \"" + ecl + "\"}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.exact").value(true));
+
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id).with(signedInAs("bob")))
+				.andExpect(status().isNoContent());
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id)).andExpect(status().isNoContent());
+		mvc.perform(get("/api/value-sets/{id}/saved-ecl", id).with(signedInAs("alice")))
+				.andExpect(jsonPath("$.current").value(true));
+	}
 }

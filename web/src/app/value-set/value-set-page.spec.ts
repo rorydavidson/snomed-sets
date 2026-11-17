@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { Session } from '../core/session';
-import { Concept, UpgradeAvailability, UpgradePreview, ValueSet, ValueSetUpgrade, ValueSetVersion } from '../core/value-set-api';
+import { Concept, SavedEcl, UpgradeAvailability, UpgradePreview, ValueSet, ValueSetUpgrade, ValueSetVersion } from '../core/value-set-api';
 import { ValueSetPage } from './value-set-page';
 
 const SET: ValueSet = {
@@ -76,6 +76,7 @@ describe('ValueSetPage', () => {
     versions: ValueSetVersion[] = [],
     upgrades: ValueSetUpgrade[] = [],
     availability: UpgradeAvailability = NO_UPGRADE,
+    savedEcl: SavedEcl | null = null,
   ): void {
     fixture = TestBed.createComponent(ValueSetPage);
     page = fixture.nativeElement as HTMLElement;
@@ -84,6 +85,9 @@ describe('ValueSetPage', () => {
       { shortName: 'SNOMEDCT', name: 'International Edition', branchPath: 'MAIN', latestVersion: '2026-01-01', latestVersionBranch: 'MAIN/2026-01-01' },
     ]);
     http.expectOne('/api/value-sets/7').flush(set);
+    if (set.type === 'MANUAL') {
+      http.expectOne('/api/value-sets/7/saved-ecl').flush(savedEcl);
+    }
     http.expectOne('/api/value-sets/7/versions').flush(versions);
     http.expectOne('/api/value-sets/7/upgrades').flush(upgrades);
     if (set.ownedByMe) {
@@ -113,6 +117,7 @@ describe('ValueSetPage', () => {
     fixture.detectChanges();
     // No calls that need a session: no code systems, upgrades or concept details.
     http.expectOne('/api/value-sets/7').flush(published);
+    http.expectOne('/api/value-sets/7/saved-ecl').flush(null, { status: 204, statusText: 'No Content' });
     http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush({ items: concepts(1, 1), total: 1, offset: 0, limit: 50 });
     await fixture.whenStable();
@@ -214,6 +219,65 @@ describe('ValueSetPage', () => {
     await fixture.whenStable();
     expect(page.querySelector('dialog [role="alert"]')?.textContent).toContain('no active concepts');
     expect(button(page, 'Create an ECL value set from this')).toBeUndefined();
+  });
+
+  it('lets the owner keep a suggested expression, checked by the server, with its caveats', async () => {
+    open({ ...SET, type: 'MANUAL', ecl: '' });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Suggest an ECL expression')?.click();
+    await fixture.whenStable();
+    http.expectOne('/api/value-sets/7/ecl-suggestion').flush({
+      codeSystem: 'SNOMEDCT', codeSystemVersion: '2026-01-01', branch: 'MAIN/2026-01-01', ecl: '<< 195967001 |Asthma|',
+      structuredClauses: 1, namedConcepts: 0, conceptCount: 2, exact: true, missing: [], missingCount: 0,
+      extra: [], extraCount: 0, leftOut: [], fitsDefinition: true, maxLength: 4000,
+    });
+    await fixture.whenStable();
+
+    button(page, 'Keep with this value set')?.click();
+    const request = http.expectOne({ method: 'PUT', url: '/api/value-sets/7/saved-ecl' });
+    expect(request.request.body).toEqual({ ecl: '<< 195967001 |Asthma|' });
+    request.flush({
+      ecl: '<< 195967001 |Asthma|', codeSystemVersion: '2026-01-01', branch: 'MAIN/2026-01-01', exact: true,
+      conceptCount: 2, missingCount: 0, extraCount: 0, inactiveCount: 1, savedAt: '2026-11-17T10:00:00Z', current: true,
+    });
+    await fixture.whenStable();
+
+    const saved = page.querySelector('.saved-ecl')!;
+    expect(saved.textContent).toContain('Matched all 2 active concepts in the list exactly');
+    expect(saved.textContent).toContain('not reviewed by a terminologist');
+    expect(saved.textContent).toContain('1 inactive concept');
+    expect(button(page, 'Suggest a new ECL expression')).toBeDefined();
+  });
+
+  it('shows someone else the kept expression but no way to suggest one', async () => {
+    open({ ...SET, type: 'MANUAL', ecl: '', ownedByMe: false, status: 'PUBLISHED', visibility: 'COMMUNITY', latestVersion: 1 },
+      [VERSION_1], [], NO_UPGRADE, {
+        ecl: '<< 195967001 |Asthma|', codeSystemVersion: '2026-01-01', branch: 'MAIN/2026-01-01', exact: false,
+        conceptCount: 2, missingCount: 1, extraCount: 3, inactiveCount: 0, savedAt: '2026-11-17T10:00:00Z', current: true,
+      });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(button(page, 'Suggest')).toBeUndefined();
+    expect(button(page, 'Remove kept expression')).toBeUndefined();
+    expect(page.querySelector('.saved-ecl')?.textContent).toContain('missed 1 of the list');
+  });
+
+  it('warns the owner when the list has changed since the expression was kept', async () => {
+    open({ ...SET, type: 'MANUAL', ecl: '' }, [], [], NO_UPGRADE, {
+      ecl: '<< 195967001 |Asthma|', codeSystemVersion: '2026-01-01', branch: 'MAIN/2026-01-01', exact: true,
+      conceptCount: 2, missingCount: 0, extraCount: 0, inactiveCount: 0, savedAt: '2026-11-17T10:00:00Z', current: false,
+    });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('.saved-ecl .warning-panel')?.textContent).toContain('The list has changed');
+    button(page, 'Remove kept expression')?.click();
+    http.expectOne({ method: 'DELETE', url: '/api/value-sets/7/saved-ecl' }).flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    expect(page.querySelector('.saved-ecl')).toBeNull();
   });
 
   it('offers no identifier import for a set defined by ECL', async () => {
@@ -734,6 +798,7 @@ describe('ValueSetPage', () => {
       });
       request.flush({ valueSet: { ...OLD, branch: 'MAIN/2026-01-01', codeSystemVersion: '2026-01-01' }, upgrade: DONE });
       http.expectOne('/api/value-sets/7').flush({ ...OLD, branch: 'MAIN/2026-01-01', codeSystemVersion: '2026-01-01' });
+      http.expectOne('/api/value-sets/7/saved-ecl').flush(null);
       http.expectOne('/api/value-sets/7/versions').flush([VERSION_1]);
       http.expectOne('/api/value-sets/7/upgrades').flush([DONE]);
       http.expectOne('/api/value-sets/7/upgrade').flush(NO_UPGRADE);

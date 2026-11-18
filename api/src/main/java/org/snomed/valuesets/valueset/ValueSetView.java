@@ -24,6 +24,7 @@ import org.snomed.valuesets.user.CurrentUser;
  * @param ownerContactable true when the person asking may message the owner: they are signed in,
  *        not the owner, the owner allows it, and messaging is set up
  * @param showOrganisation the owner's choice for this set; only told to the owner, false for others
+ * @param latestVersionLabel the label of the version in use, or null if it has none
  * @param sctid the SNOMED CT reference set concept identifying the set, or null
  * @param sctidTerm that concept's fully specified name when it was checked
  */
@@ -31,7 +32,7 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 		String description, String ecl, String branch, String codeSystemVersion,
 		ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownerIsOrganisation,
 		String ownerAvatarUrl, boolean ownerContactable, boolean ownedByMe,
-		Instant updatedAt, Integer latestVersion, boolean unpublishedChanges, List<String> tags,
+		Instant updatedAt, Integer latestVersion, String latestVersionLabel, boolean unpublishedChanges, List<String> tags,
 		boolean deprecated, boolean allVersionsDeprecated, String deprecationReason, boolean showOrganisation,
 		String sctid, String sctidTerm) {
 
@@ -59,6 +60,7 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 				showOwner && !owner && messagingEnabled && ownerProfile.contactable(),
 				owner,
 				valueSet.getUpdatedAt(), latest == null ? null : latest.getVersionNumber(),
+				latest == null ? null : latest.getLabel(),
 				owner && unpublishedChanges, valueSet.getTags(), valueSet.isDeprecated(),
 				// The version in use is only deprecated when there is no other to fall back to.
 				latest != null && latest.isDeprecated(), valueSet.getDeprecationReason(),
@@ -66,11 +68,12 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 	}
 
 	/** @param frozen false for an old version whose concept list was not stored when it was published */
-	public record VersionView(int number, String ecl, String branch, long conceptCount, String note,
+	/** @param label the owner's name for the version, shown instead of its number; null for none */
+	public record VersionView(int number, String label, String ecl, String branch, long conceptCount, String note,
 			Instant publishedAt, boolean frozen, boolean deprecated, String deprecationReason) {
 
 		static VersionView of(ValueSetVersion version) {
-			return new VersionView(version.getVersionNumber(), version.getEcl(), version.getBranch(),
+			return new VersionView(version.getVersionNumber(), version.getLabel(), version.getEcl(), version.getBranch(),
 					version.getConceptCount(), version.getNote(), version.getPublishedAt(), version.isContentFrozen(),
 					version.isDeprecated(), version.getDeprecationReason());
 		}

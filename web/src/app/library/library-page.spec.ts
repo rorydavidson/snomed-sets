@@ -27,6 +27,7 @@ const ASTHMA: ValueSet = {
   sctidTerm: null,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
+  latestVersionLabel: null,
   unpublishedChanges: false,
   tags: [],
   deprecated: false,

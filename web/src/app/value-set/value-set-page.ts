@@ -12,6 +12,8 @@ import {
   ValueSetVersion,
   describeError,
   upgradeReportUrl,
+  versionInSentence,
+  versionName,
 } from '../core/value-set-api';
 
 import { Session } from '../core/session';
@@ -27,6 +29,24 @@ const PAGE_SIZE = 50;
   selector: 'app-value-set-page',
   imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog, MessageOwnerDialog, ShareLink],
   styles: `
+    .rename {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+
+      input {
+        padding: var(--space-1) var(--space-2);
+        font: inherit;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+      }
+
+      .field-error {
+        flex-basis: 100%;
+      }
+    }
+
     /* The heading's share button sits at its far end, apart from the status badges. */
     .share-set {
       margin-left: auto;
@@ -93,7 +113,7 @@ const PAGE_SIZE = 50;
         <div class="card-heading">
           <h1>{{ set.name }}</h1>
           <span class="badge" [class.badge-success]="set.latestVersion !== null">
-            {{ set.latestVersion !== null ? 'Published · v' + set.latestVersion : 'Draft' }}
+            {{ set.latestVersion !== null ? 'Published · ' + (set.latestVersionLabel ?? 'v' + set.latestVersion) : 'Draft' }}
           </span>
           @if (set.unpublishedChanges) {
             <span class="badge">Unpublished changes</span>
@@ -236,6 +256,15 @@ const PAGE_SIZE = 50;
               }
               @case ('publish') {
                 <div class="field grow">
+                  <label for="publish-label">Name for version {{ nextVersion() }} (optional)</label>
+                  <input id="publish-label" type="text" maxlength="40" autocomplete="off" #label
+                         [placeholder]="'For example ' + today" aria-describedby="publish-label-hint" />
+                  <p id="publish-label-hint" class="meta">
+                    Shown instead of "Version {{ nextVersion() }}", for example the date it was published. You can
+                    change it later.
+                  </p>
+                </div>
+                <div class="field grow">
                   <label for="publish-note">What changed in version {{ nextVersion() }}? (optional)</label>
                   <input id="publish-note" type="text" maxlength="500" autocomplete="off" #note />
                   <p class="meta">
@@ -243,7 +272,7 @@ const PAGE_SIZE = 50;
                     That is what other people see until you publish again.
                   </p>
                 </div>
-                <button type="button" class="button button-primary" [disabled]="busy()" (click)="publish(note.value)">
+                <button type="button" class="button button-primary" [disabled]="busy()" (click)="publish(note.value, label.value)">
                   Publish version {{ nextVersion() }}
                 </button>
                 <button type="button" class="button button-secondary" (click)="mode.set('view')">Cancel</button>
@@ -387,7 +416,10 @@ const PAGE_SIZE = 50;
                   @for (version of list; track version.number) {
                     <li>
                       <button type="button" class="version" [attr.aria-pressed]="isShown(version)" (click)="select(version.number)">
-                        <span class="version-name">Version {{ version.number }}</span>
+                        <span class="version-name">{{ versionName(version) }}</span>
+                        @if (version.label) {
+                          <span class="meta">Version {{ version.number }}</span>
+                        }
                         <span class="meta">
                           {{ version.publishedAt | date: 'd MMM y' }} · {{ version.conceptCount }} concepts when published
                         </span>
@@ -402,17 +434,33 @@ const PAGE_SIZE = 50;
                         }
                       </button>
                       @if (shareable(set)) {
-                        <app-share-link [path]="sharePath(version.number)" [what]="'version ' + version.number"
-                                        [label]="'Share version ' + version.number" />
+                        <app-share-link [path]="sharePath(version.number)" [what]="versionName(version)"
+                                        [label]="'Share ' + versionInSentence(version)" />
                       }
                       @if (set.ownedByMe) {
                         @if (version.deprecated) {
                           <button type="button" class="link-button" [disabled]="busy()" (click)="restore(version.number)">
-                            Restore version {{ version.number }}
+                            Restore {{ versionInSentence(version) }}
                           </button>
                         } @else {
                           <button type="button" class="link-button" (click)="startDeprecating(version.number)">
-                            Deprecate version {{ version.number }}
+                            Deprecate {{ versionInSentence(version) }}
+                          </button>
+                        }
+                        @if (renaming() === version.number) {
+                          <form class="rename" (submit)="saveLabel($event, version.number, newLabel.value)">
+                            <label class="visually-hidden" [for]="'rename-' + version.number">Name for version {{ version.number }}</label>
+                            <input #newLabel [id]="'rename-' + version.number" type="text" maxlength="40" autocomplete="off"
+                                   [value]="version.label ?? ''" [placeholder]="'For example ' + today" />
+                            <button type="submit" class="button button-primary button-small" [disabled]="busy()">Save name</button>
+                            <button type="button" class="link-button" (click)="renaming.set(null)">Cancel</button>
+                            @if (renameError(); as message) {
+                              <p class="field-error" role="alert">{{ message }}</p>
+                            }
+                          </form>
+                        } @else {
+                          <button type="button" class="link-button" (click)="startRenaming(version.number)">
+                            {{ version.label ? 'Rename ' + version.label : 'Name version ' + version.number }}
                           </button>
                         }
                       }
@@ -676,7 +724,41 @@ export class ValueSetPage implements OnInit {
   }
 
   protected downloadLabel(target: number | 'draft'): string {
-    return target === 'draft' ? 'working draft' : `version ${target}`;
+    if (target === 'draft') {
+      return 'working draft';
+    }
+    const version = this.versions()?.find((candidate) => candidate.number === target);
+    return version?.label ?? `version ${target}`;
+  }
+
+  protected readonly versionName = versionName;
+  protected readonly versionInSentence = versionInSentence;
+  /** Today in the form a label might take, as a hint. */
+  protected readonly today = new Date().toISOString().slice(0, 10);
+  /** The version whose name is being edited, or null. */
+  protected readonly renaming = signal<number | null>(null);
+  protected readonly renameError = signal<string | null>(null);
+
+  protected startRenaming(version: number): void {
+    this.renameError.set(null);
+    this.renaming.set(version);
+  }
+
+  protected saveLabel(event: Event, version: number, label: string): void {
+    event.preventDefault();
+    this.busy.set(true);
+    this.renameError.set(null);
+    this.api.relabelVersion(this.id, version, label.trim()).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.renaming.set(null);
+        this.load();
+      },
+      error: (error: unknown) => {
+        this.busy.set(false);
+        this.renameError.set(describeError(error));
+      },
+    });
   }
 
   protected releaseLabel(branch: string): string {
@@ -760,9 +842,9 @@ export class ValueSetPage implements OnInit {
     this.loadExpansion(this.offset() + PAGE_SIZE);
   }
 
-  protected publish(note: string): void {
+  protected publish(note: string, label = ''): void {
     this.busy.set(true);
-    this.api.publish(this.id, note.trim()).subscribe({
+    this.api.publish(this.id, note.trim(), label.trim()).subscribe({
       next: () => {
         this.busy.set(false);
         this.mode.set('view');

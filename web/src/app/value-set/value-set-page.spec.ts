@@ -28,6 +28,7 @@ const SET: ValueSet = {
   sctidTerm: null,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
+  latestVersionLabel: null,
   unpublishedChanges: false,
   tags: [],
   deprecated: false,
@@ -37,6 +38,7 @@ const SET: ValueSet = {
 
 const VERSION_1: ValueSetVersion = {
   number: 1,
+  label: null,
   ecl: '<< 195967001 |Asthma|',
   branch: 'MAIN',
   conceptCount: 121,
@@ -476,7 +478,7 @@ describe('ValueSetPage', () => {
     button(page, 'Publish version 1')?.click();
 
     const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/versions' });
-    expect(request.request.body).toEqual({ note: 'First release' });
+    expect(request.request.body).toEqual({ note: 'First release', label: '' });
     request.flush(VERSION_1);
 
     http.expectOne('/api/value-sets/7').flush({ ...SET, status: 'PUBLISHED', latestVersion: 1 });
@@ -487,6 +489,61 @@ describe('ValueSetPage', () => {
     expect(page.textContent).toContain('Published · v1');
     expect(page.textContent).toContain('First release');
     expect(button(page, 'Publish')).toBeUndefined();
+  });
+
+  it('publishes a version under a name, and shows the name instead of its number', async () => {
+    open(SET);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Publish')?.click();
+    await fixture.whenStable();
+    page.querySelector<HTMLInputElement>('#publish-label')!.value = ' 2026-03-01 ';
+    button(page, 'Publish version 1')?.click();
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/versions' });
+    expect(request.request.body).toEqual({ note: '', label: '2026-03-01' });
+    const named: ValueSetVersion = { ...VERSION_1, label: '2026-03-01' };
+    request.flush(named);
+
+    http.expectOne('/api/value-sets/7').flush({ ...SET, status: 'PUBLISHED', latestVersion: 1, latestVersionLabel: '2026-03-01' });
+    http.expectOne('/api/value-sets/7/versions').flush([named]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('.badge')?.textContent).toContain('Published · 2026-03-01');
+    expect(page.querySelector('.version-name')?.textContent).toContain('2026-03-01');
+    expect(page.querySelector('.version')?.textContent).toContain('Version 1');
+    expect(button(page, 'Deprecate 2026-03-01')).toBeDefined();
+  });
+
+  it('lets the owner rename a version, and shows why a name is refused', async () => {
+    open({ ...SET, status: 'PUBLISHED', latestVersion: 1 }, [VERSION_1]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Name version 1')!.click();
+    await fixture.whenStable();
+    const input = page.querySelector<HTMLInputElement>('#rename-1')!;
+    input.value = 'Taken';
+    page.querySelector<HTMLFormElement>('form.rename')!.dispatchEvent(new Event('submit'));
+    http
+      .expectOne({ method: 'PUT', url: '/api/value-sets/7/versions/1/label' })
+      .flush({ detail: 'Version 2 is already called "Taken".' }, { status: 409, statusText: 'Conflict' });
+    await fixture.whenStable();
+    expect(page.querySelector('form.rename [role="alert"]')?.textContent).toContain('already called "Taken"');
+
+    input.value = 'Spring 2026';
+    page.querySelector<HTMLFormElement>('form.rename')!.dispatchEvent(new Event('submit'));
+    const rename = http.expectOne({ method: 'PUT', url: '/api/value-sets/7/versions/1/label' });
+    expect(rename.request.body).toEqual({ label: 'Spring 2026' });
+    rename.flush({ ...VERSION_1, label: 'Spring 2026' });
+    http.expectOne('/api/value-sets/7').flush({ ...SET, status: 'PUBLISHED', latestVersion: 1, latestVersionLabel: 'Spring 2026' });
+    http.expectOne('/api/value-sets/7/versions').flush([{ ...VERSION_1, label: 'Spring 2026' }]);
+    http.expectOne((r) => r.url.includes('/expansion')).flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('form.rename')).toBeNull();
+    expect(button(page, 'Rename Spring 2026')).toBeDefined();
   });
 
   it('shows an older version when it is chosen from the history', async () => {

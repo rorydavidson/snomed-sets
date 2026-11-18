@@ -373,11 +373,14 @@ public class ValueSetService {
 	}
 
 	/**
-	 * @param label a name for the new version, such as a date, shown instead of its number; null for none
+	 * @param label a name for the new version, shown instead of its number. Null for the default,
+	 *        the date of the release it is built on; blank for no name, so the number is shown.
 	 */
 	public VersionView publish(long id, String note, String label, CurrentUser user) {
 		ValueSet valueSet = findOwned(id, user);
-		String tidyLabel = VersionLabels.tidy(label);
+		String tidyLabel = label == null
+				? VersionLabels.defaultFor(valueSet.getBranch(), allVersionsOf(valueSet).stream().map(ValueSetVersion::getLabel).toList())
+				: VersionLabels.tidy(label);
 		if (valueSet.isDeprecated()) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
 					"This value set is deprecated. Restore it before publishing a new version.");
@@ -435,6 +438,12 @@ public class ValueSetService {
 	 * @param eclContent what an ECL definition expands to now; null for a hand-picked list,
 	 *        whose working list is copied instead
 	 */
+	/** The same, named after the release the set is now on, as a version made by an upgrade is. */
+	ValueSetVersion recordVersion(ValueSet valueSet, Collection<Concept> eclContent, String note) {
+		return recordVersion(valueSet, eclContent, note, VersionLabels.defaultFor(valueSet.getBranch(),
+				allVersionsOf(valueSet).stream().map(ValueSetVersion::getLabel).toList()));
+	}
+
 	ValueSetVersion recordVersion(ValueSet valueSet, Collection<Concept> eclContent, String note, String label) {
 		List<ValueSetVersion> all = allVersionsOf(valueSet);
 		// Numbers are never reused, so a deprecated version still counts.

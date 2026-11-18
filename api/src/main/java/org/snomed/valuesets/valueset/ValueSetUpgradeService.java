@@ -102,7 +102,7 @@ public class ValueSetUpgradeService {
 			}
 			Integer published = request.publish()
 					? valueSetService.recordVersion(valueSet, valueSet.isManual() ? null : plan.eclContent(),
-							request.note(), null).getVersionNumber()
+							request.note()).getVersionNumber()
 					: null;
 			ValueSetUpgrade upgrade = upgrades.save(new ValueSetUpgrade(valueSet.getId(), fromBranch, toBranch, published));
 			changes.saveAll(report.stream().map(change -> new ValueSetUpgradeChange(upgrade.getId(), change)).toList());

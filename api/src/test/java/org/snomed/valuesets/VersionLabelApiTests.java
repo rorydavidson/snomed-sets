@@ -110,8 +110,16 @@ class VersionLabelApiTests {
 	}
 
 	@Test
-	void aVersionPublishedWithoutANameKeepsItsNumberAndCanBeNamedLater() throws Exception {
-		publish(null).andExpect(jsonPath("$.label").doesNotExist());
+	void aVersionIsNamedAfterItsReleaseUnlessTheOwnerSaysOtherwise() throws Exception {
+		publish(null).andExpect(jsonPath("$.label").value("2026-01-01"));
+		addToWorkingList("233678006", "Childhood asthma");
+		// A second version on the same release cannot share the name, so it is numbered.
+		publish(null).andExpect(jsonPath("$.label").value("2026-01-01 (2)"));
+	}
+
+	@Test
+	void aVersionPublishedWithAnEmptyNameKeepsItsNumberAndCanBeNamedLater() throws Exception {
+		publish("").andExpect(jsonPath("$.label").doesNotExist());
 
 		relabel(1, "2026-03-01", "olive")
 				.andExpect(status().isOk())

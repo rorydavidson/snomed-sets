@@ -19,7 +19,7 @@ class ValueSetViewTests {
 
 	@Test
 	void showsTheOrganisationInsteadOfTheOwnerWhenTheyChoseIt() {
-		ValueSetView view = ValueSetView.of(valueSet(true), null, false, READER, PROFILE, true);
+		ValueSetView view = ValueSetView.of(valueSet(true), null, false, READER, PROFILE, true, null);
 
 		assertThat(view.ownerName()).isEqualTo("Example Health Trust");
 		assertThat(view.ownerIsOrganisation()).isTrue();
@@ -32,7 +32,7 @@ class ValueSetViewTests {
 	void showsTheOwnersNameWhenTheyChoseTheOrganisationButHaveNone() {
 		OwnerProfile noOrganisation = new OwnerProfile("owner-subject", "id", null, false, null);
 
-		ValueSetView view = ValueSetView.of(valueSet(true), null, false, OWNER, noOrganisation, true);
+		ValueSetView view = ValueSetView.of(valueSet(true), null, false, OWNER, noOrganisation, true, null);
 
 		assertThat(view.ownerName()).isEqualTo("Olive Owner");
 		assertThat(view.ownerIsOrganisation()).isFalse();
@@ -41,16 +41,16 @@ class ValueSetViewTests {
 
 	@Test
 	void offersMessagingOnlyToOthersWhenTheOwnerAllowsItAndItIsSetUp() {
-		assertThat(ValueSetView.of(valueSet(false), null, false, READER, PROFILE, true).ownerContactable()).isTrue();
-		assertThat(ValueSetView.of(valueSet(false), null, false, OWNER, PROFILE, true).ownerContactable()).isFalse();
-		assertThat(ValueSetView.of(valueSet(false), null, false, READER, PROFILE, false).ownerContactable()).isFalse();
-		assertThat(ValueSetView.of(valueSet(false), null, false, CurrentUser.ANONYMOUS, PROFILE, true).ownerContactable())
+		assertThat(ValueSetView.of(valueSet(false), null, false, READER, PROFILE, true, null).ownerContactable()).isTrue();
+		assertThat(ValueSetView.of(valueSet(false), null, false, OWNER, PROFILE, true, null).ownerContactable()).isFalse();
+		assertThat(ValueSetView.of(valueSet(false), null, false, READER, PROFILE, false, null).ownerContactable()).isFalse();
+		assertThat(ValueSetView.of(valueSet(false), null, false, CurrentUser.ANONYMOUS, PROFILE, true, null).ownerContactable())
 				.isFalse();
 	}
 
 	@Test
 	void tellsVisitorsNothingAboutTheOwner() {
-		ValueSetView view = ValueSetView.of(valueSet(true), null, false, CurrentUser.ANONYMOUS, PROFILE, true);
+		ValueSetView view = ValueSetView.of(valueSet(true), null, false, CurrentUser.ANONYMOUS, PROFILE, true, null);
 
 		assertThat(view.ownerName()).isNull();
 		assertThat(view.ownerAvatarUrl()).isNull();

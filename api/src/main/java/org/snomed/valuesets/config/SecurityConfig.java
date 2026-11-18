@@ -25,6 +25,7 @@ public class SecurityConfig {
 	 */
 	private static final String[] PUBLIC_READS = {
 		"/api/value-sets",
+		"/api/library-stats",
 		"/api/value-sets/{id}",
 		"/api/value-sets/sct/{sctid}",
 		"/api/value-sets/{id}/expansion",

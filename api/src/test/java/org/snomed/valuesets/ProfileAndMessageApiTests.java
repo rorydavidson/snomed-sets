@@ -65,7 +65,8 @@ import org.testcontainers.mariadb.MariaDBContainer;
 @Import(TestKeycloakConfig.class)
 @TestPropertySource(properties = { "KEYCLOAK_CLIENT_ID=test-client", "KEYCLOAK_CLIENT_SECRET=test-secret",
 		"KEYCLOAK_ISSUER_URI=http://keycloak.test", "RESEND_API_KEY=test-key",
-		"MESSAGES_FROM=Value sets <no-reply@sets.example.org>", "APP_URL=https://sets.example.org/" })
+		"MESSAGES_FROM=Value sets <no-reply@sets.example.org>", "APP_URL=https://sets.example.org/",
+		"PRIVACY_OPERATOR=Example Health Trust", "PRIVACY_CONTACT=privacy@example.org" })
 class ProfileAndMessageApiTests {
 
 	private static final String MESSAGE = "{\"message\": \"Could you add occupational asthma?\"}";
@@ -118,6 +119,14 @@ class ProfileAndMessageApiTests {
 						.content("{\"organisation\": " + (organisation == null ? "null" : "\"" + organisation + "\"")
 								+ ", \"contactable\": " + contactable + "}"))
 				.andExpect(status().isOk());
+	}
+
+	@Test
+	void tellsAnyoneWhoRunsTheSiteForThePrivacyPage() throws Exception {
+		mvc.perform(get("/api/site"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.operator").value("Example Health Trust"))
+				.andExpect(jsonPath("$.privacyContact").value("privacy@example.org"));
 	}
 
 	@Test

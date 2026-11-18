@@ -32,6 +32,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MESSAGES_FROM: ${MESSAGES_FROM:-}
       APP_URL: ${APP_URL:-}
+      # Shown on the privacy page.
+      PRIVACY_OPERATOR: ${PRIVACY_OPERATOR:-}
+      PRIVACY_CONTACT: ${PRIVACY_CONTACT:-}
       SNOWSTORM_BASE_URL: ${SNOWSTORM_BASE_URL:-http://host.docker.internal:8080}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
     # Lets the container reach a Snowstorm running on this machine as host.docker.internal,

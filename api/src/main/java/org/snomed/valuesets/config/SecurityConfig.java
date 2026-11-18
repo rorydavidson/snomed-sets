@@ -33,6 +33,7 @@ public class SecurityConfig {
 		"/api/value-sets/{id}/versions/{number}/expansion",
 		"/api/value-sets/{id}/download",
 		"/api/value-sets/{id}/saved-ecl",
+		"/api/site",
 		// Limited for visitors by AnonymousSearchLimit.
 		"/api/concept-search",
 	};

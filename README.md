@@ -225,6 +225,22 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   `MESSAGES_FROM` (a sender on a domain verified in Resend) and `APP_URL` are set. `APP_URL` is used
   for the links in the email, so a sender cannot change where those links point.
 
+### Footer and privacy
+
+- Every page ends with the SNOMED CT notice: SNOMED CT is used by permission of SNOMED International,
+  was originally created by the College of American Pathologists, and "SNOMED" and "SNOMED CT" are
+  registered trademarks of SNOMED International. It says that using SNOMED CT needs a licence, and
+  links to SNOMED CT licensing, SNOMED International and the privacy page.
+- The privacy page lists everything the site keeps about people, why and for how long: an internal
+  account ID (a random code from the SNOMED International account, never shown), name, the email
+  address only while messages are switched on, organisation and picture, value sets, and a one-day
+  record of messages sent. It also covers messages sent through Resend,
+  the sign-in and request-forgery cookies, what the browser remembers, the visitors' search limit and
+  web server logs, and points to SNOMED International's privacy policy for the account itself.
+- `PRIVACY_OPERATOR` and `PRIVACY_CONTACT` set who the page names as running the site and the email
+  address for privacy questions. Until they are set, the page asks people to contact whoever runs it.
+  Keep the page in step with the code when what is stored changes.
+
 ## How it fits together
 
 | Part | What it is |

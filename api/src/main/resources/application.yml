@@ -48,6 +48,11 @@ snowstorm:
   base-url: ${SNOWSTORM_BASE_URL}
   user-agent: ${SNOWSTORM_USER_AGENT:snomed-value-sets-bff}
 
+site:
+  # Shown on the privacy page: who runs this deployment, and where to send privacy questions.
+  operator: ${PRIVACY_OPERATOR:}
+  privacy-contact: ${PRIVACY_CONTACT:}
+
 messages:
   # Messages to value set owners are sent through Resend. Messaging is switched off, and the
   # "Message owner" button hidden, unless the API key, sender address and app URL are all set.

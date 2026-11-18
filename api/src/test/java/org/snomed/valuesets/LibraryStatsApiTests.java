@@ -9,7 +9,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
-import org.snomed.valuesets.valueset.LibraryStatsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -43,9 +42,6 @@ class LibraryStatsApiTests {
 	@Autowired
 	JdbcTemplate jdbc;
 
-	@Autowired
-	LibraryStatsService stats;
-
 	@MockitoBean
 	SnowstormClient snowstorm;
 
@@ -53,7 +49,6 @@ class LibraryStatsApiTests {
 	@AfterEach
 	void startAfresh() {
 		jdbc.update("DELETE FROM value_set");
-		stats.refresh();
 	}
 
 	private long set(String type, String visibility, String status) {
@@ -117,6 +112,19 @@ class LibraryStatsApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.valueSets").value(2))
 				.andExpect(jsonPath("$.concepts").value(3));
+	}
+
+	@Test
+	void dropsASetAsSoonAsItIsMadePrivate() throws Exception {
+		long shared = set("ECL", "COMMUNITY", "PUBLISHED");
+		publish(shared, "195967001");
+		mvc.perform(get("/api/library-stats")).andExpect(jsonPath("$.valueSets").value(1));
+
+		jdbc.update("UPDATE value_set SET visibility = 'PRIVATE' WHERE id = ?", shared);
+
+		mvc.perform(get("/api/library-stats"))
+				.andExpect(jsonPath("$.valueSets").value(0))
+				.andExpect(jsonPath("$.concepts").value(0));
 	}
 
 	@Test

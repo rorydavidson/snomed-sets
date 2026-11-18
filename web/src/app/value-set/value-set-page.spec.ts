@@ -18,7 +18,11 @@ const SET: ValueSet = {
   status: 'DRAFT',
   visibility: 'PRIVATE',
   ownerName: 'Me',
+  ownerIsOrganisation: false,
+  ownerAvatarUrl: null,
+  ownerContactable: false,
   ownedByMe: true,
+  showOrganisation: false,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
@@ -106,7 +110,7 @@ describe('ValueSetPage', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
-    TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me' });
+    TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me', avatarUrl: null });
   });
 
   it('lets a visitor who has not signed in read a published set and download it only as GPS', async () => {
@@ -330,6 +334,54 @@ describe('ValueSetPage', () => {
     button(page, 'Yes, delete')?.click();
     http.expectOne({ method: 'DELETE', url: '/api/value-sets/7' }).flush(null, { status: 204, statusText: 'No Content' });
     expect(navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  it('shows who made the set and lets a signed-in person message them without seeing their address', async () => {
+    open({
+      ...SET,
+      ownedByMe: false,
+      visibility: 'COMMUNITY',
+      ownerName: 'Example Health Trust',
+      ownerIsOrganisation: true,
+      ownerAvatarUrl: '/api/avatars/abc?v=1',
+      ownerContactable: true,
+    });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    const owner = page.querySelector('.owner')!;
+    expect(owner.textContent).toContain('Example Health Trust');
+    expect(owner.querySelector('img')?.getAttribute('src')).toBe('/api/avatars/abc?v=1');
+
+    button(page, 'Message owner')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const dialog = page.querySelector('dialog.message')!;
+    expect(dialog.textContent).toContain('Their address is not shown to you');
+    const send = button(page, 'Send message')!;
+    expect(send.disabled).toBe(true);
+
+    const text = dialog.querySelector<HTMLTextAreaElement>('textarea')!;
+    text.value = '  Could you add occupational asthma?  ';
+    text.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/messages' });
+    expect(request.request.body).toEqual({ message: 'Could you add occupational asthma?' });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(page.querySelector('dialog.message')?.textContent).toContain('Message sent');
+  });
+
+  it('offers no message button when the owner cannot be messaged', async () => {
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', ownerName: 'Olive Owner' });
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    expect(page.querySelector('.owner')?.textContent).toContain('Olive Owner');
+    expect(button(page, 'Message owner')).toBeUndefined();
   });
 
   it('offers no owner actions on a value set owned by someone else', async () => {

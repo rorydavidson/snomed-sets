@@ -17,14 +17,37 @@ import {
 import { Session } from '../core/session';
 import { ConceptDetails } from './concept-details';
 import { EclSuggestionDialog } from './ecl-suggestion-dialog';
+import { MessageOwnerDialog } from './message-owner-dialog';
 import { UpgradeDialog, describeChanges } from './upgrade-dialog';
 
 const PAGE_SIZE = 50;
 
 @Component({
   selector: 'app-value-set-page',
-  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog],
+  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog, MessageOwnerDialog],
   styles: `
+    .owner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+
+      .link-button {
+        min-height: 0;
+        margin-left: var(--space-2);
+        font-weight: var(--fw-regular);
+      }
+    }
+
+    .owner-avatar {
+      width: 24px;
+      height: 24px;
+      object-fit: cover;
+      background: var(--snomed-white);
+      border: 1px solid var(--border-subtle);
+      border-radius: 50%;
+    }
+
     .facts {
       display: flex;
       flex-wrap: wrap;
@@ -85,6 +108,20 @@ const PAGE_SIZE = 50;
           </div>
         }
         <dl class="facts" aria-label="What this value set is built on">
+          @if (set.ownerName) {
+            <div>
+              <dt>Made by</dt>
+              <dd class="owner">
+                @if (set.ownerAvatarUrl) {
+                  <img class="owner-avatar" [src]="set.ownerAvatarUrl" alt="" />
+                }
+                <span>{{ set.ownedByMe ? 'You' + (set.ownerIsOrganisation ? ', as ' + set.ownerName : '') : set.ownerName }}</span>
+                @if (set.ownerContactable) {
+                  <button type="button" class="link-button" (click)="messaging.set(true)">Message owner</button>
+                }
+              </dd>
+            </div>
+          }
           <div>
             <dt>Code system</dt>
             <dd>{{ codeSystemName() }} <span class="mono">({{ set.codeSystem }})</span></dd>
@@ -450,6 +487,14 @@ const PAGE_SIZE = 50;
             }
           </section>
         </div>
+        @if (messaging() && set.ownerName) {
+          <app-message-owner-dialog
+            [valueSetId]="set.id"
+            [valueSetName]="set.name"
+            [ownerName]="set.ownerName"
+            (closed)="messaging.set(false)"
+          />
+        }
         @if (upgrading()) {
           <app-upgrade-dialog
             [valueSetId]="set.id"
@@ -505,6 +550,8 @@ export class ValueSetPage implements OnInit {
     return this.codeSystemNames()[shortName] ?? shortName;
   });
   protected readonly upgrading = signal(false);
+  /** True while the dialog for messaging the owner is open. */
+  protected readonly messaging = signal(false);
   /** True while the dialog suggesting an ECL expression for a hand-picked list is open. */
   protected readonly suggestingEcl = signal(false);
   protected readonly savedEcl = signal<SavedEcl | null>(null);

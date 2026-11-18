@@ -112,7 +112,14 @@ import { StepsTip } from './steps-tip';
                       }
                     </td>
                     @if (signedIn()) {
-                      <td>{{ set.ownedByMe ? 'You' : set.ownerName }}</td>
+                      <td>
+                        <span class="owner-cell">
+                          @if (set.ownerAvatarUrl) {
+                            <img class="owner-avatar" [src]="set.ownerAvatarUrl" alt="" />
+                          }
+                          {{ set.ownedByMe ? 'You' : set.ownerName }}
+                        </span>
+                      </td>
                     }
                     <td class="no-wrap">{{ set.updatedAt | date: 'd MMM y' }}</td>
                   </tr>

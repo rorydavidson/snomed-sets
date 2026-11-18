@@ -17,9 +17,20 @@ export interface ValueSet {
   codeSystemVersion: string | null;
   status: 'DRAFT' | 'PUBLISHED';
   visibility: 'PRIVATE' | 'COMMUNITY';
-  /** Null for a visitor who has not signed in: they are not told who made a set. */
+  /**
+   * Who the set is shown as made by: the owner's organisation when they chose that, otherwise
+   * their name. Null for a visitor who has not signed in: they are not told who made a set.
+   */
   ownerName: string | null;
+  /** True when ownerName is an organisation rather than a person. */
+  ownerIsOrganisation: boolean;
+  /** The owner's picture, or null. */
+  ownerAvatarUrl: string | null;
+  /** True when the person looking may message the owner. Their address is never sent here. */
+  ownerContactable: boolean;
   ownedByMe: boolean;
+  /** The owner's choice to show their organisation instead of their name. Only told to the owner. */
+  showOrganisation: boolean;
   updatedAt: string;
   /** The newest published version number, or null if never published. */
   latestVersion: number | null;
@@ -51,7 +62,7 @@ export interface ValueSetVersion {
 /** The fields a person can set when creating or editing a value set. */
 export type ValueSetDraft = Pick<
   ValueSet,
-  'type' | 'codeSystem' | 'name' | 'description' | 'ecl' | 'visibility' | 'tags'
+  'type' | 'codeSystem' | 'name' | 'description' | 'ecl' | 'visibility' | 'tags' | 'showOrganisation'
 > & {
   /** The whole list of a hand-picked value set. Empty for an ECL one. */
   conceptIds: string[];
@@ -334,6 +345,11 @@ export class ValueSetApi {
 
   update(id: number, draft: ValueSetDraft): Observable<ValueSet> {
     return this.http.put<ValueSet>(`/api/value-sets/${id}`, draft);
+  }
+
+  /** Sends a plain-text message to the owner by email. Neither address is shown to the other until the owner replies. */
+  messageOwner(id: number, message: string): Observable<void> {
+    return this.http.post<void>(`/api/value-sets/${id}/messages`, { message });
   }
 
   delete(id: number): Observable<void> {

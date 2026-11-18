@@ -7,7 +7,7 @@ import { filter, map, take, tap } from 'rxjs';
 export type SessionState =
   | { status: 'loading' }
   | { status: 'signedOut' }
-  | { status: 'signedIn'; name: string }
+  | { status: 'signedIn'; name: string; avatarUrl: string | null }
   | { status: 'error' };
 
 /** The backend sends the browser from here to whichever sign-in is configured. It is not an API call. */
@@ -20,8 +20,8 @@ export class Session {
   readonly state = signal<SessionState>({ status: 'loading' });
 
   load(): void {
-    this.http.get<{ name: string }>('/api/me').subscribe({
-      next: (me) => this.state.set({ status: 'signedIn', name: me.name }),
+    this.http.get<{ name: string; avatarUrl: string | null }>('/api/me').subscribe({
+      next: (me) => this.state.set({ status: 'signedIn', name: me.name, avatarUrl: me.avatarUrl ?? null }),
       error: (error: HttpErrorResponse) =>
         this.state.set({ status: error.status === 401 ? 'signedOut' : 'error' }),
     });
@@ -33,6 +33,14 @@ export class Session {
       next: (redirectTo) => window.location.assign(redirectTo),
       error: () => this.state.set({ status: 'error' }),
     });
+  }
+
+  /** After the person changes their picture, so the top bar shows the new one. */
+  setAvatar(avatarUrl: string | null): void {
+    const state = this.state();
+    if (state.status === 'signedIn') {
+      this.state.set({ ...state, avatarUrl });
+    }
   }
 
   markSignedOut(): void {

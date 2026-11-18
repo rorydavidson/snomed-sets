@@ -17,7 +17,11 @@ const MINE: ValueSet = {
   status: 'DRAFT',
   visibility: 'PRIVATE',
   ownerName: 'Me',
+  ownerIsOrganisation: false,
+  ownerAvatarUrl: null,
+  ownerContactable: false,
   ownedByMe: true,
+  showOrganisation: false,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
@@ -40,7 +44,11 @@ function submit(page: HTMLElement): void {
 describe('ValueSetEditorPage', () => {
   let http: HttpTestingController;
 
-  function create(params: Record<string, string>, query: Record<string, string> = {}): ComponentFixture<ValueSetEditorPage> {
+  function create(
+    params: Record<string, string>,
+    query: Record<string, string> = {},
+    organisation: string | null = null,
+  ): ComponentFixture<ValueSetEditorPage> {
     TestBed.configureTestingModule({
       imports: [ValueSetEditorPage],
       providers: [
@@ -57,6 +65,7 @@ describe('ValueSetEditorPage', () => {
     const fixture = TestBed.createComponent(ValueSetEditorPage);
     fixture.detectChanges();
     http.expectOne('/api/tags').flush(['respiratory', 'registry']);
+    http.expectOne('/api/profile').flush({ name: 'Me', organisation, contactable: false, accountEmail: null, avatarUrl: null });
     if (!('id' in params)) {
       // A new value set starts by asking which code systems Snowstorm has.
       http.expectOne('/api/code-systems').flush([
@@ -105,6 +114,7 @@ describe('ValueSetEditorPage', () => {
       ecl: '<< 233678006',
       visibility: 'PRIVATE',
       tags: [],
+      showOrganisation: false,
       conceptIds: [],
       codeSystemVersion: '2026-01-01',
     });
@@ -224,6 +234,43 @@ describe('ValueSetEditorPage', () => {
     expect(page.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
   });
 
+  it('offers the organisation from the profile as who the set is shown as made by', async () => {
+    const fixture = create({ id: '7' }, {}, 'Example Health Trust');
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const page = fixture.nativeElement as HTMLElement;
+    http.expectOne('/api/value-sets/7').flush({ ...MINE, showOrganisation: true });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const radios = page.querySelectorAll<HTMLInputElement>('input[type="radio"][formcontrolname="showOrganisation"]');
+    expect(radios.length).toBe(2);
+    expect(radios[1].checked).toBe(true);
+    expect(radios[1].parentElement?.textContent).toContain('Example Health Trust');
+
+    radios[0].click();
+    submit(page);
+    const request = http.expectOne({ method: 'PUT', url: '/api/value-sets/7' });
+    expect(request.request.body.showOrganisation).toBe(false);
+    request.flush(MINE);
+  });
+
+  it('points to the profile when the owner has no organisation, and saves the owner as themselves', async () => {
+    const fixture = create({ id: '7' });
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const page = fixture.nativeElement as HTMLElement;
+    http.expectOne('/api/value-sets/7').flush({ ...MINE, showOrganisation: true });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(page.querySelector('input[formcontrolname="showOrganisation"]')).toBeNull();
+    expect(page.querySelector('a[href="/profile"]')?.textContent).toContain('profile settings');
+
+    submit(page);
+    const request = http.expectOne({ method: 'PUT', url: '/api/value-sets/7' });
+    expect(request.request.body.showOrganisation).toBe(false);
+    request.flush(MINE);
+  });
+
   it('loads an existing value set and saves the changes', () => {
     const fixture = create({ id: '7' });
     const page = fixture.nativeElement as HTMLElement;
@@ -305,6 +352,7 @@ describe('ValueSetEditorPage', () => {
       ecl: '',
       visibility: 'PRIVATE',
       tags: [],
+      showOrganisation: false,
       conceptIds: ['233678006', '389145006'],
       codeSystemVersion: '2026-01-01',
     });

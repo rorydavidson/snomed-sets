@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { LibraryPage } from './library/library-page';
 import { signedInGuard } from './core/session';
 import { NotFoundPage } from './not-found-page';
+import { ProfilePage } from './profile/profile-page';
 import { ValueSetEditorPage } from './value-set/value-set-editor-page';
 import { ValueSetPage } from './value-set/value-set-page';
 
@@ -10,5 +11,6 @@ export const routes: Routes = [
   { path: 'value-sets/new', component: ValueSetEditorPage, canActivate: [signedInGuard], title: 'New value set · SNOMED CT value sets' },
   { path: 'value-sets/:id', component: ValueSetPage, title: 'Value set · SNOMED CT value sets' },
   { path: 'value-sets/:id/edit', component: ValueSetEditorPage, canActivate: [signedInGuard], title: 'Edit value set · SNOMED CT value sets' },
+  { path: 'profile', component: ProfilePage, canActivate: [signedInGuard], title: 'Profile settings · SNOMED CT value sets' },
   { path: '**', component: NotFoundPage, title: 'Not found · SNOMED CT value sets' },
 ];

@@ -6,7 +6,7 @@ const DISMISSED_KEY = 'snomed-sets.steps-tip-dismissed';
 
 /**
  * A tip above the library for people who have signed in, showing how a value set is made until
- * they close it. Visitors see the same steps under the landing hero instead.
+ * they close it.
  */
 @Component({
   selector: 'app-steps-tip',

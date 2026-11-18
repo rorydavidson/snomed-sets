@@ -141,7 +141,7 @@ const DIALECT_LABELS: Record<string, string> = { 'en-US': 'US English', 'en-GB':
                 @if (view.concept.parents.length === 0) {
                   <p class="cv-caption">A top-level concept: it is not a kind of anything else.</p>
                 } @else {
-                  <p class="cv-caption">Is a kind of ({{ view.concept.parents.length }})</p>
+                  <p class="cv-caption">Is a ({{ view.concept.parents.length }})</p>
                   <ul class="cv-chips cv-above">
                     @for (parent of view.concept.parents; track parent.targetId) {
                       <li>
@@ -159,14 +159,14 @@ const DIALECT_LABELS: Record<string, string> = { 'en-US': 'US English', 'en-GB':
                 </div>
 
                 @if (view.children === null) {
-                  <p class="muted" role="alert">Its kinds could not be loaded.</p>
+                  <p class="muted" role="alert">Its children could not be loaded.</p>
                 } @else if (view.children.total === 0) {
-                  <p class="cv-caption">Has no kinds of its own</p>
+                  <p class="cv-caption">Has no children</p>
                 } @else {
                   <div class="cv-kinds-head">
-                    <p class="cv-caption">Kinds of it ({{ view.children.total }})</p>
+                    <p class="cv-caption">Children ({{ view.children.total }})</p>
                     @if (view.children.items.length >= childFilterFrom) {
-                      <label class="visually-hidden" for="cv-kind-filter">Filter its kinds</label>
+                      <label class="visually-hidden" for="cv-kind-filter">Filter its children</label>
                       <input
                         id="cv-kind-filter"
                         type="search"
@@ -187,7 +187,7 @@ const DIALECT_LABELS: Record<string, string> = { 'en-US': 'US English', 'en-GB':
                     }
                   </ul>
                   @if (matchingChildren().length === 0) {
-                    <p class="muted">No kinds match.</p>
+                    <p class="muted">No children match.</p>
                   }
                   @if (matchingChildren().length > childrenShown) {
                     <button type="button" class="link-button" (click)="showAllChildren.set(!showAllChildren())">

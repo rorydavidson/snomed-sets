@@ -84,8 +84,8 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   language (Norwegian for the Norwegian Edition, for example), its fully specified name, and whether
   it comes from the International Edition or a national extension, with the module's name.
 - The Overview tab lists its names by language, the edition's language first with the preferred
-  term picked out, and shows where it sits as a compact outline: its parents as chips, then its
-  kinds as a short list with a filter and "show all" for long ones. Every related concept can be
+  term picked out, and shows where it sits as a compact outline: its "is a" parents as chips, then its
+  children as a short list with a filter and "show all" for long ones. Every related concept can be
   clicked to move to it, and a trail leads back.
 - The Definition tab has its defining relationships grouped as they are modelled and its
   expression, with a copy button. The Descriptions tab lists every description by language, with

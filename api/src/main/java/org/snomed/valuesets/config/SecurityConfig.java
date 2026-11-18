@@ -31,6 +31,8 @@ public class SecurityConfig {
 		"/api/value-sets/{id}/versions/{number}/expansion",
 		"/api/value-sets/{id}/download",
 		"/api/value-sets/{id}/saved-ecl",
+		// Limited for visitors by AnonymousSearchLimit.
+		"/api/concept-search",
 	};
 
 	/** The normal sign-in: SNOMED International accounts through Keycloak. */

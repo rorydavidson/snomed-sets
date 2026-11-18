@@ -11,27 +11,40 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
  *
  * @param subject stable identifier used for ownership. Never sent to the browser. Null when anonymous.
  * @param name the name shown to other people. Never the email address. Null when anonymous.
+ * @param email the account's verified email address, or null if it has none. Never sent to other
+ *        people's browsers. It is only stored when the person lets others message them, and only
+ *        used as the address messages go to, or as the reply-to of a message they send.
  */
-public record CurrentUser(String subject, String name) {
+public record CurrentUser(String subject, String name, String email) {
 
 	/** A visitor who has not signed in. They may only read published community value sets. */
-	public static final CurrentUser ANONYMOUS = new CurrentUser(null, null);
+	public static final CurrentUser ANONYMOUS = new CurrentUser(null, null, null);
+
+	public CurrentUser(String subject, String name) {
+		this(subject, name, null);
+	}
 
 	public boolean isSignedIn() {
 		return subject != null;
 	}
 
-	static CurrentUser of(Authentication authentication) {
+	/**
+	 * @param localLoginEmail the email address given to the development-only local user, if any
+	 */
+	static CurrentUser of(Authentication authentication, String localLoginEmail) {
 		if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
 			return ANONYMOUS;
 		}
 		Object principal = authentication.getPrincipal();
 		if (principal instanceof OidcUser oidcUser) {
-			return new CurrentUser(oidcUser.getSubject(), displayName(oidcUser));
+			// Only an address Keycloak has verified, so nobody can receive messages meant for someone else.
+			String email = Boolean.TRUE.equals(oidcUser.getEmailVerified()) ? oidcUser.getEmail() : null;
+			return new CurrentUser(oidcUser.getSubject(), displayName(oidcUser), email);
 		}
 		if (principal instanceof UserDetails localUser) {
 			// Prefixed so a local development user can never match a Keycloak subject.
-			return new CurrentUser("local:" + localUser.getUsername(), localUser.getUsername());
+			return new CurrentUser("local:" + localUser.getUsername(), localUser.getUsername(),
+					localLoginEmail == null || localLoginEmail.isBlank() ? null : localLoginEmail);
 		}
 		throw new IllegalStateException("Unsupported sign-in type: " + principal.getClass().getName());
 	}

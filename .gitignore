@@ -13,3 +13,4 @@ web/.angular/
 .idea/
 *.iml
 .DS_Store
+.vscode/

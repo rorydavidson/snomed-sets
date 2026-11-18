@@ -21,13 +21,20 @@
                 [attr.aria-expanded]="open() === 'user'"
                 [attr.aria-label]="'Account: ' + state.name"
                 (click)="toggle('user')">
-          <div class="rounded-full size-8 m-auto bg-sky-500 pt-1.5 font-semibold museo antialiased" aria-hidden="true">{{ initials(state.name) }}</div>
+          @if (state.avatarUrl) {
+            <img class="rounded-full size-8 m-auto object-cover bg-white" [src]="state.avatarUrl" alt="" />
+          } @else {
+            <div class="rounded-full size-8 m-auto bg-sky-500 pt-1.5 font-semibold museo antialiased" aria-hidden="true">{{ initials(state.name) }}</div>
+          }
         </button>
 
         @if (open() === 'user') {
           <div id="navbar-user" class="absolute right-0 z-10 w-64 origin-top-right rounded-lg bg-gray-50 shadow-lg ring-1 ring-black/5 focus:outline-none">
             <div class="grid gap-x-3 p-2">
               <p class="p-2 text-slate-500 text-sm">{{ state.name }}</p>
+              <a class="block hover:bg-gray-100 p-2 rounded-lg cursor-pointer no-underline" routerLink="/profile" (click)="close()">
+                <span class="text-slate-700">Profile settings</span>
+              </a>
               <button type="button" class="block w-full text-left hover:bg-gray-100 p-2 rounded-lg cursor-pointer" (click)="requestSignOut()">
                 <span class="text-slate-700">Sign out</span>
               </button>

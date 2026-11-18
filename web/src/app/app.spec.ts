@@ -48,6 +48,7 @@ describe('App', () => {
     expect(menu.textContent).toContain('Sample Person');
     const signOut = menu.querySelector('button')!;
     expect(signOut.textContent).toContain('Sign out');
+    expect(menu.querySelector('a[href="/profile"]')?.textContent).toContain('Profile settings');
 
     signOut.click();
     http.expectOne('/logout');

@@ -11,6 +11,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.snomed.valuesets.message.MessagingProperties;
+import org.snomed.valuesets.profile.OwnerProfile;
+import org.snomed.valuesets.profile.ProfileService;
 import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.CodeSystemVersion;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
@@ -46,11 +49,15 @@ public class ValueSetService {
 	private final SnowstormClient snowstorm;
 	private final TransactionTemplate transaction;
 	private final JdbcTemplate jdbc;
+	private final ProfileService profiles;
+	private final MessagingProperties messaging;
 
 	public ValueSetService(ValueSetRepository valueSets, ValueSetVersionRepository versions,
 			ValueSetMemberRepository members, SnowstormClient snowstorm, TransactionTemplate transaction,
-			JdbcTemplate jdbc) {
+			JdbcTemplate jdbc, ProfileService profiles, MessagingProperties messaging) {
 		this.jdbc = jdbc;
+		this.profiles = profiles;
+		this.messaging = messaging;
 		this.valueSets = valueSets;
 		this.versions = versions;
 		this.members = members;
@@ -65,14 +72,24 @@ public class ValueSetService {
 		Map<Long, List<ValueSetVersion>> versionsById = versions
 				.findByValueSetIdInOrderByVersionNumberDesc(visible.stream().map(ValueSet::getId).toList()).stream()
 				.collect(Collectors.groupingBy(ValueSetVersion::getValueSetId));
+		// Visitors are not told who made a set, so owners are only looked up for people signed in.
+		Map<String, OwnerProfile> owners = user.isSignedIn()
+				? profiles.ownerProfiles(visible.stream().map(ValueSet::getOwnerSubject).toList())
+				: Map.of();
 		return visible.stream()
-				.map(valueSet -> view(valueSet, versionInUse(versionsById.getOrDefault(valueSet.getId(), List.of())), user))
+				.map(valueSet -> view(valueSet, versionInUse(versionsById.getOrDefault(valueSet.getId(), List.of())), user,
+						owners.getOrDefault(valueSet.getOwnerSubject(), OwnerProfile.none(valueSet.getOwnerSubject()))))
 				.toList();
 	}
 
 	/** Tags already in use, to choose from when tagging a value set. */
 	public List<String> tags(CurrentUser user) {
 		return valueSets.findTagsVisibleTo(user.subject());
+	}
+
+	/** A value set the person may see, or a 404 as if it did not exist. */
+	public ValueSet visible(long id, CurrentUser user) {
+		return findVisible(id, user);
 	}
 
 	public ValueSetView get(long id, CurrentUser user) {
@@ -92,7 +109,8 @@ public class ValueSetService {
 		ValueSet created = transaction.execute(status -> {
 			ValueSet valueSet = valueSets.save(new ValueSet(definition.type(), definition.codeSystem(), branch,
 					definition.name(), definition.description(), ecl,
-					definition.visibility(), definition.tags(), user.subject(), user.name()));
+					definition.visibility(), definition.tags(), user.subject(), user.name(),
+					definition.showOrganisation()));
 			saveWorkingList(valueSet, concepts);
 			return valueSet;
 		});
@@ -118,7 +136,7 @@ public class ValueSetService {
 
 		transaction.executeWithoutResult(status -> {
 			valueSet.update(definition.name(), definition.description(), ecl, definition.visibility(),
-					definition.tags());
+					definition.tags(), definition.showOrganisation());
 			valueSets.save(valueSet);
 			if (valueSet.isManual()) {
 				members.deleteWorkingList(valueSet.getId());
@@ -401,10 +419,17 @@ public class ValueSetService {
 	}
 
 	ValueSetView view(ValueSet valueSet, ValueSetVersion latest, CurrentUser user) {
+		OwnerProfile owner = user.isSignedIn()
+				? profiles.ownerProfile(valueSet.getOwnerSubject())
+				: OwnerProfile.none(valueSet.getOwnerSubject());
+		return view(valueSet, latest, user, owner);
+	}
+
+	private ValueSetView view(ValueSet valueSet, ValueSetVersion latest, CurrentUser user, OwnerProfile owner) {
 		// Working this out costs a query for a hand-picked set, and only the owner is told.
 		boolean unpublishedChanges = latest != null && valueSet.isOwnedBy(user.subject())
 				&& differsFrom(valueSet, latest);
-		return ValueSetView.of(valueSet, latest, unpublishedChanges, user);
+		return ValueSetView.of(valueSet, latest, unpublishedChanges, user, owner, messaging.enabled());
 	}
 
 	private boolean differsFrom(ValueSet valueSet, ValueSetVersion version) {

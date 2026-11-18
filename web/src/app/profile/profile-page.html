@@ -1,0 +1,106 @@
+<main class="page profile">
+  <p><button type="button" class="link-button" (click)="back()">Back</button></p>
+  <h1>Profile settings</h1>
+
+  @if (loadError(); as message) {
+    <div class="error-panel" role="alert">
+      <h2>Your profile could not be loaded</h2>
+      <p>{{ message }}</p>
+      <button type="button" class="button button-secondary" (click)="load()">Try again</button>
+    </div>
+  } @else if (profile(); as me) {
+    <section class="card" aria-labelledby="picture-heading">
+      <h2 id="picture-heading">Picture or logo</h2>
+      <div class="picture">
+        @if (me.avatarUrl) {
+          <img class="avatar" [src]="me.avatarUrl" alt="Your current picture" />
+        } @else {
+          <span class="avatar avatar-initials" aria-hidden="true">{{ initials(me.name) }}</span>
+        }
+        <div class="picture-actions">
+          <p class="muted">
+            Shown in the top bar, and to signed-in people beside your value sets. A PNG or JPEG of up to 1 MB;
+            it is resized to 256 pixels and anything else in the file, such as where a photo was taken, is removed.
+          </p>
+          <div class="actions">
+            <label class="button button-secondary" [class.is-disabled]="uploading()">
+              {{ me.avatarUrl ? 'Choose a new picture' : 'Choose a picture' }}
+              <input #file class="visually-hidden" type="file" accept="image/png,image/jpeg"
+                     [disabled]="uploading()" (change)="choosePicture(file)" />
+            </label>
+            @if (me.avatarUrl) {
+              <button type="button" class="button button-secondary" [disabled]="uploading()" (click)="removePicture()">
+                Remove picture
+              </button>
+            }
+            @if (uploading()) {
+              <span class="muted" role="status">Saving picture…</span>
+            }
+          </div>
+          @if (pictureError(); as message) {
+            <p class="field-error" role="alert">{{ message }}</p>
+          }
+        </div>
+      </div>
+    </section>
+
+    <form class="card form" (submit)="save($event)" aria-labelledby="details-heading">
+      <h2 id="details-heading" class="visually-hidden">Organisation and messages</h2>
+      <div class="field">
+        <label for="organisation">Organisation</label>
+        <input id="organisation" type="text" maxlength="120" autocomplete="organization"
+               [value]="organisation()" (input)="organisation.set($any($event.target).value); edited()"
+               aria-describedby="organisation-hint" />
+        <span id="organisation-hint" class="muted">
+          On any of your value sets you can choose to show this instead of your name, when you edit the set.
+        </span>
+      </div>
+
+      <fieldset class="field">
+        <legend>Messages from other people</legend>
+        <label class="checkbox">
+          <input type="checkbox" [checked]="contactable()" [disabled]="!me.accountEmail"
+                 (change)="contactable.set($any($event.target).checked); edited()" aria-describedby="contact-hint" />
+          <span>Let signed-in people message me about my value sets</span>
+        </label>
+        <p id="contact-hint" class="muted">
+          @if (me.accountEmail) {
+            Messages are emailed to {{ me.accountEmail }}, the address on your SNOMED International account.
+            Senders never see it, unless you reply to them.
+          } @else {
+            Your account has no verified email address, so messages could not reach you. If you have just
+            added one, sign out and in again.
+          }
+        </p>
+      </fieldset>
+
+      @if (saved()) {
+        <div #savedPanel class="saved-panel" role="status" tabindex="-1">
+          <h3>Profile saved</h3>
+          <p>
+            @if (me.organisation) {
+              Your organisation is {{ me.organisation }}.
+            } @else {
+              You have no organisation set.
+            }
+            {{ me.contactable ? 'Signed-in people can message you.' : 'Nobody can message you.' }}
+          </p>
+        </div>
+      }
+      <div class="actions">
+        <button type="submit" class="button button-primary" [disabled]="saving() || !changed()">
+          {{ saving() ? 'Saving…' : 'Save changes' }}
+        </button>
+        <button type="button" class="button button-secondary" (click)="back()">{{ changed() ? 'Cancel' : 'Done' }}</button>
+        @if (!changed() && !saved()) {
+          <span class="muted">No unsaved changes.</span>
+        }
+      </div>
+      @if (saveError(); as message) {
+        <p class="field-error" role="alert">{{ message }}</p>
+      }
+    </form>
+  } @else {
+    <p class="muted" role="status">Loading your profile…</p>
+  }
+</main>

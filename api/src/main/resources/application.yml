@@ -15,6 +15,11 @@ spring:
     # once ran with dev has it recorded, and without dev it cannot be found, which Flyway would
     # refuse. Versioned migrations are still checked strictly.
     ignore-migration-patterns: "*:future,repeatable:missing"
+  servlet:
+    multipart:
+      # Profile pictures are the only uploads.
+      max-file-size: 1MB
+      max-request-size: 1100KB
   mvc:
     # Errors are sent as problem details, whose "detail" field the frontend shows to the user.
     problemdetails:
@@ -43,6 +48,17 @@ snowstorm:
   base-url: ${SNOWSTORM_BASE_URL}
   user-agent: ${SNOWSTORM_USER_AGENT:snomed-value-sets-bff}
 
+messages:
+  # Messages to value set owners are sent through Resend. Messaging is switched off, and the
+  # "Message owner" button hidden, unless the API key, sender address and app URL are all set.
+  resend-api-key: ${RESEND_API_KEY:}
+  # A sender on a domain verified in Resend, for example "SNOMED CT value sets <no-reply@example.org>".
+  from: ${MESSAGES_FROM:}
+  resend-base-url: ${RESEND_BASE_URL:https://api.resend.com}
+  # The public address of this application, for the links in emails. Configured, never taken from
+  # a request, so nobody can change where links in someone else's email point.
+  app-url: ${APP_URL:}
+
 management:
   endpoints:
     web:
@@ -62,8 +78,9 @@ spring:
           keycloak:
             client-id: ${KEYCLOAK_CLIENT_ID}
             client-secret: ${KEYCLOAK_CLIENT_SECRET}
-            # No email scope: the application only needs a subject and a display name.
-            scope: openid,profile
+            # The email scope is only used for messages between people: the address is stored
+            # when someone lets others message them, and is never sent to anyone's browser.
+            scope: openid,profile,email
         provider:
           keycloak:
             issuer-uri: ${KEYCLOAK_ISSUER_URI}
@@ -79,3 +96,5 @@ spring:
 local-login:
   username: ${LOCAL_LOGIN_USERNAME}
   password: ${LOCAL_LOGIN_PASSWORD}
+  # Optional, so messaging can be tried locally. Treated as the local user's verified address.
+  email: ${LOCAL_LOGIN_EMAIL:}

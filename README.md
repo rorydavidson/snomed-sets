@@ -159,10 +159,31 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   rather than loaded from Google Fonts, so visitors' browsers do not contact Google.
 - Tailwind is used only for the bar. It is set up in `web/src/styles/tailwind.css` without its
   base reset, so the rest of the app keeps its own styles and design tokens.
-- It holds a compact SNOMED International sign-in button for visitors, or the account initials with a menu to sign out. It also has
+- It holds a compact SNOMED International sign-in button for visitors, or the account's picture
+  (or initials) with a menu leading to profile settings and sign-out. It also has
   a grid of public SNOMED International tools, headed with their logo so it is clear those sites
   are theirs, and a menu with a link to snomed.org, each opening in a new tab. SNOMED
   International's status page and privacy policy are left out, as they do not cover this app.
+
+### Profile and messages
+
+- Profile settings, from the account menu in the top bar, hold three optional things:
+  - **A picture or logo.** A PNG or JPEG of up to 1 MB. The server decodes it and stores a fresh PNG
+    of at most 256 pixels, so nothing else in the file, such as where a photo was taken, is kept. It
+    replaces the initials in the top bar and is shown beside the owner on value sets.
+  - **An organisation.** On each value set the owner chooses whether it is shown as made by them or
+    by their organisation. The organisation is free text and nobody checks it.
+  - **Messages from other people.** When switched on, signed-in people see "Message owner" on that
+    person's value sets. Messages are emailed to the verified address on their SNOMED International
+    account, which is stored only while the switch is on and is never shown to anyone else. The
+    sender is told that their own address goes with the message as the reply-to, so the owner can
+    answer them.
+- Owners' names, organisations and pictures are only shown to people who are signed in, as before.
+- Sending is limited to 5 messages an hour and 20 a day per person. Only who sent to which set and
+  when is kept, for a day, to apply the limits; the message itself is never stored.
+- Messages go through [Resend](https://resend.com). Messaging stays off until `RESEND_API_KEY`,
+  `MESSAGES_FROM` (a sender on a domain verified in Resend) and `APP_URL` are set. `APP_URL` is used
+  for the links in the email, so a sender cannot change where those links point.
 
 ## How it fits together
 
@@ -225,6 +246,10 @@ Create a confidential OpenID Connect client with the standard (authorisation cod
 - Valid redirect URI: `http://localhost:8090/login/oauth2/code/keycloak`
 - Valid post-logout redirect URI: `http://localhost:8090/`
 
+The client asks for the `openid`, `profile` and `email` scopes. The email address is only used for
+messages between people (see Profile and messages), and only when Keycloak marks it as verified.
+People who signed in before the email scope was added need to sign in again for it to be seen.
+
 The backend reads the Keycloak configuration from the issuer when it starts, so it will not start
 if `KEYCLOAK_ISSUER_URI` cannot be reached from inside the `api` container.
 
@@ -240,6 +265,9 @@ SPRING_PROFILES_ACTIVE=dev,local-login
 The sign-in link then leads to a username and password form, and the Keycloak settings are
 ignored. There is one local user and no default password. Do not switch this profile on for a
 shared or deployed environment.
+
+To try messaging locally, also set `LOCAL_LOGIN_EMAIL`. It is treated as the local user's verified
+address.
 
 ### Snowstorm
 

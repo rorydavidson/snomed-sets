@@ -27,6 +27,11 @@ services:
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
       LOCAL_LOGIN_USERNAME: ${LOCAL_LOGIN_USERNAME:-}
       LOCAL_LOGIN_PASSWORD: ${LOCAL_LOGIN_PASSWORD:-}
+      LOCAL_LOGIN_EMAIL: ${LOCAL_LOGIN_EMAIL:-}
+      # Messages to value set owners, sent through Resend. Off unless all three are set.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MESSAGES_FROM: ${MESSAGES_FROM:-}
+      APP_URL: ${APP_URL:-}
       SNOWSTORM_BASE_URL: ${SNOWSTORM_BASE_URL:-http://host.docker.internal:8080}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
     # Lets the container reach a Snowstorm running on this machine as host.docker.internal,

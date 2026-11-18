@@ -931,11 +931,14 @@ class ValueSetApiTests {
 	}
 
 	@Test
-	void meReturnsOnlyTheDisplayName() throws Exception {
-		mvc.perform(get("/api/me").with(oidcLogin().idToken(token -> token.claim("name", "Sample Person"))))
+	void meReturnsOnlyTheDisplayNameAndPicture() throws Exception {
+		mvc.perform(get("/api/me").with(oidcLogin().idToken(token -> token.claim("name", "Sample Person")
+						.claim("email", "sample@example.org").claim("email_verified", true))))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.name").value("Sample Person"))
-				.andExpect(jsonPath("$.length()").value(1));
+				.andExpect(jsonPath("$.avatarUrl").value(nullValue()))
+				.andExpect(jsonPath("$.length()").value(2))
+				.andExpect(content().string(not(containsString("sample@example.org"))));
 	}
 
 	@Test

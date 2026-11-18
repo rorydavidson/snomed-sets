@@ -14,6 +14,8 @@ import {
   ValueSetDraft,
   describeError,
 } from '../core/value-set-api';
+import { ProfileApi } from '../core/profile-api';
+import { Session } from '../core/session';
 import { ConceptDetails } from './concept-details';
 import { ConceptPicker } from './concept-picker';
 import { IdentifierImport } from './identifier-import';
@@ -143,8 +145,27 @@ type Preview =
                   <input type="checkbox" formControlName="shared" />
                   <span>Share with the community</span>
                 </label>
-                <p class="meta">Everyone who signs in will see this value set, with your name as its owner.</p>
+                <p class="meta">Everyone who signs in will see this value set, and who made it.</p>
               </div>
+
+              <fieldset class="field">
+                <legend>Shown as made by</legend>
+                @if (organisation(); as organisation) {
+                  <label class="checkbox">
+                    <input type="radio" formControlName="showOrganisation" [value]="false" />
+                    <span>Me{{ myName() ? ', ' + myName() : '' }}</span>
+                  </label>
+                  <label class="checkbox">
+                    <input type="radio" formControlName="showOrganisation" [value]="true" />
+                    <span>My organisation, {{ organisation }}</span>
+                  </label>
+                } @else {
+                  <p class="meta">
+                    You{{ myName() ? ', ' + myName() : '' }}. To show your organisation instead, add it in your
+                    <a routerLink="/profile">profile settings</a>.
+                  </p>
+                }
+              </fieldset>
 
               @if (saveError(); as message) {
                 <div class="error-panel" role="alert">
@@ -298,6 +319,8 @@ type Preview =
 })
 export class ValueSetEditorPage implements OnInit {
   private readonly api = inject(ValueSetApi);
+  private readonly profiles = inject(ProfileApi);
+  private readonly session = inject(Session);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute).snapshot;
   private readonly idParam = this.route.paramMap.get('id');
@@ -320,6 +343,15 @@ export class ValueSetEditorPage implements OnInit {
     /** Empty for a code system with no releases listed, which then uses its latest content. */
     codeSystemVersion: [''],
     shared: [false],
+    /** Only offered when the owner has an organisation in their profile. */
+    showOrganisation: [false],
+  });
+
+  /** The owner's organisation from their profile, or null if they have none or it could not be loaded. */
+  protected readonly organisation = signal<string | null>(null);
+  protected readonly myName = computed(() => {
+    const state = this.session.state();
+    return state.status === 'signedIn' ? state.name : null;
   });
 
   protected readonly loaded = signal(false);
@@ -402,6 +434,8 @@ export class ValueSetEditorPage implements OnInit {
   ngOnInit(): void {
     // Suggestions only: the form works without them, so a failure here is not shown.
     this.api.tags().subscribe({ next: (tags) => this.knownTags.set(tags), error: () => undefined });
+    // Only to offer the organisation; without it the set is simply shown with the owner's name.
+    this.profiles.get().subscribe({ next: (profile) => this.organisation.set(profile.organisation), error: () => undefined });
     if (this.id === null) {
       this.api.codeSystems().subscribe({
         next: (codeSystems) => this.startCreating(codeSystems),
@@ -454,6 +488,8 @@ export class ValueSetEditorPage implements OnInit {
       ecl: this.manual() ? '' : value.ecl.trim(),
       visibility: value.shared ? 'COMMUNITY' : 'PRIVATE',
       tags: this.tags(),
+      // Without an organisation the choice is not offered, and the owner's name is shown.
+      showOrganisation: this.organisation() !== null && value.showOrganisation,
       conceptIds: this.manual() ? this.members().map((concept) => concept.conceptId) : [],
     };
     if (this.id === null) {
@@ -505,6 +541,7 @@ export class ValueSetEditorPage implements OnInit {
       description: set.description,
       ecl: set.ecl,
       shared: set.visibility === 'COMMUNITY',
+      showOrganisation: set.showOrganisation,
     });
     if (set.type === 'ECL') {
       this.loaded.set(true);

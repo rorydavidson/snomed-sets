@@ -18,7 +18,11 @@ const ASTHMA: ValueSet = {
   status: 'PUBLISHED',
   visibility: 'COMMUNITY',
   ownerName: 'Sample data',
+  ownerIsOrganisation: false,
+  ownerAvatarUrl: null,
+  ownerContactable: false,
   ownedByMe: false,
+  showOrganisation: false,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
@@ -38,7 +42,7 @@ describe('LibraryPage', () => {
     });
     http = TestBed.inject(HttpTestingController);
     localStorage.clear();
-    TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me' });
+    TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me', avatarUrl: null });
   });
 
   it('lists value sets with a link to each', async () => {

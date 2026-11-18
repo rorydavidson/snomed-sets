@@ -26,10 +26,19 @@ import { UpgradeDialog, describeChanges } from './upgrade-dialog';
 
 const PAGE_SIZE = 50;
 
+/** The first International Edition release whose Global Patient Set holds every concept. */
+const GPS_OPEN_FROM = '2026-01-01';
+
 @Component({
   selector: 'app-value-set-page',
   imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog, MessageOwnerDialog, ShareLink],
   styles: `
+    .gps-licence {
+      flex-basis: 100%;
+      font-size: var(--fs-caption);
+      color: var(--text-muted);
+    }
+
     /* A switch between the languages the edition holds, like the library's search switch. */
     .term-languages {
       display: inline-flex;
@@ -242,6 +251,22 @@ const PAGE_SIZE = 50;
                 Downloads what is shown below in the Global Patient Set layout: SNOMED CT ID, FSN, PT and
                 active flag, in US English. Sign in for other formats.
               </span>
+            }
+            @switch (gpsLicence(target)) {
+              @case ('open') {
+                <p class="gps-licence">
+                  Built on the International Edition from January 2026, so the TSV download is
+                  <a href="https://www.snomed.org/gps" target="_blank" rel="noopener noreferrer">Global Patient Set</a>
+                  content, free to use under
+                  <a href="https://creativecommons.org/licenses/by-nd/4.0/" target="_blank" rel="noopener noreferrer">CC BY-ND 4.0</a>.
+                </p>
+              }
+              @case ('extension') {
+                <p class="gps-licence">
+                  Built on a national extension: its own concepts are not part of the Global Patient Set, so using them
+                  needs a licence.
+                </p>
+              }
             }
           </div>
         }
@@ -799,6 +824,26 @@ export class ValueSetPage implements OnInit {
   protected downloadUrl(target: number | 'draft', fhir: boolean): string {
     const format = fhir ? '&format=fhir' : '';
     return `/api/value-sets/${this.id}/download?version=${target}${format}`;
+  }
+
+  /**
+   * Whether a download is Global Patient Set content, which since the January 2026 release holds
+   * every International Edition concept under CC BY-ND 4.0. 'extension' for a national extension,
+   * whose own concepts are not in it; null when nothing can be said, such as an older release or the
+   * live branch.
+   */
+  protected gpsLicence(target: number | 'draft'): 'open' | 'extension' | null {
+    const set = this.valueSet();
+    if (set === null) {
+      return null;
+    }
+    if (set.codeSystem !== 'SNOMEDCT') {
+      return 'extension';
+    }
+    const branch =
+      target === 'draft' ? set.branch : (this.versions()?.find((version) => version.number === target)?.branch ?? set.branch);
+    const release = /\/(\d{4}-\d{2}-\d{2})$/.exec(branch)?.[1];
+    return release !== undefined && release >= GPS_OPEN_FROM ? 'open' : null;
   }
 
   protected downloadLabel(target: number | 'draft'): string {

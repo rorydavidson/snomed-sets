@@ -22,6 +22,8 @@ const MINE: ValueSet = {
   ownerContactable: false,
   ownedByMe: true,
   showOrganisation: false,
+  sctid: null,
+  sctidTerm: null,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
@@ -115,6 +117,7 @@ describe('ValueSetEditorPage', () => {
       visibility: 'PRIVATE',
       tags: [],
       showOrganisation: false,
+      sctid: '',
       conceptIds: [],
       codeSystemVersion: '2026-01-01',
     });
@@ -232,6 +235,44 @@ describe('ValueSetEditorPage', () => {
 
     expect(page.querySelector('[role="alert"]')?.textContent).toContain('Snowstorm rejected the request');
     expect(page.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
+  });
+
+  it('checks a SNOMED CT identifier with the backend and shows the concept it names', async () => {
+    const fixture = create({ id: '7' });
+    const page = fixture.nativeElement as HTMLElement;
+    http.expectOne('/api/value-sets/7').flush(MINE);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    type(page, '#sctid', '723264001');
+    page.querySelector('#sctid')!.dispatchEvent(new Event('blur'));
+    const check = http.expectOne((request) => request.url === '/api/set-identifiers/check');
+    expect(check.request.params.get('sctid')).toBe('723264001');
+    expect(check.request.params.get('branch')).toBe(MINE.branch);
+    expect(check.request.params.get('valueSetId')).toBe('7');
+    check.flush({ conceptId: '723264001', fullySpecifiedName: 'Lateralizable body structure reference set (foundation metadata concept)', preferredTerm: 'Lateralizable body structure reference set' });
+    fixture.detectChanges();
+    expect(page.querySelector('.identifier-found')?.textContent).toContain('Lateralizable body structure reference set (foundation metadata concept)');
+
+    // Pressing Check for the same identifier does not ask again.
+    Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Check')!.click();
+    http.expectNone((request) => request.url === '/api/set-identifiers/check');
+  });
+
+  it('shows why an identifier cannot be used', async () => {
+    const fixture = create({ id: '7' });
+    const page = fixture.nativeElement as HTMLElement;
+    http.expectOne('/api/value-sets/7').flush(MINE);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    type(page, '#sctid', '22298006');
+    Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Check')!.click();
+    http
+      .expectOne((request) => request.url === '/api/set-identifiers/check')
+      .flush({ detail: '22298006 is not a reference set.' }, { status: 400, statusText: 'Bad Request' });
+    fixture.detectChanges();
+    expect(page.querySelector('#sctid-result [role="alert"]')?.textContent).toContain('22298006 is not a reference set.');
   });
 
   it('offers the organisation from the profile as who the set is shown as made by', async () => {
@@ -353,6 +394,7 @@ describe('ValueSetEditorPage', () => {
       visibility: 'PRIVATE',
       tags: [],
       showOrganisation: false,
+      sctid: '',
       conceptIds: ['233678006', '389145006'],
       codeSystemVersion: '2026-01-01',
     });

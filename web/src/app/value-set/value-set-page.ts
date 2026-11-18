@@ -102,7 +102,7 @@ const PAGE_SIZE = 50;
             <span class="badge badge-warning">Deprecated</span>
           }
           @if (shareable(set)) {
-            <app-share-link class="share-set" [path]="setPath()" what="this value set" [alignEnd]="true" />
+            <app-share-link class="share-set" [path]="sharePath()" what="this value set" [alignEnd]="true" />
           }
         </div>
         @if (missingVersion()) {
@@ -135,6 +135,12 @@ const PAGE_SIZE = 50;
                   <button type="button" class="link-button" (click)="messaging.set(true)">Message owner</button>
                 }
               </dd>
+            </div>
+          }
+          @if (set.sctid) {
+            <div>
+              <dt>SNOMED CT ID</dt>
+              <dd><span class="mono">{{ set.sctid }}</span> {{ set.sctidTerm }}</dd>
             </div>
           }
           <div>
@@ -396,7 +402,7 @@ const PAGE_SIZE = 50;
                         }
                       </button>
                       @if (shareable(set)) {
-                        <app-share-link [path]="versionPath(version.number)" [what]="'version ' + version.number"
+                        <app-share-link [path]="sharePath(version.number)" [what]="'version ' + version.number"
                                         [label]="'Share version ' + version.number" />
                       }
                       @if (set.ownedByMe) {
@@ -698,12 +704,20 @@ export class ValueSetPage implements OnInit {
     this.loadExpansion(0);
   }
 
+  /** The set's own address, by number. */
   protected setPath(): string {
     return `/value-sets/${this.id}`;
   }
 
   protected versionPath(version: number): string {
     return `/value-sets/${this.id}/versions/${version}`;
+  }
+
+  /** The link to share: by the set's SNOMED CT identifier when it has one, otherwise by its number. */
+  protected sharePath(version: number | null = null): string {
+    const sctid = this.valueSet()?.sctid;
+    const base = sctid ? `/value-sets/sct/${sctid}` : `/value-sets/${this.id}`;
+    return version === null ? base : `${base}/versions/${version}`;
   }
 
   /** Only sets everyone can open get share links; a private set's link would not work for anybody else. */

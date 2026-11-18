@@ -24,6 +24,8 @@ const SET: ValueSet = {
   ownerContactable: false,
   ownedByMe: true,
   showOrganisation: false,
+  sctid: null,
+  sctidTerm: null,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   unpublishedChanges: false,
@@ -416,6 +418,21 @@ describe('ValueSetPage', () => {
       expect(copied[1]).toBe(`${window.location.origin}/value-sets/7/versions/1`);
       // Only one link is shown at a time.
       expect(page.querySelectorAll('.share-panel')).toHaveLength(1);
+    });
+
+    it('shares by the SNOMED CT identifier when the set has one, and shows it', async () => {
+      open({ ...PUBLISHED, sctid: '723264001', sctidTerm: 'Lateralizable body structure reference set (foundation metadata concept)' }, [VERSION_1]);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      expect(page.querySelector('.facts')?.textContent).toContain('723264001 Lateralizable body structure reference set (foundation metadata concept)');
+      button(page, 'Share')!.click();
+      button(page, 'Share version 1')!.click();
+      await fixture.whenStable();
+      expect(copied).toEqual([
+        `${window.location.origin}/value-sets/sct/723264001`,
+        `${window.location.origin}/value-sets/sct/723264001/versions/1`,
+      ]);
     });
 
     it('offers no link for a set that only its owner can open, or that has no version yet', async () => {

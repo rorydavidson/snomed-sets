@@ -127,6 +127,16 @@ public class ValueSetController {
 		return service.deprecateVersion(id, number, request.reason().trim(), user);
 	}
 
+	/** Names a version, such as with its date, or with an empty label goes back to its number. Owner only. */
+	@PutMapping("/value-sets/{id}/versions/{number}/label")
+	public VersionView relabelVersion(@PathVariable long id, @PathVariable int number,
+			@Valid @RequestBody LabelRequest request, CurrentUser user) {
+		return service.relabelVersion(id, number, request.label(), user);
+	}
+
+	public record LabelRequest(@Size(max = 60) String label) {
+	}
+
 	@DeleteMapping("/value-sets/{id}/versions/{number}/deprecation")
 	public VersionView restoreVersion(@PathVariable long id, @PathVariable int number, CurrentUser user) {
 		return service.restoreVersion(id, number, user);
@@ -181,7 +191,7 @@ public class ValueSetController {
 	@ResponseStatus(HttpStatus.CREATED)
 	public VersionView publish(@PathVariable long id, @Valid @RequestBody PublishRequest request,
 			CurrentUser user) {
-		return service.publish(id, request.note().trim(), user);
+		return service.publish(id, request.note().trim(), request.label(), user);
 	}
 
 	@GetMapping("/value-sets/{id}/versions/{number}/expansion")
@@ -206,6 +216,7 @@ public class ValueSetController {
 	}
 
 	/** @param note what changed in this version; may be empty */
-	public record PublishRequest(@NotNull @Size(max = 500) String note) {
+	/** @param label a name for the version, such as a date, shown instead of its number; optional */
+	public record PublishRequest(@NotNull @Size(max = 500) String note, @Size(max = 60) String label) {
 	}
 }

@@ -100,7 +100,8 @@ public class ValueSetService {
 		try {
 			return save.get();
 		} catch (DataIntegrityViolationException e) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "This SNOMED CT identifier already identifies another value set.");
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Someone else just used the same identifier or version label. Choose another and try again.");
 		}
 	}
 
@@ -371,8 +372,12 @@ public class ValueSetService {
 		return DownloadContent.of(valueSet, chosen, concepts);
 	}
 
-	public VersionView publish(long id, String note, CurrentUser user) {
+	/**
+	 * @param label a name for the new version, such as a date, shown instead of its number; null for none
+	 */
+	public VersionView publish(long id, String note, String label, CurrentUser user) {
 		ValueSet valueSet = findOwned(id, user);
+		String tidyLabel = VersionLabels.tidy(label);
 		if (valueSet.isDeprecated()) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT,
 					"This value set is deprecated. Restore it before publishing a new version.");
@@ -385,11 +390,37 @@ public class ValueSetService {
 		}
 		if (valueSet.isManual()) {
 			requireMembers(members.countByValueSetIdAndVersionNumber(valueSet.getId(), ValueSetMember.WORKING_LIST));
-			return VersionView.of(transaction.execute(status -> recordVersion(valueSet, null, note)));
+			requireLabelFree(all, tidyLabel, null);
+			return VersionView.of(saveUniquely(() -> transaction.execute(status -> recordVersion(valueSet, null, note, tidyLabel))));
 		}
+		requireLabelFree(all, tidyLabel, null);
 		// Only an ECL definition that Snowstorm can expand may be published.
 		Collection<Concept> concepts = expandFully(valueSet.getEcl(), valueSet.getBranch());
-		return VersionView.of(transaction.execute(status -> recordVersion(valueSet, concepts, note)));
+		return VersionView.of(saveUniquely(() -> transaction.execute(status -> recordVersion(valueSet, concepts, note, tidyLabel))));
+	}
+
+	/** Names a version, or with a blank label goes back to showing its number. Owner only. */
+	public VersionView relabelVersion(long id, int versionNumber, String label, CurrentUser user) {
+		ValueSetVersion version = findOwnedVersion(id, versionNumber, user);
+		String tidyLabel = VersionLabels.tidy(label);
+		requireLabelFree(versions.findByValueSetIdOrderByVersionNumberDesc(id), tidyLabel, versionNumber);
+		version.relabel(tidyLabel);
+		return VersionView.of(saveUniquely(() -> versions.save(version)));
+	}
+
+	/** Two versions of one set may not share a label, whatever its capitals, or no one could tell them apart. */
+	private static void requireLabelFree(List<ValueSetVersion> all, String label, Integer except) {
+		if (label == null) {
+			return;
+		}
+		all.stream()
+				.filter(version -> except == null || version.getVersionNumber() != except)
+				.filter(version -> label.equalsIgnoreCase(version.getLabel()))
+				.findFirst()
+				.ifPresent(version -> {
+					throw new ResponseStatusException(HttpStatus.CONFLICT,
+							"Version " + version.getVersionNumber() + " is already called \"" + version.getLabel() + "\".");
+				});
 	}
 
 	static void requireMembers(long count) {
@@ -404,7 +435,7 @@ public class ValueSetService {
 	 * @param eclContent what an ECL definition expands to now; null for a hand-picked list,
 	 *        whose working list is copied instead
 	 */
-	ValueSetVersion recordVersion(ValueSet valueSet, Collection<Concept> eclContent, String note) {
+	ValueSetVersion recordVersion(ValueSet valueSet, Collection<Concept> eclContent, String note, String label) {
 		List<ValueSetVersion> all = allVersionsOf(valueSet);
 		// Numbers are never reused, so a deprecated version still counts.
 		int number = all.isEmpty() ? 1 : all.get(0).getVersionNumber() + 1;
@@ -419,7 +450,7 @@ public class ValueSetService {
 			storeVersionContent(valueSet, number, eclContent);
 			count = eclContent.size();
 		}
-		return versions.save(new ValueSetVersion(valueSet, number, count, note));
+		return versions.save(new ValueSetVersion(valueSet, number, count, note, label));
 	}
 
 	/** Every concept an ECL expression matches right now. */

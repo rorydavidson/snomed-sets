@@ -54,8 +54,17 @@ public class ValueSetVersion {
 	@Column(name = "published_at", nullable = false)
 	private Instant publishedAt;
 
+	/** The owner's name for the version, such as a date, shown instead of its number. Null for none. */
+	@Column(length = 40)
+	private String label;
+
 	protected ValueSetVersion() {
 		// for JPA
+	}
+
+	public ValueSetVersion(ValueSet valueSet, int versionNumber, long conceptCount, String note, String label) {
+		this(valueSet, versionNumber, conceptCount, note);
+		this.label = label;
 	}
 
 	public ValueSetVersion(ValueSet valueSet, int versionNumber, long conceptCount, String note) {
@@ -67,6 +76,15 @@ public class ValueSetVersion {
 		this.note = note;
 		this.contentFrozen = true;
 		this.publishedAt = Instant.now();
+	}
+
+	public String getLabel() {
+		return label;
+	}
+
+	/** @param label null to go back to showing the number */
+	void relabel(String label) {
+		this.label = label;
 	}
 
 	public Long getValueSetId() {

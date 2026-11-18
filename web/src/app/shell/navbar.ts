@@ -1,6 +1,7 @@
 import { Component, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { SIGN_IN_URL, SessionState } from '../core/session';
+import { SessionState } from '../core/session';
+import { SnomedSignIn } from './snomed-sign-in';
 
 /**
  * The top bar shared by SNOMED International tools, ported from the shared-ui navbar in
@@ -55,7 +56,7 @@ type Menu = 'user' | 'apps' | 'links';
 
 @Component({
   selector: 'app-navbar',
-  imports: [RouterLink],
+  imports: [RouterLink, SnomedSignIn],
   templateUrl: './navbar.html',
   host: { '(document:keydown.escape)': 'close()' },
 })
@@ -64,7 +65,6 @@ export class Navbar {
   readonly session = input.required<SessionState>();
   readonly signOut = output<void>();
 
-  protected readonly signInUrl = SIGN_IN_URL;
   protected readonly appGroups = APP_GROUPS;
   protected readonly links = EXTERNAL_LINKS;
   protected readonly open = signal<Menu | null>(null);

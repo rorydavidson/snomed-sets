@@ -154,7 +154,7 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   rather than loaded from Google Fonts, so visitors' browsers do not contact Google.
 - Tailwind is used only for the bar. It is set up in `web/src/styles/tailwind.css` without its
   base reset, so the rest of the app keeps its own styles and design tokens.
-- It holds a sign-in link for visitors, or the account initials with a menu to sign out. It also has
+- It holds a compact SNOMED International sign-in button for visitors, or the account initials with a menu to sign out. It also has
   a grid of public SNOMED International tools, headed with their logo so it is clear those sites
   are theirs, and a menu with a link to snomed.org, each opening in a new tab. SNOMED
   International's status page and privacy policy are left out, as they do not cover this app.

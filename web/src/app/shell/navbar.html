@@ -10,8 +10,7 @@
   <div class="flex justify-end items-center">
     @let state = session();
     @if (state.status === 'signedOut') {
-      <a class="sign-in inline-flex items-center rounded-full h-8 px-3 ms-2 text-sm font-semibold text-gray-200 hover:text-gray-200 hover:bg-gray-700 no-underline"
-         [href]="signInUrl">Sign in</a>
+      <app-snomed-sign-in class="ms-2" size="compact" />
     }
 
     @if (state.status === 'signedIn') {

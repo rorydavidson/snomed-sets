@@ -145,6 +145,7 @@ describe('LibraryPage', () => {
     expect(page.querySelector('h1')?.textContent).toContain('Shared lists of SNOMED CT concepts');
     expect(page.querySelector('a[href="#library"]')).not.toBeNull();
     expect(page.querySelector('#library h2')?.textContent).toContain('Published value sets');
+    expect(page.querySelector('app-value-set-steps')).toBeNull();
   });
 
   it('shows the backend explanation and a retry when loading fails', async () => {

@@ -609,3 +609,14 @@ fieldset.field {
   background: #fff8db;
   border-left: 3px solid var(--warning);
 }
+
+/* A SNOMED CT identifier that has been checked and found fit. */
+.identifier-found {
+  font-size: var(--fs-body-sm);
+  color: #00664f;
+
+  &::before {
+    content: '\2713  ';
+    font-weight: var(--fw-bold);
+  }
+}

@@ -32,6 +32,16 @@ type Preview =
   | { status: 'ready'; page: ExpansionPage }
   | { status: 'error'; message: string };
 
+/** Where checking the identifier has got to. */
+type IdentifierCheckState = {
+  status: 'idle' | 'checking' | 'found' | 'error';
+  sctid: string;
+  /** The release it was checked against. */
+  branch?: string;
+  term?: string;
+  message?: string;
+};
+
 @Component({
   selector: 'app-value-set-editor-page',
   imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput, ConceptDetails, IdentifierImport],
@@ -61,6 +71,38 @@ type Preview =
               <div class="field">
                 <label for="description">Description</label>
                 <textarea id="description" formControlName="description" rows="3" maxlength="2000"></textarea>
+              </div>
+
+              <div class="field">
+                <label for="sctid">SNOMED CT identifier (optional)</label>
+                <div class="actions">
+                  <input id="sctid" type="text" class="mono grow-input" inputmode="numeric" maxlength="18"
+                         formControlName="sctid" (blur)="checkIdentifier()" aria-describedby="sctid-hint sctid-result" />
+                  <button type="button" class="button button-secondary"
+                          [disabled]="identifierCheck().status === 'checking'" (click)="checkIdentifier()">Check</button>
+                </div>
+                <p id="sctid-hint" class="meta">
+                  A reference set concept that identifies this set, also used in its share link. It must be in the
+                  set's release and not identify another set.
+                  @if (originalSctid()) {
+                    Changing it stops links shared with {{ originalSctid() }} from working.
+                  }
+                </p>
+                <div id="sctid-result">
+                  @switch (identifierCheck().status) {
+                    @case ('checking') {
+                      <p class="meta" role="status">Checking {{ identifierCheck().sctid }}…</p>
+                    }
+                    @case ('found') {
+                      <p class="identifier-found" role="status">
+                        <span class="mono">{{ identifierCheck().sctid }}</span> {{ identifierCheck().term }}
+                      </p>
+                    }
+                    @case ('error') {
+                      <p class="field-error" role="alert">{{ identifierCheck().message }}</p>
+                    }
+                  }
+                </div>
               </div>
 
               @if (id === null) {
@@ -345,7 +387,14 @@ export class ValueSetEditorPage implements OnInit {
     shared: [false],
     /** Only offered when the owner has an organisation in their profile. */
     showOrganisation: [false],
+    /** Empty for no identifier. */
+    sctid: [''],
   });
+
+  /** The result of checking the identifier against the backend, shown under the field. */
+  protected readonly identifierCheck = signal<IdentifierCheckState>({ status: 'idle', sctid: '' });
+  /** The identifier the set had when editing started, so changing it can be warned about. */
+  protected readonly originalSctid = signal<string | null>(null);
 
   /** The owner's organisation from their profile, or null if they have none or it could not be loaded. */
   protected readonly organisation = signal<string | null>(null);
@@ -474,6 +523,29 @@ export class ValueSetEditorPage implements OnInit {
     return `${page.total} concepts match. Showing the first ${page.items.length}.`;
   }
 
+  /**
+   * Asks the backend whether the identifier can be used, and shows the concept it names or why not.
+   * The same checks run again when the set is saved.
+   */
+  protected checkIdentifier(): void {
+    const sctid = this.form.controls.sctid.value.trim();
+    const current = this.identifierCheck();
+    if (sctid === '') {
+      this.identifierCheck.set({ status: 'idle', sctid: '' });
+      return;
+    }
+    // Already checked against this release: nothing to ask again.
+    if (current.sctid === sctid && current.branch === this.branch() && current.status !== 'idle') {
+      return;
+    }
+    const branch = this.branch();
+    this.identifierCheck.set({ status: 'checking', sctid, branch });
+    this.api.checkIdentifier(sctid, branch, this.id).subscribe({
+      next: (concept) => this.identifierCheck.set({ status: 'found', sctid, branch, term: concept.fullySpecifiedName }),
+      error: (error: unknown) => this.identifierCheck.set({ status: 'error', sctid, branch, message: describeError(error) }),
+    });
+  }
+
   protected save(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -490,6 +562,7 @@ export class ValueSetEditorPage implements OnInit {
       tags: this.tags(),
       // Without an organisation the choice is not offered, and the owner's name is shown.
       showOrganisation: this.organisation() !== null && value.showOrganisation,
+      sctid: value.sctid.trim(),
       conceptIds: this.manual() ? this.members().map((concept) => concept.conceptId) : [],
     };
     if (this.id === null) {
@@ -542,7 +615,12 @@ export class ValueSetEditorPage implements OnInit {
       ecl: set.ecl,
       shared: set.visibility === 'COMMUNITY',
       showOrganisation: set.showOrganisation,
+      sctid: set.sctid ?? '',
     });
+    this.originalSctid.set(set.sctid);
+    if (set.sctid) {
+      this.identifierCheck.set({ status: 'found', sctid: set.sctid, term: set.sctidTerm ?? '' });
+    }
     if (set.type === 'ECL') {
       this.loaded.set(true);
       return;

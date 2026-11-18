@@ -46,10 +46,12 @@ public class ValueSetController {
 
 	private final ValueSetService service;
 	private final SnowstormClient snowstorm;
+	private final SetIdentifierService identifiers;
 
-	public ValueSetController(ValueSetService service, SnowstormClient snowstorm) {
+	public ValueSetController(ValueSetService service, SnowstormClient snowstorm, SetIdentifierService identifiers) {
 		this.service = service;
 		this.snowstorm = snowstorm;
+		this.identifiers = identifiers;
 	}
 
 	@GetMapping("/value-sets")
@@ -60,6 +62,24 @@ public class ValueSetController {
 	@GetMapping("/tags")
 	public List<String> tags(CurrentUser user) {
 		return service.tags(user);
+	}
+
+	/** The value set a SNOMED CT reference set concept identifies, as used in share links. */
+	@GetMapping("/value-sets/sct/{sctid:\\d{6,18}}")
+	public ValueSetView getByIdentifier(@PathVariable String sctid, CurrentUser user) {
+		return service.getByIdentifier(sctid, user);
+	}
+
+	/**
+	 * Checks an identifier before it is saved, and returns the concept so the editor can show it.
+	 *
+	 * @param branch the release the value set is, or will be, built on
+	 * @param valueSetId the set being edited, which may keep its own identifier
+	 */
+	@GetMapping("/set-identifiers/check")
+	public SetIdentifier checkIdentifier(@RequestParam String sctid, @RequestParam String branch,
+			@RequestParam(required = false) Long valueSetId, CurrentUser user) {
+		return identifiers.check(sctid, branch, valueSetId, user);
 	}
 
 	@GetMapping("/value-sets/{id}")

@@ -24,13 +24,16 @@ import org.snomed.valuesets.user.CurrentUser;
  * @param ownerContactable true when the person asking may message the owner: they are signed in,
  *        not the owner, the owner allows it, and messaging is set up
  * @param showOrganisation the owner's choice for this set; only told to the owner, false for others
+ * @param sctid the SNOMED CT reference set concept identifying the set, or null
+ * @param sctidTerm that concept's fully specified name when it was checked
  */
 public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSystem, String name,
 		String description, String ecl, String branch, String codeSystemVersion,
 		ValueSet.Status status, ValueSet.Visibility visibility, String ownerName, boolean ownerIsOrganisation,
 		String ownerAvatarUrl, boolean ownerContactable, boolean ownedByMe,
 		Instant updatedAt, Integer latestVersion, boolean unpublishedChanges, List<String> tags,
-		boolean deprecated, boolean allVersionsDeprecated, String deprecationReason, boolean showOrganisation) {
+		boolean deprecated, boolean allVersionsDeprecated, String deprecationReason, boolean showOrganisation,
+		String sctid, String sctidTerm) {
 
 	/**
 	 * The owner sees the definition they are working on. Everyone else sees the latest
@@ -59,7 +62,7 @@ public record ValueSetView(long id, ValueSet.DefinitionType type, String codeSys
 				owner && unpublishedChanges, valueSet.getTags(), valueSet.isDeprecated(),
 				// The version in use is only deprecated when there is no other to fall back to.
 				latest != null && latest.isDeprecated(), valueSet.getDeprecationReason(),
-				owner && valueSet.isShowOrganisation());
+				owner && valueSet.isShowOrganisation(), valueSet.getSctid(), valueSet.getSctidTerm());
 	}
 
 	/** @param frozen false for an old version whose concept list was not stored when it was published */

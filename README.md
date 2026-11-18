@@ -118,6 +118,18 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - Other people always see the version in use. The owner works on a draft and can publish again or
   discard the changes made since the last version.
 - Every version stays in the history and can be browsed.
+- A published set shared with the community has a Share button, and so does each of its versions.
+  It copies a fixed link: `/value-sets/{id}` always opens the version in use, and
+  `/value-sets/{id}/versions/{number}` always opens that version. Choosing a version on the page
+  also puts its link in the address bar. Links work without signing in, as visitors may read
+  published sets. Private sets have no Share button, as nobody else could open the link.
+- A set can be given a SNOMED CT identifier: a reference set concept that identifies it. It must
+  have a valid check digit, be a concept identifier, be an active concept in the set's release
+  under 900000000000455006 |Reference set|, and not identify another set. The editor checks it with
+  the backend and shows the concept's fully specified name, and the same checks run on saving. A
+  set with an identifier is shared as `/value-sets/sct/{identifier}`, and its versions as
+  `/value-sets/sct/{identifier}/versions/{number}`. Changing the identifier stops links shared with
+  the old one from working.
 
 ### Upgrading to a new release
 

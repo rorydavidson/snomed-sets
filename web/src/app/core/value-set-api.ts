@@ -31,6 +31,10 @@ export interface ValueSet {
   ownedByMe: boolean;
   /** The owner's choice to show their organisation instead of their name. Only told to the owner. */
   showOrganisation: boolean;
+  /** A SNOMED CT reference set concept identifying the set, used in share links, or null. */
+  sctid: string | null;
+  /** That concept's fully specified name when it was checked. */
+  sctidTerm: string | null;
   updatedAt: string;
   /** The newest published version number, or null if never published. */
   latestVersion: number | null;
@@ -52,6 +56,13 @@ export interface ConceptSearchHit {
   matchCount: number;
   /** The first few matching concepts, to show why the set was found. */
   examples: { conceptId: string; term: string }[];
+}
+
+/** A reference set concept checked as fit to identify a value set. */
+export interface SetIdentifier {
+  conceptId: string;
+  fullySpecifiedName: string;
+  preferredTerm: string;
 }
 
 /** What a concept search found. */
@@ -82,6 +93,8 @@ export type ValueSetDraft = Pick<
   ValueSet,
   'type' | 'codeSystem' | 'name' | 'description' | 'ecl' | 'visibility' | 'tags' | 'showOrganisation'
 > & {
+  /** A reference set concept to identify the set, or empty for none. */
+  sctid: string;
   /** The whole list of a hand-picked value set. Empty for an ECL one. */
   conceptIds: string[];
   /**
@@ -355,6 +368,23 @@ export class ValueSetApi {
    */
   conceptSearch(term: string): Observable<ConceptSearchResult> {
     return this.http.get<ConceptSearchResult>('/api/concept-search', { params: { term } });
+  }
+
+  /** The value set a SNOMED CT reference set concept identifies, as used in share links. */
+  getByIdentifier(sctid: string): Observable<ValueSet> {
+    return this.http.get<ValueSet>(`/api/value-sets/sct/${encodeURIComponent(sctid)}`);
+  }
+
+  /**
+   * Checks a SNOMED CT identifier for a value set: well formed, a reference set in the release,
+   * and not identifying another set. Returns the concept to show.
+   */
+  checkIdentifier(sctid: string, branch: string, valueSetId: number | null): Observable<SetIdentifier> {
+    const params: Record<string, string> = { sctid, branch };
+    if (valueSetId !== null) {
+      params['valueSetId'] = String(valueSetId);
+    }
+    return this.http.get<SetIdentifier>('/api/set-identifiers/check', { params });
   }
 
   get(id: number): Observable<ValueSet> {

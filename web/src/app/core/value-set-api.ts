@@ -395,8 +395,14 @@ export class ValueSetApi {
     return this.http.get<ValueSet>(`/api/value-sets/${id}`);
   }
 
-  expansion(id: number, offset: number, limit: number): Observable<ExpansionPage> {
-    return this.http.get<ExpansionPage>(`/api/value-sets/${id}/expansion`, { params: { offset, limit } });
+  /** @param language preferred terms in this language where the concepts have them; US English by default */
+  expansion(id: number, offset: number, limit: number, language = 'en'): Observable<ExpansionPage> {
+    return this.http.get<ExpansionPage>(`/api/value-sets/${id}/expansion`, { params: pageParams(offset, limit, language) });
+  }
+
+  /** The languages a set's concepts can be shown in, the edition's own first and as the default. */
+  languages(id: number): Observable<SetLanguages> {
+    return this.http.get<SetLanguages>(`/api/value-sets/${id}/languages`);
   }
 
   create(draft: ValueSetDraft): Observable<ValueSet> {
@@ -490,9 +496,9 @@ export class ValueSetApi {
     return this.http.put<ValueSetVersion>(`/api/value-sets/${id}/versions/${version}/label`, { label });
   }
 
-  versionExpansion(id: number, version: number, offset: number, limit: number): Observable<ExpansionPage> {
+  versionExpansion(id: number, version: number, offset: number, limit: number, language = 'en'): Observable<ExpansionPage> {
     return this.http.get<ExpansionPage>(`/api/value-sets/${id}/versions/${version}/expansion`, {
-      params: { offset, limit },
+      params: pageParams(offset, limit, language),
     });
   }
 
@@ -579,4 +585,17 @@ export function versionName(version: { number: number; label: string | null }): 
 /** The same, for use within a sentence: "2026-03-01" or "version 3". */
 export function versionInSentence(version: { number: number; label: string | null }): string {
   return version.label ?? `version ${version.number}`;
+}
+
+/** The languages a set's concepts can be shown in. */
+export interface SetLanguages {
+  /** The edition's own language, for example "no", or "en". */
+  defaultLanguage: string;
+  /** Every language the edition holds, the default first. */
+  available: { code: string; name: string }[];
+}
+
+/** English is what is stored, so it is not asked for; the address then stays as it always was. */
+function pageParams(offset: number, limit: number, language: string): Record<string, string | number> {
+  return language === 'en' ? { offset, limit } : { offset, limit, language };
 }

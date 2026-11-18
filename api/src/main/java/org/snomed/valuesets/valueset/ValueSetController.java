@@ -41,6 +41,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 public class ValueSetController {
 
 	private static final int MAX_PAGE_SIZE = 100;
+	/** A language code such as "en" or "no"; it goes into a request header, so nothing else is accepted. */
+	private static final String LANGUAGE_REGEX = "[a-z]{2,3}";
 	/** A version number, or "draft" for the owner's working draft. */
 	private static final String VERSION_PARAM = "draft|[1-9]\\d{0,5}";
 
@@ -152,8 +154,15 @@ public class ValueSetController {
 	public ExpansionPage expansion(@PathVariable long id,
 			@RequestParam(defaultValue = "0") @Min(0) int offset,
 			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit,
+			@RequestParam(required = false) @Pattern(regexp = LANGUAGE_REGEX) String language,
 			CurrentUser user) {
-		return service.expansion(id, user, offset, limit);
+		return service.expansion(id, user, offset, limit, language);
+	}
+
+	/** The languages the set's concepts can be shown in, with the edition's own as the default. */
+	@GetMapping("/value-sets/{id}/languages")
+	public SetLanguages languages(@PathVariable long id, CurrentUser user) {
+		return service.languages(id, user);
 	}
 
 	/** A published version, or with version=draft the owner's working draft, in the Global Patient Set file layout. */
@@ -198,8 +207,9 @@ public class ValueSetController {
 	public ExpansionPage versionExpansion(@PathVariable long id, @PathVariable int number,
 			@RequestParam(defaultValue = "0") @Min(0) int offset,
 			@RequestParam(defaultValue = "50") @Min(1) @Max(MAX_PAGE_SIZE) int limit,
+			@RequestParam(required = false) @Pattern(regexp = LANGUAGE_REGEX) String language,
 			CurrentUser user) {
-		return service.versionExpansion(id, number, user, offset, limit);
+		return service.versionExpansion(id, number, user, offset, limit, language);
 	}
 
 	/** Expands an ECL expression that has not been saved, for the live preview in the editor. */

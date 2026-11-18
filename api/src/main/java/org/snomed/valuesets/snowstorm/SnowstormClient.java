@@ -420,6 +420,11 @@ public class SnowstormClient {
 		return concepts("conceptIds", conceptIds, branch, 0, conceptIds.size(), US_ENGLISH);
 	}
 
+	/** The same, with preferred terms in the given language where the concepts have them, for example "no". */
+	public ExpansionPage activeConcepts(List<String> conceptIds, String branch, String language) {
+		return concepts("conceptIds", conceptIds, branch, 0, conceptIds.size(), acceptLanguage(language));
+	}
+
 	private ExpansionPage concepts(String filterName, List<String> filterValues, String branch, int offset, int limit,
 			String acceptLanguage) {
 		if (!isValidBranch(branch)) {

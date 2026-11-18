@@ -98,7 +98,13 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 
 ### Viewing concepts
 
-- Concept lists show each concept's preferred term and the language it is given in (US English by default).
+- Concept lists show each concept's preferred term and the language it is given in. They start in the
+  edition's own language (Norwegian for the Norwegian Edition, for example), falling back to US
+  English for a concept with no term in it. When the edition has more than one language, a switch
+  above the list shows it in any of them. Stored lists keep their US English terms; the other
+  languages are looked up in Snowstorm a page at a time, and if Snowstorm cannot be reached the US
+  English terms are shown.
+- Downloads are always in US English, whatever language the list is shown in.
 - Clicking a concept opens its details. The header gives its preferred term in the edition's own
   language (Norwegian for the Norwegian Edition, for example), its fully specified name, and whether
   it comes from the International Edition or a national extension, with the module's name.

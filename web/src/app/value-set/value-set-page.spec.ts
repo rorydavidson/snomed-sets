@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { Session } from '../core/session';
-import { Concept, SavedEcl, UpgradeAvailability, UpgradePreview, ValueSet, ValueSetUpgrade, ValueSetVersion } from '../core/value-set-api';
+import { Concept, SavedEcl, UpgradeAvailability, UpgradePreview, ValueSet, ValueSetUpgrade, ValueSetVersion, SetLanguages } from '../core/value-set-api';
 import { ValueSetPage } from './value-set-page';
 
 const SET: ValueSet = {
@@ -50,6 +50,14 @@ const VERSION_1: ValueSetVersion = {
 };
 
 const EMPTY_PAGE = { items: [], total: 0, offset: 0, limit: 50 };
+const ENGLISH_ONLY: SetLanguages = { defaultLanguage: 'en', available: [{ code: 'en', name: 'English' }] };
+const NORWEGIAN: SetLanguages = {
+  defaultLanguage: 'no',
+  available: [
+    { code: 'no', name: 'Norwegian' },
+    { code: 'en', name: 'English' },
+  ],
+};
 
 const NO_UPGRADE: UpgradeAvailability = {
   codeSystem: 'SNOMEDCT',
@@ -89,10 +97,12 @@ describe('ValueSetPage', () => {
     upgrades: ValueSetUpgrade[] = [],
     availability: UpgradeAvailability = NO_UPGRADE,
     savedEcl: SavedEcl | null = null,
+    languages: SetLanguages = ENGLISH_ONLY,
   ): void {
     fixture = TestBed.createComponent(ValueSetPage);
     page = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
+    http.expectOne('/api/value-sets/7/languages').flush(languages);
     http.expectOne('/api/code-systems').flush([
       { shortName: 'SNOMEDCT', name: 'International Edition', branchPath: 'MAIN', latestVersion: '2026-01-01', latestVersionBranch: 'MAIN/2026-01-01' },
     ]);
@@ -127,6 +137,7 @@ describe('ValueSetPage', () => {
     fixture = TestBed.createComponent(ValueSetPage);
     page = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
+    http.expectOne('/api/value-sets/7/languages').flush(ENGLISH_ONLY);
     // No calls that need a session: no code systems, upgrades or concept details.
     http.expectOne('/api/value-sets/7').flush(published);
     http.expectOne('/api/value-sets/7/saved-ecl').flush(null, { status: 204, statusText: 'No Content' });
@@ -453,6 +464,34 @@ describe('ValueSetPage', () => {
       Array.from(page.querySelectorAll<HTMLButtonElement>('button.version')).find((b) => b.textContent?.includes('Version 1'))!.click();
       http.expectOne('/api/value-sets/7/versions/1/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
       expect(replaceState).toHaveBeenCalledWith('/value-sets/7/versions/1');
+    });
+  });
+
+  describe('languages', () => {
+    it("shows the concepts in the edition's own language first, and can switch to another", async () => {
+      open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY' }, [], [], NO_UPGRADE, null, NORWEGIAN);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50&language=no').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      const options = Array.from(page.querySelectorAll<HTMLLabelElement>('.term-language'));
+      expect(options.map((option) => option.textContent?.trim())).toEqual(['Norwegian', 'English']);
+      expect(options[0].classList).toContain('is-on');
+      expect(page.textContent).toContain('Preferred terms are in Norwegian where a concept has one, otherwise in US English.');
+      expect(page.textContent).toContain('Downloads are always in US English.');
+
+      options[1].querySelector('input')!.click();
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+      expect(page.textContent).toContain('Preferred terms are the US English ones');
+      // Downloads keep to US English whatever language is shown.
+      expect(Array.from(page.querySelectorAll('a[download]')).every((a) => !a.getAttribute('href')?.includes('language'))).toBe(true);
+    });
+
+    it('offers no switch when the edition has one language', async () => {
+      open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY' });
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+      expect(page.querySelector('.term-languages')).toBeNull();
     });
   });
 

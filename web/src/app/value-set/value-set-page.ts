@@ -9,6 +9,7 @@ import {
   ValueSet,
   ValueSetApi,
   ValueSetUpgrade,
+  SetLanguages,
   ValueSetVersion,
   describeError,
   upgradeReportUrl,
@@ -29,6 +30,42 @@ const PAGE_SIZE = 50;
   selector: 'app-value-set-page',
   imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog, MessageOwnerDialog, ShareLink],
   styles: `
+    /* A switch between the languages the edition holds, like the library's search switch. */
+    .term-languages {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-self: flex-start;
+      padding: 2px;
+      background: var(--neutral-100);
+      border-radius: var(--radius-md);
+    }
+
+    .term-language {
+      position: relative;
+      padding: var(--space-1) var(--space-3);
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+
+      input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      &.is-on {
+        color: var(--snomed-navy);
+        background: var(--surface-card);
+        box-shadow: var(--shadow-xs);
+      }
+
+      &:has(input:focus-visible) {
+        box-shadow: var(--shadow-focus);
+      }
+    }
+
     .rename {
       display: flex;
       flex-wrap: wrap;
@@ -511,8 +548,26 @@ const PAGE_SIZE = 50;
               </div>
             } @else if (expansion(); as page) {
               <p class="meta">{{ rangeLabel() }}</p>
+              @if (languages(); as options) {
+                @if (options.available.length > 1) {
+                  <div class="term-languages" role="radiogroup" aria-label="Language of the terms">
+                    @for (option of options.available; track option.code) {
+                      <label class="term-language" [class.is-on]="language() === option.code">
+                        <input type="radio" name="term-language" [value]="option.code" [checked]="language() === option.code"
+                               (change)="chooseLanguage(option.code)" />
+                        {{ option.name }}
+                      </label>
+                    }
+                  </div>
+                }
+              }
               <p class="meta">
-                Preferred terms are the US English ones where a concept has one. The tag after each term is its language.
+                @if (language() === 'en') {
+                  Preferred terms are the US English ones where a concept has one.
+                } @else {
+                  Preferred terms are in {{ languageName() }} where a concept has one, otherwise in US English.
+                }
+                The tag after each term is its language. Downloads are always in US English.
               </p>
               <div class="table-scroll">
                 <table>
@@ -618,6 +673,18 @@ export class ValueSetPage implements OnInit {
   protected readonly versionsError = signal(false);
   /** The version being looked at, or null for what the value set shows by default. */
   protected readonly selectedVersion = signal<number | null>(null);
+  /** The languages the concepts can be shown in; null until known, or if they cannot be. */
+  protected readonly languages = signal<SetLanguages | null>(null);
+  /** The language the concept list is shown in: the edition's own unless another is chosen. */
+  protected readonly language = signal('en');
+  protected readonly languageName = computed(
+    () => this.languages()?.available.find((language) => language.code === this.language())?.name ?? 'US English',
+  );
+
+  protected chooseLanguage(code: string): void {
+    this.language.set(code);
+    this.loadExpansion(this.offset());
+  }
   protected readonly expansion = signal<ExpansionPage | null>(null);
   protected readonly expansionError = signal<string | null>(null);
   protected readonly offset = signal(0);
@@ -690,7 +757,15 @@ export class ValueSetPage implements OnInit {
   });
 
   ngOnInit(): void {
-    this.load(true);
+    // The concepts are shown in the edition's own language, so that is known before they are loaded.
+    this.api.languages(this.id).subscribe({
+      next: (languages) => {
+        this.languages.set(languages);
+        this.language.set(languages.defaultLanguage);
+        this.load(true);
+      },
+      error: () => this.load(true),
+    });
     if (!this.signedIn()) {
       return;
     }
@@ -846,10 +921,11 @@ export class ValueSetPage implements OnInit {
     this.expansion.set(null);
     this.expansionError.set(null);
     const version = this.selectedVersion();
+    const language = this.language();
     const request =
       version === null
-        ? this.api.expansion(this.id, offset, PAGE_SIZE)
-        : this.api.versionExpansion(this.id, version, offset, PAGE_SIZE);
+        ? this.api.expansion(this.id, offset, PAGE_SIZE, language)
+        : this.api.versionExpansion(this.id, version, offset, PAGE_SIZE, language);
     request.subscribe({
       next: (page) => this.expansion.set(page),
       error: (error: unknown) => this.expansionError.set(describeError(error)),

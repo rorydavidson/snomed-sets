@@ -3,20 +3,20 @@
   <div class="fixed left-0 top-0 bottom-0 overflow-auto w-screen h-screen bg-zinc-900 opacity-20 z-10" (click)="close()"></div>
 }
 <header class="w-full sticky top-0 bg-zinc-800 p-1 h-12.5 flex items-center justify-between z-20">
-  <a class="flex justify-start items-center no-underline" routerLink="/" (click)="close()">
-    <img class="size-10" src="logo.svg" alt="" />
-    <span class="text-gray-200 text-lg pl-3">{{ title() }}</span>
+  <a class="flex justify-start items-center min-w-0 no-underline" routerLink="/" (click)="close()">
+    <img class="size-8 sm:size-10 shrink-0" src="logo.svg" alt="" />
+    <span class="text-gray-200 text-sm sm:text-lg pl-2 sm:pl-3 truncate">{{ title() }}</span>
   </a>
-  <div class="flex justify-end items-center">
+  <div class="flex justify-end items-center shrink-0">
     @let state = session();
     @if (state.status === 'signedOut') {
-      <app-snomed-sign-in class="ms-2" size="compact" />
+      <app-snomed-sign-in class="ms-1 sm:ms-2" size="compact" />
     }
 
     @if (state.status === 'signedIn') {
       <div class="relative inline-block">
         <button type="button"
-                class="inline-flex justify-center rounded-full size-8 ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
+                class="inline-flex justify-center rounded-full size-8 ms-1 sm:ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
                 aria-controls="navbar-user"
                 [attr.aria-expanded]="open() === 'user'"
                 [attr.aria-label]="'Account: ' + state.name"
@@ -39,7 +39,7 @@
 
     <div class="relative inline-block">
       <button type="button"
-              class="inline-flex justify-center rounded-full size-8 ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
+              class="inline-flex justify-center rounded-full size-8 ms-1 sm:ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
               aria-controls="navbar-apps"
               aria-label="SNOMED International tools"
               [attr.aria-expanded]="open() === 'apps'"
@@ -77,7 +77,7 @@
 
     <div class="relative inline-block mr-1">
       <button type="button"
-              class="inline-flex justify-center rounded-full size-8 ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
+              class="inline-flex justify-center rounded-full size-8 ms-1 sm:ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
               aria-controls="navbar-links"
               aria-label="More links"
               [attr.aria-expanded]="open() === 'links'"

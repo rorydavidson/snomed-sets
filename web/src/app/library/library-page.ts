@@ -83,7 +83,7 @@ import { StepsTip } from './steps-tip';
                       <div class="set-heading">
                         <a class="set-name" [routerLink]="['/value-sets', set.id]">{{ set.name }}</a>
                         <span class="badge" [class.badge-success]="set.latestVersion !== null">
-                          {{ set.latestVersion !== null ? 'v' + set.latestVersion : 'Draft' }}
+                          {{ set.latestVersion !== null ? (set.latestVersionLabel ?? 'v' + set.latestVersion) : 'Draft' }}
                         </span>
                         @if (set.visibility === 'PRIVATE') {
                           <span class="badge">Private</span>

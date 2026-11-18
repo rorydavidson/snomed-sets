@@ -38,6 +38,8 @@ export interface ValueSet {
   updatedAt: string;
   /** The newest published version number, or null if never published. */
   latestVersion: number | null;
+  /** The label of that version, or null if it has none. */
+  latestVersionLabel: string | null;
   /** True only for the owner, when the definition differs from the latest published version. */
   unpublishedChanges: boolean;
   /** Free-text labels, in lower case. */
@@ -77,6 +79,8 @@ export interface ConceptSearchResult {
 /** A definition frozen at the moment it was published. */
 export interface ValueSetVersion {
   number: number;
+  /** The owner's name for the version, such as a date, shown instead of "Version 3"; null for none. */
+  label: string | null;
   ecl: string;
   branch: string;
   conceptCount: number;
@@ -476,8 +480,14 @@ export class ValueSetApi {
     return this.http.get<ValueSetVersion[]>(`/api/value-sets/${id}/versions`);
   }
 
-  publish(id: number, note: string): Observable<ValueSetVersion> {
-    return this.http.post<ValueSetVersion>(`/api/value-sets/${id}/versions`, { note });
+  /** @param label a name for the new version, such as a date; empty for none */
+  publish(id: number, note: string, label = ''): Observable<ValueSetVersion> {
+    return this.http.post<ValueSetVersion>(`/api/value-sets/${id}/versions`, { note, label });
+  }
+
+  /** Names a version, or with an empty label goes back to showing its number. */
+  relabelVersion(id: number, version: number, label: string): Observable<ValueSetVersion> {
+    return this.http.put<ValueSetVersion>(`/api/value-sets/${id}/versions/${version}/label`, { label });
   }
 
   versionExpansion(id: number, version: number, offset: number, limit: number): Observable<ExpansionPage> {
@@ -559,4 +569,14 @@ export function describeError(error: unknown): string {
     }
   }
   return 'Something went wrong. Try again in a moment.';
+}
+
+/** "2026-03-01" when the version has that label, otherwise "Version 3". */
+export function versionName(version: { number: number; label: string | null }): string {
+  return version.label ?? `Version ${version.number}`;
+}
+
+/** The same, for use within a sentence: "2026-03-01" or "version 3". */
+export function versionInSentence(version: { number: number; label: string | null }): string {
+  return version.label ?? `version ${version.number}`;
 }

@@ -118,6 +118,11 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - Other people always see the version in use. The owner works on a draft and can publish again or
   discard the changes made since the last version.
 - Every version stays in the history and can be browsed.
+- A version can be given a name, such as the date it was published, when it is published or later
+  from the version history. The name is shown instead of "Version 3" across the pages, with the
+  number still shown beside it. Names are unique within a set, whatever their capitals, and use
+  letters, digits, spaces and `. _ / : ( ) + -`, up to 40 characters. Links and downloads keep using
+  the number, so renaming a version does not break them.
 - A published set shared with the community has a Share button, and so does each of its versions.
   It copies a fixed link: `/value-sets/{id}` always opens the version in use, and
   `/value-sets/{id}/versions/{number}` always opens that version. Choosing a version on the page

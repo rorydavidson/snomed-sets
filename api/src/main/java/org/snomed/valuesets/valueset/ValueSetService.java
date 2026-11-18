@@ -570,7 +570,22 @@ public class ValueSetService {
 		// Working this out costs a query for a hand-picked set, and only the owner is told.
 		boolean unpublishedChanges = latest != null && valueSet.isOwnedBy(user.subject())
 				&& differsFrom(valueSet, latest);
-		return ValueSetView.of(valueSet, latest, unpublishedChanges, user, owner, messaging.enabled());
+		return ValueSetView.of(valueSet, latest, unpublishedChanges, user, owner, messaging.enabled(),
+				conceptCountOf(valueSet, latest));
+	}
+
+	/**
+	 * How many concepts the set has, as people are shown it: the version in use, or for a
+	 * hand-picked set never published, its working list. Null for an ECL set never published,
+	 * which has no stored list and would need Snowstorm to count.
+	 */
+	private Long conceptCountOf(ValueSet valueSet, ValueSetVersion latest) {
+		if (latest != null) {
+			return latest.getConceptCount();
+		}
+		return valueSet.isManual()
+				? members.countByValueSetIdAndVersionNumber(valueSet.getId(), ValueSetMember.WORKING_LIST)
+				: null;
 	}
 
 	private boolean differsFrom(ValueSet valueSet, ValueSetVersion version) {

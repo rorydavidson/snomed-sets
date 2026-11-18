@@ -25,6 +25,7 @@ const ASTHMA: ValueSet = {
   showOrganisation: false,
   sctid: null,
   sctidTerm: null,
+  conceptCount: null,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   latestVersionLabel: null,
@@ -264,6 +265,47 @@ describe('LibraryPage', () => {
     await fixture.whenStable();
     expect(names()).toEqual(['Asthma diagnoses']);
     expect(page.textContent).toContain('1 value set');
+  });
+
+  it('says how many concepts each set has, and when that is not known yet', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([
+      { ...ASTHMA, conceptCount: 1234 },
+      { ...ASTHMA, id: 2, name: 'ECL draft', conceptCount: null },
+    ]);
+    await fixture.whenStable();
+
+    const counts = Array.from(page.querySelectorAll('tbody td.numeric')).map((cell) => cell.textContent?.trim());
+    expect(counts).toEqual(['1,234', '–']);
+    expect(page.querySelector('thead th.numeric')?.textContent).toContain('Concepts');
+  });
+
+  it('shows visitors how much has been shared so far, but nothing for an empty library', async () => {
+    TestBed.inject(Session).state.set({ status: 'signedOut' });
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([{ ...ASTHMA, ownerName: null }]);
+    http.expectOne('/api/library-stats').flush({ valueSets: 12, concepts: 3456 });
+    await fixture.whenStable();
+
+    const figures = Array.from(page.querySelectorAll('.stats div')).map((stat) => [
+      stat.querySelector('dd')?.textContent?.trim(),
+      stat.querySelector('dt')?.textContent?.trim(),
+    ]);
+    expect(figures).toEqual([
+      ['12', 'value sets shared'],
+      ['3,456', 'different concepts covered'],
+    ]);
+
+    const empty = TestBed.createComponent(LibraryPage);
+    empty.detectChanges();
+    http.expectOne('/api/value-sets').flush([]);
+    http.expectOne('/api/library-stats').flush({ valueSets: 0, concepts: 0 });
+    await empty.whenStable();
+    expect((empty.nativeElement as HTMLElement).querySelector('.stats')).toBeNull();
   });
 
   it('shows a visitor who has not signed in the library without owners or a way to create', async () => {

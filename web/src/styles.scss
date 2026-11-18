@@ -620,3 +620,10 @@ fieldset.field {
     font-weight: var(--fw-bold);
   }
 }
+
+/* Counts line up on the right, so their sizes compare at a glance. */
+th.numeric,
+td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

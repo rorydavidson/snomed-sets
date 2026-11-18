@@ -49,11 +49,20 @@ public class ValueSetController {
 	private final ValueSetService service;
 	private final SnowstormClient snowstorm;
 	private final SetIdentifierService identifiers;
+	private final LibraryStatsService stats;
 
-	public ValueSetController(ValueSetService service, SnowstormClient snowstorm, SetIdentifierService identifiers) {
+	public ValueSetController(ValueSetService service, SnowstormClient snowstorm, SetIdentifierService identifiers,
+			LibraryStatsService stats) {
 		this.service = service;
 		this.snowstorm = snowstorm;
 		this.identifiers = identifiers;
+		this.stats = stats;
+	}
+
+	/** How many value sets the community has published, and how many different concepts they hold. */
+	@GetMapping("/library-stats")
+	public LibraryStats libraryStats() {
+		return stats.stats();
 	}
 
 	@GetMapping("/value-sets")

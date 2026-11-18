@@ -24,11 +24,25 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - Every value set you own, and every set others have shared with the community, in one compact table.
 - Above the table, a tip shows the three steps of making a value set until you close it. Closing it
   is remembered in that browser only, so nothing about it is stored on the server.
-- Search by name or tag. Clicking a tag shows the other sets that carry it.
+- Search runs when you press Search, not while you type, and switches between two kinds:
+  - **Value sets** matches words in set names, descriptions and tags, within the library already
+    on the page. Clicking a tag searches for the other sets that carry it.
+  - **Concepts in sets** finds sets whose concept list holds a concept with any active description,
+    synonyms included, in any language of its edition, with words starting with each word typed, in
+    any order: "heart att" finds Myocardial infarction. Snowstorm does the matching, once for each
+    release the lists were built on, and the concepts it finds are then looked for in the stored
+    lists. A SNOMED CT ID is looked up in the lists directly. Each set is searched in the list you
+    would be shown: the version in use, or your own working list of a hand-picked set. Sets defined
+    by ECL are searched once published.
+  - Very broad words are cut short at 10,000 matching concepts per release, and the page says so.
+    If Snowstorm cannot be reached, only the stored preferred terms and fully specified names are
+    searched, and the page says that too.
+- Without signing in, concept searches are limited to one every 3 minutes per address, and 20 a
+  minute from all visitors together, to keep the database quick. The page says so and counts down.
+  The limits are held in memory, so they reset when the backend restarts.
 - Each row shows the latest version (or Draft), whether the set is private, how it is defined, the
   edition and release it is built on, its owner and last update.
 - Deprecated sets stay in the list, greyed out and marked as deprecated, and can be hidden with a tickbox.
-- A search for sets containing a given concept is planned; the field is there but switched off.
 
 ### Creating and editing value sets
 

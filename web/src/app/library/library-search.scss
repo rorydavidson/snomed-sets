@@ -1,0 +1,92 @@
+.search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.search-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.search-label {
+  font-weight: var(--fw-semibold);
+  color: var(--snomed-navy);
+}
+
+/* Two choices joined into one control, so it reads as a switch between kinds of search. */
+.modes {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--neutral-100);
+  border-radius: var(--radius-md);
+}
+
+.mode {
+  position: relative;
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  &.is-on {
+    color: var(--snomed-navy);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-xs);
+  }
+
+  &:has(input:focus-visible) {
+    box-shadow: var(--shadow-focus);
+  }
+}
+
+.search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+
+  input {
+    flex: 1 1 260px;
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    font: inherit;
+    color: var(--text-body);
+    background: var(--surface-card);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+  }
+}
+
+.hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+}
+
+.limit {
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-subtle);
+  border-left: 3px solid var(--snomed-cyan);
+
+  strong {
+    display: block;
+    margin-top: var(--space-1);
+    color: var(--snomed-navy);
+  }
+}

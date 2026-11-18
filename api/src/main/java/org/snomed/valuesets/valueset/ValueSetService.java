@@ -550,6 +550,38 @@ public class ValueSetService {
 		return versions.findByValueSetIdOrderByVersionNumberDesc(valueSet.getId());
 	}
 
+	/**
+	 * For each value set the person may see, the stored concept list they would be shown: the
+	 * owner's working list of a hand-picked set, otherwise the version in use. Sets with no stored
+	 * list, such as an ECL set that has never been published, are left out.
+	 *
+	 * @return by value set id, the concept list's version number and the branch it was built on
+	 */
+	Map<Long, ShownList> listsShownTo(CurrentUser user) {
+		List<ValueSet> visible = user.isSignedIn()
+				? valueSets.findAllVisibleTo(user.subject())
+				: valueSets.findAllPublished();
+		Map<Long, List<ValueSetVersion>> versionsById = versions
+				.findByValueSetIdInOrderByVersionNumberDesc(visible.stream().map(ValueSet::getId).toList()).stream()
+				.collect(Collectors.groupingBy(ValueSetVersion::getValueSetId));
+		Map<Long, ShownList> lists = new LinkedHashMap<>();
+		for (ValueSet valueSet : visible) {
+			if (valueSet.isManual() && valueSet.isOwnedBy(user.subject())) {
+				lists.put(valueSet.getId(), new ShownList(ValueSetMember.WORKING_LIST, valueSet.getBranch()));
+				continue;
+			}
+			ValueSetVersion inUse = versionInUse(versionsById.getOrDefault(valueSet.getId(), List.of()));
+			if (inUse != null && inUse.isContentFrozen()) {
+				lists.put(valueSet.getId(), new ShownList(inUse.getVersionNumber(), inUse.getBranch()));
+			}
+		}
+		return lists;
+	}
+
+	/** A stored concept list: which version of a set it is, and the branch it was built on. */
+	record ShownList(int version, String branch) {
+	}
+
 	ValueSetVersion latestVersionOf(ValueSet valueSet) {
 		return versionInUse(allVersionsOf(valueSet));
 	}

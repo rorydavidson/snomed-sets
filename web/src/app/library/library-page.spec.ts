@@ -80,35 +80,165 @@ describe('LibraryPage', () => {
     expect((again.nativeElement as HTMLElement).querySelector('app-steps-tip section')).toBeNull();
   });
 
-  it('filters by name and by tag, and a tag can be clicked to filter on it', async () => {
+  function typeAndSearch(page: HTMLElement, text: string): void {
+    const input = page.querySelector<HTMLInputElement>('#library-search')!;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    page.querySelector<HTMLFormElement>('form[role="search"]')!.dispatchEvent(new Event('submit'));
+  }
+
+  function chooseConcepts(page: HTMLElement): void {
+    page.querySelector<HTMLInputElement>('input[name="search-mode"][value="concepts"]')!.click();
+  }
+
+  it('searches set names, descriptions and tags only when Search is pressed, and a tag can be clicked', async () => {
     const fixture = TestBed.createComponent(LibraryPage);
     const page = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
     http.expectOne('/api/value-sets').flush([
       { ...ASTHMA, tags: ['respiratory'] },
-      { ...ASTHMA, id: 2, name: 'Fracture of femur', tags: ['trauma'] },
+      { ...ASTHMA, id: 2, name: 'Fracture of femur', description: 'Injuries for the trauma audit', tags: ['trauma'] },
       { ...ASTHMA, id: 3, name: 'Childhood asthma', tags: ['paediatric', 'respiratory'] },
     ]);
     await fixture.whenStable();
     const names = () => Array.from(page.querySelectorAll('a.set-name')).map((a) => a.textContent?.trim());
-    const search = page.querySelector<HTMLInputElement>('#library-search')!;
     expect(names()).toHaveLength(3);
 
-    search.value = 'ASTHMA child';
-    search.dispatchEvent(new Event('input'));
+    // Typing alone does nothing.
+    const input = page.querySelector<HTMLInputElement>('#library-search')!;
+    input.value = 'ASTHMA child';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(names()).toHaveLength(3);
+
+    typeAndSearch(page, 'ASTHMA child');
     await fixture.whenStable();
     expect(names()).toEqual(['Childhood asthma']);
-    expect(page.textContent).toContain('1 of 3 value sets');
+    expect(page.textContent).toContain('1 of 3 value sets match "ASTHMA child".');
 
     Array.from(page.querySelectorAll<HTMLButtonElement>('button.tag')).find((b) => b.textContent?.trim() === 'respiratory')!.click();
     await fixture.whenStable();
     expect(names()).toEqual(['Asthma diagnoses', 'Childhood asthma']);
+    expect(input.value).toBe('respiratory');
 
-    search.value = 'nothing like this';
-    search.dispatchEvent(new Event('input'));
+    typeAndSearch(page, 'audit');
     await fixture.whenStable();
-    expect(page.textContent).toContain('None of the 3 value sets match.');
-    expect(page.querySelector<HTMLInputElement>('#concept-search-placeholder')?.disabled).toBe(true);
+    expect(names()).toEqual(['Fracture of femur']);
+
+    typeAndSearch(page, 'nothing like this');
+    await fixture.whenStable();
+    expect(page.textContent).toContain('None of the 3 value sets match "nothing like this".');
+
+    Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Clear')!.click();
+    await fixture.whenStable();
+    expect(names()).toHaveLength(3);
+  });
+
+  it('finds sets containing matching concepts and shows which concepts matched', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA, { ...ASTHMA, id: 2, name: 'Fracture of femur' }]);
+    await fixture.whenStable();
+    chooseConcepts(page);
+    await fixture.whenStable();
+    // Signed-in people are not told about the visitors' limit.
+    expect(page.textContent).not.toContain('once every 3 minutes');
+
+    typeAndSearch(page, 'asthma');
+    http.expectOne('/api/concept-search?term=asthma').flush({
+      hits: [
+        {
+          valueSetId: 1,
+          matchCount: 5,
+          examples: [
+            { conceptId: '389145006', term: 'Allergic asthma' },
+            { conceptId: '233678006', term: 'Childhood asthma' },
+          ],
+        },
+      ],
+      truncated: false,
+      storedTermsOnly: false,
+    });
+    await fixture.whenStable();
+
+    const names = Array.from(page.querySelectorAll('a.set-name')).map((a) => a.textContent?.trim());
+    expect(names).toEqual(['Asthma diagnoses']);
+    expect(page.querySelector('.matches')?.textContent).toContain('Contains Allergic asthma, Childhood asthma and 3 more');
+    expect(page.textContent).toContain('1 of 2 value sets contain a concept matching "asthma".');
+    expect(page.querySelector('.search-note')).toBeNull();
+  });
+
+  it('says when a concept search was cut short or could only use stored terms', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    await fixture.whenStable();
+    chooseConcepts(page);
+    typeAndSearch(page, 'disorder');
+    http.expectOne('/api/concept-search?term=disorder').flush({ hits: [], truncated: true, storedTermsOnly: true });
+    await fixture.whenStable();
+
+    const notes = Array.from(page.querySelectorAll('.search-note')).map((note) => note.textContent);
+    expect(notes[0]).toContain('only the first 10,000 in each release');
+    expect(notes[1]).toContain('could not be reached');
+  });
+
+  it('asks for at least three characters before searching for concepts', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    await fixture.whenStable();
+    chooseConcepts(page);
+    typeAndSearch(page, 'as');
+    await fixture.whenStable();
+
+    expect(page.querySelector('[role="alert"]')?.textContent).toContain('at least 3 characters');
+  });
+
+  it('shows the wait the server asks for when a visitor has already searched from elsewhere', async () => {
+    TestBed.inject(Session).state.set({ status: 'signedOut' });
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([{ ...ASTHMA, ownerName: null }]);
+    await fixture.whenStable();
+    chooseConcepts(page);
+    typeAndSearch(page, 'asthma');
+    http
+      .expectOne('/api/concept-search?term=asthma')
+      .flush({ detail: 'Try again later.' }, { status: 429, statusText: 'Too Many Requests', headers: { 'Retry-After': '90' } });
+    await fixture.whenStable();
+
+    expect(page.querySelector('[role="timer"]')?.textContent).toMatch(/Next concept search in 1:(29|30)/);
+    expect(page.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('lets a visitor search for concepts once every three minutes, and says so', async () => {
+    TestBed.inject(Session).state.set({ status: 'signedOut' });
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([{ ...ASTHMA, ownerName: null }]);
+    await fixture.whenStable();
+    chooseConcepts(page);
+    await fixture.whenStable();
+    expect(page.textContent).toContain('Without signing in you can search for concepts once every 3 minutes');
+
+    typeAndSearch(page, 'asthma');
+    http.expectOne('/api/concept-search?term=asthma').flush({ hits: [], truncated: false, storedTermsOnly: false });
+    await fixture.whenStable();
+
+    const search = Array.from(page.querySelectorAll<HTMLButtonElement>('button[type="submit"]'))[0];
+    expect(search.disabled).toBe(true);
+    expect(page.querySelector('[role="timer"]')?.textContent).toMatch(/Next concept search in [23]:\d\d/);
+    expect(Number(localStorage.getItem('snomed-sets.next-concept-search'))).toBeGreaterThan(Date.now());
+    // Set searches stay open to everyone.
+    page.querySelector<HTMLInputElement>('input[name="search-mode"][value="sets"]')!.click();
+    await fixture.whenStable();
+    expect(search.disabled).toBe(false);
   });
 
   it('lists deprecated value sets marked as such, and can hide them', async () => {

@@ -1,5 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Location } from '@angular/common';
+import { Component, ElementRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { Router } from '@angular/router';
 import { Profile, ProfileApi } from '../core/profile-api';
 import { Session } from '../core/session';
 import { describeError } from '../core/value-set-api';
@@ -15,6 +17,8 @@ const MAX_PICTURE_BYTES = 1024 * 1024;
 export class ProfilePage implements OnInit {
   private readonly api = inject(ProfileApi);
   private readonly session = inject(Session);
+  private readonly location = inject(Location);
+  private readonly router = inject(Router);
 
   protected readonly profile = signal<Profile | null>(null);
   protected readonly loadError = signal<string | null>(null);
@@ -24,6 +28,13 @@ export class ProfilePage implements OnInit {
   protected readonly saving = signal(false);
   protected readonly saved = signal(false);
   protected readonly saveError = signal<string | null>(null);
+  /** True when the organisation or the messages switch differ from what is saved. */
+  protected readonly changed = computed(() => {
+    const saved = this.profile();
+    return saved !== null
+      && (this.organisation().trim() !== (saved.organisation ?? '') || this.contactable() !== saved.contactable);
+  });
+  private readonly savedPanel = viewChild<ElementRef<HTMLElement>>('savedPanel');
 
   protected readonly uploading = signal(false);
   protected readonly pictureError = signal<string | null>(null);
@@ -51,12 +62,29 @@ export class ProfilePage implements OnInit {
         this.show(profile);
         this.saving.set(false);
         this.saved.set(true);
+        // Move focus to the confirmation so it is read out, and seen on a long page.
+        setTimeout(() => this.savedPanel()?.nativeElement.focus());
       },
       error: (error: unknown) => {
         this.saving.set(false);
         this.saveError.set(describeError(error));
       },
     });
+  }
+
+  /** Any edit after saving means the confirmation no longer describes what is on screen. */
+  protected edited(): void {
+    this.saved.set(false);
+  }
+
+  /** Back to where the person came from in this app, or to the library if they opened this page directly. */
+  protected back(): void {
+    const cameFromThisApp = (window.history.state?.navigationId ?? 1) > 1;
+    if (cameFromThisApp) {
+      this.location.back();
+    } else {
+      this.router.navigate(['/']);
+    }
   }
 
   protected choosePicture(input: HTMLInputElement): void {

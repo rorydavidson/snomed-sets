@@ -1,4 +1,5 @@
 <main class="page profile">
+  <p><button type="button" class="link-button" (click)="back()">Back</button></p>
   <h1>Profile settings</h1>
 
   @if (loadError(); as message) {
@@ -48,7 +49,7 @@
       <div class="field">
         <label for="organisation">Organisation</label>
         <input id="organisation" type="text" maxlength="120" autocomplete="organization"
-               [value]="organisation()" (input)="organisation.set($any($event.target).value)"
+               [value]="organisation()" (input)="organisation.set($any($event.target).value); edited()"
                aria-describedby="organisation-hint" />
         <span id="organisation-hint" class="muted">
           On any of your value sets you can choose to show this instead of your name, when you edit the set.
@@ -59,7 +60,7 @@
         <legend>Messages from other people</legend>
         <label class="checkbox">
           <input type="checkbox" [checked]="contactable()" [disabled]="!me.accountEmail"
-                 (change)="contactable.set($any($event.target).checked)" aria-describedby="contact-hint" />
+                 (change)="contactable.set($any($event.target).checked); edited()" aria-describedby="contact-hint" />
           <span>Let signed-in people message me about my value sets</span>
         </label>
         <p id="contact-hint" class="muted">
@@ -73,10 +74,26 @@
         </p>
       </fieldset>
 
+      @if (saved()) {
+        <div #savedPanel class="saved-panel" role="status" tabindex="-1">
+          <h3>Profile saved</h3>
+          <p>
+            @if (me.organisation) {
+              Your organisation is {{ me.organisation }}.
+            } @else {
+              You have no organisation set.
+            }
+            {{ me.contactable ? 'Signed-in people can message you.' : 'Nobody can message you.' }}
+          </p>
+        </div>
+      }
       <div class="actions">
-        <button type="submit" class="button button-primary" [disabled]="saving()">Save changes</button>
-        @if (saved()) {
-          <span class="muted" role="status">Saved.</span>
+        <button type="submit" class="button button-primary" [disabled]="saving() || !changed()">
+          {{ saving() ? 'Saving…' : 'Save changes' }}
+        </button>
+        <button type="button" class="button button-secondary" (click)="back()">{{ changed() ? 'Cancel' : 'Done' }}</button>
+        @if (!changed() && !saved()) {
+          <span class="muted">No unsaved changes.</span>
         }
       </div>
       @if (saveError(); as message) {

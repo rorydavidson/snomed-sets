@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { Profile } from '../core/profile-api';
 import { Session } from '../core/session';
 import { ProfilePage } from './profile-page';
@@ -41,6 +41,8 @@ describe('ProfilePage', () => {
   it('saves the organisation and lets the person be messaged at their account address', async () => {
     await open(PROFILE);
     expect(page.textContent).toContain('Messages are emailed to olive@example.org');
+    const save = page.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(save.disabled).toBe(true);
 
     const organisation = page.querySelector<HTMLInputElement>('#organisation')!;
     organisation.value = '  Example Health Trust ';
@@ -53,7 +55,27 @@ describe('ProfilePage', () => {
     expect(request.request.body).toEqual({ organisation: 'Example Health Trust', contactable: true });
     request.flush({ ...PROFILE, organisation: 'Example Health Trust', contactable: true });
     await fixture.whenStable();
-    expect(page.textContent).toContain('Saved.');
+    const confirmation = page.querySelector('.saved-panel')!;
+    expect(confirmation.getAttribute('role')).toBe('status');
+    expect(confirmation.textContent).toContain('Profile saved');
+    expect(confirmation.textContent).toContain('Your organisation is Example Health Trust.');
+    expect(confirmation.textContent).toContain('Signed-in people can message you.');
+    expect(save.disabled).toBe(true);
+
+    // Editing again means the confirmation no longer matches what is on screen.
+    organisation.value = 'Another Trust';
+    organisation.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(page.querySelector('.saved-panel')).toBeNull();
+    expect(save.disabled).toBe(false);
+  });
+
+  it('goes back to the library when the page was opened directly', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await open(PROFILE);
+
+    Array.from(page.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Back')!.click();
+    expect(navigate).toHaveBeenCalledWith(['/']);
   });
 
   it('cannot switch on messages without a verified address, and says why', async () => {

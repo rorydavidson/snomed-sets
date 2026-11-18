@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -67,6 +68,9 @@ function button(page: HTMLElement, label: string): HTMLButtonElement | undefined
 }
 
 describe('ValueSetPage', () => {
+  /** What the address asks for; a test may change it before opening the page. */
+  const route = { snapshot: { paramMap: convertToParamMap({ id: '7' }) } };
+  beforeEach(() => (route.snapshot.paramMap = convertToParamMap({ id: '7' })));
   let http: HttpTestingController;
   let fixture: ComponentFixture<ValueSetPage>;
   let page: HTMLElement;
@@ -106,7 +110,7 @@ describe('ValueSetPage', () => {
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: '7' }) } } },
+        { provide: ActivatedRoute, useValue: route },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -384,6 +388,55 @@ describe('ValueSetPage', () => {
     expect(button(page, 'Message owner')).toBeUndefined();
   });
 
+  describe('sharing', () => {
+    const PUBLISHED: ValueSet = { ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 1 };
+    let copied: string[];
+
+    beforeEach(() => {
+      copied = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: (text: string) => (copied.push(text), Promise.resolve()) },
+        configurable: true,
+      });
+    });
+
+    it('copies a fixed link to the set and to each version', async () => {
+      open(PUBLISHED, [VERSION_1]);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      button(page, 'Share')!.click();
+      await fixture.whenStable();
+      expect(copied).toEqual([`${window.location.origin}/value-sets/7`]);
+      expect(page.querySelector<HTMLInputElement>('.share-panel input')?.value).toBe(`${window.location.origin}/value-sets/7`);
+      expect(page.querySelector('.share-panel [role="status"]')?.textContent).toContain('Link copied.');
+
+      button(page, 'Share version 1')!.click();
+      await fixture.whenStable();
+      expect(copied[1]).toBe(`${window.location.origin}/value-sets/7/versions/1`);
+      // Only one link is shown at a time.
+      expect(page.querySelectorAll('.share-panel')).toHaveLength(1);
+    });
+
+    it('offers no link for a set that only its owner can open, or that has no version yet', async () => {
+      open({ ...SET, ownedByMe: false, visibility: 'PRIVATE', status: 'PUBLISHED', latestVersion: 1 }, [VERSION_1]);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+      expect(button(page, 'Share')).toBeUndefined();
+    });
+
+    it('puts the link to the version being looked at in the address bar', async () => {
+      const replaceState = vi.spyOn(TestBed.inject(Location), 'replaceState');
+      open({ ...PUBLISHED, latestVersion: 2 }, [{ ...VERSION_1, number: 2 }, VERSION_1]);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      Array.from(page.querySelectorAll<HTMLButtonElement>('button.version')).find((b) => b.textContent?.includes('Version 1'))!.click();
+      http.expectOne('/api/value-sets/7/versions/1/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      expect(replaceState).toHaveBeenCalledWith('/value-sets/7/versions/1');
+    });
+  });
+
   it('offers no owner actions on a value set owned by someone else', async () => {
     open({ ...SET, ownedByMe: false });
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
@@ -637,7 +690,7 @@ describe('ValueSetPage', () => {
 
   it('downloads the version in use, or an older one once it is chosen from the history', async () => {
     const VERSION_2: ValueSetVersion = { ...VERSION_1, number: 2 };
-    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [VERSION_2, VERSION_1]);
+    open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, [{ ...VERSION_1, number: 2 }, VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
     await fixture.whenStable();
 
@@ -1003,5 +1056,31 @@ describe('ValueSetPage', () => {
     expect(facts.textContent).toContain('International Edition');
     expect(facts.textContent).toContain('(SNOMEDCT)');
     expect(facts.textContent).toContain('2025-07-01');
+  });
+
+  describe('opened from a link to a version', () => {
+    function openLinked(version: string, versions: ValueSetVersion[]): void {
+      route.snapshot.paramMap = convertToParamMap({ id: '7', version });
+      open({ ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 2 }, versions);
+    }
+
+    it('shows that version rather than the one in use', async () => {
+      openLinked('1', [{ ...VERSION_1, number: 2 }, VERSION_1]);
+      http.expectOne('/api/value-sets/7/versions/1/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+
+      const pressed = page.querySelector('button.version[aria-pressed="true"]');
+      expect(pressed?.textContent).toContain('Version 1');
+    });
+
+    it('says so when the set has no such version', async () => {
+      openLinked('9', [{ ...VERSION_1, number: 2 }, VERSION_1]);
+      http
+        .expectOne('/api/value-sets/7/versions/9/expansion?offset=0&limit=50')
+        .flush({ detail: 'Version not found' }, { status: 404, statusText: 'Not Found' });
+      await fixture.whenStable();
+
+      expect(page.querySelector('.warning-panel')?.textContent).toContain('This value set has no version 9');
+    });
   });
 });

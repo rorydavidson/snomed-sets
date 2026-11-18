@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, Location } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
@@ -18,14 +18,20 @@ import { Session } from '../core/session';
 import { ConceptDetails } from './concept-details';
 import { EclSuggestionDialog } from './ecl-suggestion-dialog';
 import { MessageOwnerDialog } from './message-owner-dialog';
+import { ShareLink } from './share-link';
 import { UpgradeDialog, describeChanges } from './upgrade-dialog';
 
 const PAGE_SIZE = 50;
 
 @Component({
   selector: 'app-value-set-page',
-  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog, MessageOwnerDialog],
+  imports: [RouterLink, DatePipe, ConceptDetails, UpgradeDialog, EclSuggestionDialog, MessageOwnerDialog, ShareLink],
   styles: `
+    /* The heading's share button sits at its far end, apart from the status badges. */
+    .share-set {
+      margin-left: auto;
+    }
+
     .owner {
       display: flex;
       flex-wrap: wrap;
@@ -95,7 +101,16 @@ const PAGE_SIZE = 50;
           @if (set.deprecated || set.allVersionsDeprecated) {
             <span class="badge badge-warning">Deprecated</span>
           }
+          @if (shareable(set)) {
+            <app-share-link class="share-set" [path]="setPath()" what="this value set" [alignEnd]="true" />
+          }
         </div>
+        @if (missingVersion()) {
+          <div class="warning-panel" role="status">
+            <h2>This value set has no version {{ selectedVersion() }}</h2>
+            <p>The link may be wrong. Choose one of the versions listed below.</p>
+          </div>
+        }
         @if (set.deprecated) {
           <div class="warning-panel" role="status">
             <h2>This value set is deprecated</h2>
@@ -380,6 +395,10 @@ const PAGE_SIZE = 50;
                           <span><span class="badge badge-warning">Deprecated</span> {{ version.deprecationReason }}</span>
                         }
                       </button>
+                      @if (shareable(set)) {
+                        <app-share-link [path]="versionPath(version.number)" [what]="'version ' + version.number"
+                                        [label]="'Share version ' + version.number" />
+                      }
                       @if (set.ownedByMe) {
                         @if (version.deprecated) {
                           <button type="button" class="link-button" [disabled]="busy()" (click)="restore(version.number)">
@@ -528,7 +547,13 @@ export class ValueSetPage implements OnInit {
   private readonly session = inject(Session);
   /** A visitor who has not signed in may read the published set and download it as GPS only. */
   protected readonly signedIn = computed(() => this.session.state().status === 'signedIn');
-  private readonly id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  private readonly location = inject(Location);
+  private readonly params = inject(ActivatedRoute).snapshot.paramMap;
+  private readonly id = Number(this.params.get('id'));
+  /** The version a fixed link such as /value-sets/7/versions/2 asks for; shown on first load only. */
+  private linkedVersion: number | null = /^[1-9]\d{0,5}$/.test(this.params.get('version') ?? '')
+    ? Number(this.params.get('version'))
+    : null;
 
   protected readonly valueSet = signal<ValueSet | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -668,8 +693,30 @@ export class ValueSetPage implements OnInit {
 
   protected select(version: number | null): void {
     this.selectedVersion.set(version);
+    // The address bar then holds a link to what is shown, without reloading the page.
+    this.location.replaceState(version === null ? this.setPath() : this.versionPath(version));
     this.loadExpansion(0);
   }
+
+  protected setPath(): string {
+    return `/value-sets/${this.id}`;
+  }
+
+  protected versionPath(version: number): string {
+    return `/value-sets/${this.id}/versions/${version}`;
+  }
+
+  /** Only sets everyone can open get share links; a private set's link would not work for anybody else. */
+  protected shareable(set: ValueSet): boolean {
+    return set.visibility === 'COMMUNITY' && set.latestVersion !== null;
+  }
+
+  /** True when a fixed link asked for a version this set does not have. */
+  protected readonly missingVersion = computed(() => {
+    const selected = this.selectedVersion();
+    const list = this.versions();
+    return selected !== null && list !== null && !list.some((version) => version.number === selected);
+  });
 
   protected open(mode: 'publish' | 'confirmDelete' | 'confirmDiscard'): void {
     this.actionError.set(null);
@@ -784,7 +831,8 @@ export class ValueSetPage implements OnInit {
    *        so other actions do not ask Snowstorm for it again
    */
   protected load(withUpgrades = false): void {
-    this.selectedVersion.set(null);
+    this.selectedVersion.set(this.linkedVersion);
+    this.linkedVersion = null;
     this.api.get(this.id).subscribe({
       next: (set) => {
         this.valueSet.set(set);

@@ -118,6 +118,11 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - Other people always see the version in use. The owner works on a draft and can publish again or
   discard the changes made since the last version.
 - Every version stays in the history and can be browsed.
+- A published set shared with the community has a Share button, and so does each of its versions.
+  It copies a fixed link: `/value-sets/{id}` always opens the version in use, and
+  `/value-sets/{id}/versions/{number}` always opens that version. Choosing a version on the page
+  also puts its link in the address bar. Links work without signing in, as visitors may read
+  published sets. Private sets have no Share button, as nobody else could open the link.
 
 ### Upgrading to a new release
 

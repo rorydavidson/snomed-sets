@@ -12,6 +12,20 @@
         <a class="browse" href="#library">Browse published sets</a>
       </div>
       <p class="note">Browsing and downloading published sets needs no account.</p>
+      @if (stats(); as counts) {
+        @if (counts.valueSets > 0) {
+          <dl class="stats" aria-label="Shared so far">
+            <div>
+              <dt>{{ counts.valueSets === 1 ? 'value set shared' : 'value sets shared' }}</dt>
+              <dd>{{ counts.valueSets | number }}</dd>
+            </div>
+            <div>
+              <dt>{{ counts.concepts === 1 ? 'concept covered' : 'different concepts covered' }}</dt>
+              <dd>{{ counts.concepts | number }}</dd>
+            </div>
+          </dl>
+        }
+      }
     </div>
 
     <figure class="example">

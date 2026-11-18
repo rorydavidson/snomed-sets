@@ -1,4 +1,6 @@
-import { Component } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { LibraryStats, ValueSetApi } from '../core/value-set-api';
 import { SnomedSignIn } from '../shell/snomed-sign-in';
 
 /** A few real children of 195967001 |Asthma|, to show what an ECL rule selects. */
@@ -18,10 +20,18 @@ const EXAMPLE_CONCEPTS = [
  */
 @Component({
   selector: 'app-library-hero',
-  imports: [SnomedSignIn],
+  imports: [SnomedSignIn, DecimalPipe],
   templateUrl: './library-hero.html',
   styleUrl: './library-hero.scss',
 })
-export class LibraryHero {
+export class LibraryHero implements OnInit {
+  private readonly api = inject(ValueSetApi);
+
   protected readonly concepts = EXAMPLE_CONCEPTS;
+  /** What the community has shared so far; left out until known, and if it cannot be loaded. */
+  protected readonly stats = signal<LibraryStats | null>(null);
+
+  ngOnInit(): void {
+    this.api.libraryStats().subscribe({ next: (stats) => this.stats.set(stats), error: () => undefined });
+  }
 }

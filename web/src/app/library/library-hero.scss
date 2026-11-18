@@ -63,6 +63,34 @@ h1 {
   color: var(--neutral-300);
 }
 
+/* What has been shared so far: two figures under a thin cyan rule, the numbers leading. */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-10);
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(13, 169, 224, 0.45);
+
+  div {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--fs-h2);
+    line-height: 1.1;
+    color: var(--snomed-white);
+    font-variant-numeric: tabular-nums;
+  }
+
+  dt {
+    font-size: var(--fs-body-sm);
+    color: var(--neutral-300);
+  }
+}
+
 /* The rule and what it selects, held between two drawn braces like the app's logo. */
 .example {
   display: grid;

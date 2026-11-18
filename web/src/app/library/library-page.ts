@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Session } from '../core/session';
@@ -9,7 +9,7 @@ import { StepsTip } from './steps-tip';
 
 @Component({
   selector: 'app-library-page',
-  imports: [RouterLink, DatePipe, LibraryHero, StepsTip, LibrarySearch],
+  imports: [RouterLink, DatePipe, DecimalPipe, LibraryHero, StepsTip, LibrarySearch],
   template: `
     @if (!signedIn()) {
       <app-library-hero />
@@ -73,6 +73,7 @@ import { StepsTip } from './steps-tip';
                   @if (signedIn()) {
                     <th scope="col">Owner</th>
                   }
+                  <th scope="col" class="numeric">Concepts</th>
                   <th scope="col">Updated</th>
                 </tr>
               </thead>
@@ -131,6 +132,13 @@ import { StepsTip } from './steps-tip';
                         </span>
                       </td>
                     }
+                    <td class="numeric">
+                      @if (set.conceptCount !== null) {
+                        {{ set.conceptCount | number }}
+                      } @else {
+                        <span class="muted" title="Counted once the set is published">–</span>
+                      }
+                    </td>
                     <td class="no-wrap">{{ set.updatedAt | date: 'd MMM y' }}</td>
                   </tr>
                 }

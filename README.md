@@ -41,7 +41,12 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   minute from all visitors together, to keep the database quick. The page says so and counts down.
   The limits are held in memory, so they reset when the backend restarts.
 - Each row shows the latest version (or Draft), whether the set is private, how it is defined, the
-  edition and release it is built on, its owner and last update.
+  edition and release it is built on, its owner, how many concepts it has, and its last update. The
+  count is of the version in use, or of the working list of a hand-picked set never published; an
+  ECL set never published shows a dash until it is.
+- Visitors see how much has been shared so far under the introduction: the number of published
+  community value sets and of different concepts across them, each counted once. Private sets and
+  drafts are not counted. The figures are worked out at most every five minutes.
 - Deprecated sets stay in the list, greyed out and marked as deprecated, and can be hidden with a tickbox.
 
 ### Creating and editing value sets

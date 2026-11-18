@@ -26,6 +26,7 @@ const SET: ValueSet = {
   showOrganisation: false,
   sctid: null,
   sctidTerm: null,
+  conceptCount: null,
   updatedAt: '2026-11-16T12:00:00Z',
   latestVersion: null,
   latestVersionLabel: null,

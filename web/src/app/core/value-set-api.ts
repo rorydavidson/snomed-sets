@@ -31,6 +31,11 @@ export interface ValueSet {
   ownedByMe: boolean;
   /** The owner's choice to show their organisation instead of their name. Only told to the owner. */
   showOrganisation: boolean;
+  /**
+   * How many concepts the version in use has, or for a hand-picked set never published its
+   * working list. Null for an ECL set never published.
+   */
+  conceptCount: number | null;
   /** A SNOMED CT reference set concept identifying the set, used in share links, or null. */
   sctid: string | null;
   /** That concept's fully specified name when it was checked. */
@@ -362,6 +367,11 @@ export interface ExpansionPage {
 export class ValueSetApi {
   private readonly http = inject(HttpClient);
 
+  /** How many value sets the community has published, and how many different concepts they hold. */
+  libraryStats(): Observable<LibraryStats> {
+    return this.http.get<LibraryStats>('/api/library-stats');
+  }
+
   list(): Observable<ValueSet[]> {
     return this.http.get<ValueSet[]>('/api/value-sets');
   }
@@ -598,4 +608,11 @@ export interface SetLanguages {
 /** English is what is stored, so it is not asked for; the address then stays as it always was. */
 function pageParams(offset: number, limit: number, language: string): Record<string, string | number> {
   return language === 'en' ? { offset, limit } : { offset, limit, language };
+}
+
+/** Counts only published community sets, so private sets and drafts are not revealed. */
+export interface LibraryStats {
+  valueSets: number;
+  /** Different concepts across their lists, each counted once. */
+  concepts: number;
 }

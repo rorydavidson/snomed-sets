@@ -1,0 +1,39 @@
+/* Tailwind, only for the top bar ported from the shared-ui library (IHTSDO/snomed-ui), so its
+   markup and classes can be copied as they are. Everything else uses our own styles and tokens.
+
+   - The theme is inlined: its variables share names with our tokens (--shadow-lg, --radius-sm,
+     --font-sans) and must not replace them.
+   - Utilities are unlayered so they win over our global element rules, such as link colours.
+   - Preflight is left out because it would reset the rest of the app; the few resets the bar
+     relies on are below, scoped to it. */
+@import 'tailwindcss/theme.css' layer(theme) theme(inline);
+@import 'tailwindcss/utilities.css' source(none);
+
+@source '../app/shell';
+
+@layer base {
+  app-navbar *,
+  app-navbar ::before,
+  app-navbar ::after {
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  app-navbar button {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+  }
+
+  app-navbar img,
+  app-navbar svg {
+    display: block;
+    vertical-align: middle;
+  }
+
+  app-navbar ul {
+    list-style: none;
+  }
+}

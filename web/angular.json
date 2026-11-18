@@ -30,9 +30,13 @@
               }
             ],
             "styles": [
+              "node_modules/@fontsource-variable/google-sans/index.css",
               "src/styles/tokens/colors.css",
               "src/styles/tokens/typography.css",
               "src/styles/tokens/spacing.css",
+              "node_modules/@fortawesome/fontawesome-free/css/fontawesome.min.css",
+              "node_modules/@fortawesome/fontawesome-free/css/solid.min.css",
+              "src/styles/tailwind.css",
               "src/styles.scss"
             ]
           },
@@ -46,12 +50,12 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
+                  "maximumWarning": "600kB",
                   "maximumError": "1MB"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "6kB",
+                  "maximumWarning": "7kB",
                   "maximumError": "8kB"
                 }
               ],

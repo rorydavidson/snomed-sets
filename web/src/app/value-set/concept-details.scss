@@ -294,14 +294,20 @@ $extension: #fff3c4;
   font-size: var(--fs-body-sm);
   list-style: none;
 
-  li::before {
-    margin-right: var(--space-1);
-    color: var(--text-muted);
-    content: '›';
+  /* The chevron sits in its own column so a long term wraps beside it, not under it. */
+  li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
-  .link-button {
-    text-align: left;
+  li::before {
+    flex: none;
+    padding: 3px;
+    border: solid var(--color-accent);
+    border-width: 2px 2px 0 0;
+    transform: rotate(45deg);
+    content: '';
   }
 }
 

@@ -1,0 +1,38 @@
+.tip {
+  position: relative;
+  padding: var(--space-6) var(--space-12) var(--space-6) var(--space-6);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--snomed-cyan);
+  border-radius: var(--radius-md);
+}
+
+.close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--snomed-navy);
+    border-color: var(--border-default);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentcolor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+}

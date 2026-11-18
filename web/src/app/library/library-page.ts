@@ -1,26 +1,30 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { SIGN_IN_URL, Session } from '../core/session';
+import { Session } from '../core/session';
 import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
+import { LibraryHero } from './library-hero';
+import { StepsTip } from './steps-tip';
 
 @Component({
   selector: 'app-library-page',
-  imports: [RouterLink, DatePipe],
+  imports: [RouterLink, DatePipe, LibraryHero, StepsTip],
   template: `
-    <main class="page">
+    @if (!signedIn()) {
+      <app-library-hero />
+    }
+    <main class="page" id="library">
       <div class="card-heading">
-        <h1 class="grow-heading">Library</h1>
         @if (signedIn()) {
+          <h1 class="grow-heading">Library</h1>
           <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
+        } @else {
+          <!-- The hero holds the page's h1, so the library is a section of the page here. -->
+          <h2 class="grow-heading">Published value sets</h2>
         }
       </div>
-      @if (!signedIn()) {
-        <p class="lead">
-          Published SNOMED CT value sets shared with the community. Anyone can view them and download
-          them in the Global Patient Set layout.
-          <a [href]="signInUrl">Sign in</a> with your SNOMED International account to build and share your own.
-        </p>
+      @if (signedIn()) {
+        <app-steps-tip />
       }
 
       @if (error(); as message) {
@@ -128,7 +132,6 @@ export class LibraryPage implements OnInit {
   private readonly session = inject(Session);
 
   protected readonly signedIn = computed(() => this.session.state().status === 'signedIn');
-  protected readonly signInUrl = SIGN_IN_URL;
 
   protected readonly valueSets = signal<ValueSet[] | null>(null);
   protected readonly error = signal<string | null>(null);

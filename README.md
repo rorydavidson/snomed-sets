@@ -10,6 +10,10 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 
 ### Without signing in
 
+- Visitors land on a short introduction above the library: what a value set is, an example of an
+  ECL rule and the concepts it gathers, and the three steps of making one (define, publish, share).
+  It has a "Sign in with your SNOMED International account" button. People who are signed in go
+  straight to their library instead.
 - Anyone can open the library and see the value sets that have been published and shared with
   the community. Drafts and private sets are not shown, and nor is who made a set.
 - A published set can be opened to read its definition, versions and concept lists, and downloaded
@@ -19,6 +23,8 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 ### Library
 
 - Every value set you own, and every set others have shared with the community, in one compact table.
+- Above the table, a tip shows the three steps of making a value set until you close it. Closing it
+  is remembered in that browser only, so nothing about it is stored on the server.
 - Search by name or tag. Clicking a tag shows the other sets that carry it.
 - Each row shows the latest version (or Draft), whether the set is private, how it is defined, the
   edition and release it is built on, its owner and last update.
@@ -84,8 +90,8 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   language (Norwegian for the Norwegian Edition, for example), its fully specified name, and whether
   it comes from the International Edition or a national extension, with the module's name.
 - The Overview tab lists its names by language, the edition's language first with the preferred
-  term picked out, and shows where it sits as a compact outline: its parents as chips, then its
-  kinds as a short list with a filter and "show all" for long ones. Every related concept can be
+  term picked out, and shows where it sits as a compact outline: its "is a" parents as chips, then its
+  children as a short list with a filter and "show all" for long ones. Every related concept can be
   clicked to move to it, and a trail leads back.
 - The Definition tab has its defining relationships grouped as they are modelled and its
   expression, with a copy button. The Descriptions tab lists every description by language, with
@@ -142,6 +148,22 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   release are given as a version URI, for example
   `http://snomed.info/sct/900000000000207008/version/20260101`, and left out for a set on the live
   branch. The owner's name is not included.
+
+### Top bar
+
+- The bar across the top uses the same design as SNOMED International's tools, but carries this
+  app's own logo rather than SNOMED International's, as it is not one of their apps. It is a local
+  copy of the navbar in the shared-ui library (IHTSDO/snomed-ui), in `web/src/app/shell/`, with the
+  same Tailwind classes and Font Awesome icons. It does not need that library's translation or
+  sign-in set-up. Keep the two in step when either changes.
+- Text across the app, the bar included, is set in Google Sans. The font is bundled with the app
+  rather than loaded from Google Fonts, so visitors' browsers do not contact Google.
+- Tailwind is used only for the bar. It is set up in `web/src/styles/tailwind.css` without its
+  base reset, so the rest of the app keeps its own styles and design tokens.
+- It holds a compact SNOMED International sign-in button for visitors, or the account initials with a menu to sign out. It also has
+  a grid of public SNOMED International tools, headed with their logo so it is clear those sites
+  are theirs, and a menu with a link to snomed.org, each opening in a new tab. SNOMED
+  International's status page and privacy policy are left out, as they do not cover this app.
 
 ## How it fits together
 

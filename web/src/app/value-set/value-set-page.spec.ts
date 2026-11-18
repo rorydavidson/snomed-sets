@@ -447,7 +447,7 @@ describe('ValueSetPage', () => {
     expect(dialog.textContent).toContain('Shown from International Edition, live branch.');
     expect(dialog.querySelector('.cv-preferred')?.textContent).toContain('preferred in GB English, US English');
     expect(dialog.querySelector('.cv-synonyms')?.textContent).toContain('Asthma in childhood');
-    expect(dialog.textContent).toContain('Has no kinds of its own');
+    expect(dialog.textContent).toContain('Has no children');
 
     tab(dialog, 'Definition');
     await fixture.whenStable();
@@ -481,7 +481,7 @@ describe('ValueSetPage', () => {
     expect(dialog.querySelector('h2')?.textContent?.trim()).toBe('Asthma');
     expect(dialog.querySelector('.cv-focus')?.classList.contains('cv-defined')).toBe(true);
     expect(dialog.querySelectorAll('.cv-below li')).toHaveLength(10);
-    expect(dialog.textContent).toContain('Kinds of it (27)');
+    expect(dialog.textContent).toContain('Children (27)');
     expect(dialog.textContent).toContain('The first 14 are listed.');
     expect(dialog.querySelector('.cv-step')?.textContent).toBe('Childhood asthma');
 

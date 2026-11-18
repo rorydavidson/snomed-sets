@@ -1,0 +1,103 @@
+<!-- Markup and classes follow shared-ui's navbar.html; see navbar.ts for what differs and why. -->
+@if (open()) {
+  <div class="fixed left-0 top-0 bottom-0 overflow-auto w-screen h-screen bg-zinc-900 opacity-20 z-10" (click)="close()"></div>
+}
+<header class="w-full sticky top-0 bg-zinc-800 p-1 h-12.5 flex items-center justify-between z-20">
+  <a class="flex justify-start items-center min-w-0 no-underline" routerLink="/" (click)="close()">
+    <img class="size-8 sm:size-10 shrink-0" src="logo.svg" alt="" />
+    <span class="text-gray-200 text-sm sm:text-lg pl-2 sm:pl-3 truncate">{{ title() }}</span>
+  </a>
+  <div class="flex justify-end items-center shrink-0">
+    @let state = session();
+    @if (state.status === 'signedOut') {
+      <app-snomed-sign-in class="ms-1 sm:ms-2" size="compact" />
+    }
+
+    @if (state.status === 'signedIn') {
+      <div class="relative inline-block">
+        <button type="button"
+                class="inline-flex justify-center rounded-full size-8 ms-1 sm:ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
+                aria-controls="navbar-user"
+                [attr.aria-expanded]="open() === 'user'"
+                [attr.aria-label]="'Account: ' + state.name"
+                (click)="toggle('user')">
+          <div class="rounded-full size-8 m-auto bg-sky-500 pt-1.5 font-semibold museo antialiased" aria-hidden="true">{{ initials(state.name) }}</div>
+        </button>
+
+        @if (open() === 'user') {
+          <div id="navbar-user" class="absolute right-0 z-10 w-64 origin-top-right rounded-lg bg-gray-50 shadow-lg ring-1 ring-black/5 focus:outline-none">
+            <div class="grid gap-x-3 p-2">
+              <p class="p-2 text-slate-500 text-sm">{{ state.name }}</p>
+              <button type="button" class="block w-full text-left hover:bg-gray-100 p-2 rounded-lg cursor-pointer" (click)="requestSignOut()">
+                <span class="text-slate-700">Sign out</span>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="relative inline-block">
+      <button type="button"
+              class="inline-flex justify-center rounded-full size-8 ms-1 sm:ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
+              aria-controls="navbar-apps"
+              aria-label="SNOMED International tools"
+              [attr.aria-expanded]="open() === 'apps'"
+              (click)="toggle('apps')">
+        <i class="fa-solid fa-grip text-lg m-auto" aria-hidden="true"></i>
+      </button>
+
+      @if (open() === 'apps') {
+        <div id="navbar-apps" class="absolute right-0 z-10 w-3xl max-w-[95vw] origin-top-right rounded-lg bg-gray-50 shadow-lg ring-1 ring-black/5 focus:outline-none"
+             aria-labelledby="navbar-apps-heading">
+          <!-- Not in shared-ui: this app is not SNOMED International's, so say whose tools these are. -->
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-200">
+            <img class="size-6" src="snomed-international-logo.png" alt="" />
+            <p id="navbar-apps-heading" class="text-sm font-semibold text-slate-700">Tools from SNOMED International</p>
+          </div>
+          @for (group of appGroups; track $index; let last = $last) {
+            <ul class="grid grid-cols-5 items-start border-gray-200 gap-x-3 p-2" [class.border-b]="!last">
+              @for (app of group; track app.name) {
+                <li class="h-full">
+                  <a class="block p-2 h-full hover:bg-gray-200 rounded-lg no-underline" [href]="app.link" target="_blank" rel="noopener noreferrer">
+                    <div class="w-full flex items-center justify-center p-2 shrink-0" [class]="app.colourClass">
+                      <i class="text-3xl fa-solid" [class]="app.faIcon" aria-hidden="true"></i>
+                    </div>
+                    <div class="w-full flex items-start justify-center pt-0">
+                      <p class="text-slate-700 text-center">{{ app.name }}</p>
+                    </div>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="relative inline-block mr-1">
+      <button type="button"
+              class="inline-flex justify-center rounded-full size-8 ms-1 sm:ms-2 text-sm font-semibold text-gray-200 hover:bg-gray-700"
+              aria-controls="navbar-links"
+              aria-label="More links"
+              [attr.aria-expanded]="open() === 'links'"
+              (click)="toggle('links')">
+        <i class="fa-solid fa-bars text-lg m-auto" aria-hidden="true"></i>
+      </button>
+
+      @if (open() === 'links') {
+        <div id="navbar-links" class="absolute right-0 z-10 w-64 origin-top-right rounded-lg bg-gray-50 shadow-lg ring-1 ring-black/5 focus:outline-none">
+          <ul class="grid gap-x-3 p-2">
+            @for (item of links; track item.link) {
+              <li>
+                <a class="block hover:bg-gray-100 p-2 rounded-lg cursor-pointer no-underline" [href]="item.link" target="_blank" rel="noopener noreferrer">
+                  <p class="text-slate-700">{{ item.label }}</p>
+                </a>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    </div>
+  </div>
+</header>

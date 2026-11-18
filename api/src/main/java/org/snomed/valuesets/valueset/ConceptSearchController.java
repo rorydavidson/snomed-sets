@@ -1,7 +1,6 @@
 package org.snomed.valuesets.valueset;
 
 import java.time.Duration;
-import java.util.List;
 
 import org.snomed.valuesets.user.CurrentUser;
 import org.springframework.http.HttpHeaders;
@@ -37,8 +36,7 @@ public class ConceptSearchController {
 				return tooSoon(wait.get());
 			}
 		}
-		List<ConceptSearchHit> hits = service.search(query, user);
-		return ResponseEntity.ok(hits);
+		return ResponseEntity.ok(service.search(query, user));
 	}
 
 	private static ResponseEntity<ProblemDetail> tooSoon(Duration wait) {

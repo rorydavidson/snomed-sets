@@ -54,6 +54,15 @@ export interface ConceptSearchHit {
   examples: { conceptId: string; term: string }[];
 }
 
+/** What a concept search found. */
+export interface ConceptSearchResult {
+  hits: ConceptSearchHit[];
+  /** The words matched so many concepts that only the first were looked for, so more sets may match. */
+  truncated: boolean;
+  /** Snowstorm could not be asked, so only stored preferred terms and FSNs were searched. */
+  storedTermsOnly: boolean;
+}
+
 /** A definition frozen at the moment it was published. */
 export interface ValueSetVersion {
   number: number;
@@ -341,11 +350,11 @@ export class ValueSetApi {
   }
 
   /**
-   * Value sets whose stored concept list has a concept matching every word, or the given SNOMED CT
-   * ID. Without signing in this is allowed once every three minutes.
+   * Value sets whose stored concept list has a concept with an active description matching every
+   * word by its start, or the given SNOMED CT ID. Without signing in this is allowed once every three minutes.
    */
-  conceptSearch(term: string): Observable<ConceptSearchHit[]> {
-    return this.http.get<ConceptSearchHit[]>('/api/concept-search', { params: { term } });
+  conceptSearch(term: string): Observable<ConceptSearchResult> {
+    return this.http.get<ConceptSearchResult>('/api/concept-search', { params: { term } });
   }
 
   get(id: number): Observable<ValueSet> {

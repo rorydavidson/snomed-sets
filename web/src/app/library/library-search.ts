@@ -1,14 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, input, output, signal } from '@angular/core';
 import { SIGN_IN_URL } from '../core/session';
-import { ConceptSearchHit, ValueSetApi, describeError } from '../core/value-set-api';
+import { ConceptSearchResult, ValueSetApi, describeError } from '../core/value-set-api';
 
 export type SearchMode = 'sets' | 'concepts';
 
 /** What the library should show: every set, sets matching words, or sets containing matching concepts. */
 export type LibrarySearchResult =
   | { mode: 'sets'; query: string }
-  | { mode: 'concepts'; query: string; hits: ConceptSearchHit[] }
+  | ({ mode: 'concepts'; query: string } & ConceptSearchResult)
   | null;
 
 /** Visitors may search for concepts once in this long; the server enforces the same limit. */
@@ -85,11 +85,11 @@ export class LibrarySearch {
     }
     this.searching.set(true);
     this.api.conceptSearch(query).subscribe({
-      next: (hits) => {
+      next: (result) => {
         this.searching.set(false);
         this.startWait(VISITOR_WAIT_MS);
         this.active.set(true);
-        this.results.emit({ mode: 'concepts', query, hits });
+        this.results.emit({ mode: 'concepts', query, ...result });
       },
       error: (error: unknown) => {
         this.searching.set(false);

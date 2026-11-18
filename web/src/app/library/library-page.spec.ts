@@ -146,22 +146,43 @@ describe('LibraryPage', () => {
     expect(page.textContent).not.toContain('once every 3 minutes');
 
     typeAndSearch(page, 'asthma');
-    http.expectOne('/api/concept-search?term=asthma').flush([
-      {
-        valueSetId: 1,
-        matchCount: 5,
-        examples: [
-          { conceptId: '389145006', term: 'Allergic asthma' },
-          { conceptId: '233678006', term: 'Childhood asthma' },
-        ],
-      },
-    ]);
+    http.expectOne('/api/concept-search?term=asthma').flush({
+      hits: [
+        {
+          valueSetId: 1,
+          matchCount: 5,
+          examples: [
+            { conceptId: '389145006', term: 'Allergic asthma' },
+            { conceptId: '233678006', term: 'Childhood asthma' },
+          ],
+        },
+      ],
+      truncated: false,
+      storedTermsOnly: false,
+    });
     await fixture.whenStable();
 
     const names = Array.from(page.querySelectorAll('a.set-name')).map((a) => a.textContent?.trim());
     expect(names).toEqual(['Asthma diagnoses']);
     expect(page.querySelector('.matches')?.textContent).toContain('Contains Allergic asthma, Childhood asthma and 3 more');
     expect(page.textContent).toContain('1 of 2 value sets contain a concept matching "asthma".');
+    expect(page.querySelector('.search-note')).toBeNull();
+  });
+
+  it('says when a concept search was cut short or could only use stored terms', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    await fixture.whenStable();
+    chooseConcepts(page);
+    typeAndSearch(page, 'disorder');
+    http.expectOne('/api/concept-search?term=disorder').flush({ hits: [], truncated: true, storedTermsOnly: true });
+    await fixture.whenStable();
+
+    const notes = Array.from(page.querySelectorAll('.search-note')).map((note) => note.textContent);
+    expect(notes[0]).toContain('only the first 10,000 in each release');
+    expect(notes[1]).toContain('could not be reached');
   });
 
   it('asks for at least three characters before searching for concepts', async () => {
@@ -207,7 +228,7 @@ describe('LibraryPage', () => {
     expect(page.textContent).toContain('Without signing in you can search for concepts once every 3 minutes');
 
     typeAndSearch(page, 'asthma');
-    http.expectOne('/api/concept-search?term=asthma').flush([]);
+    http.expectOne('/api/concept-search?term=asthma').flush({ hits: [], truncated: false, storedTermsOnly: false });
     await fixture.whenStable();
 
     const search = Array.from(page.querySelectorAll<HTMLButtonElement>('button[type="submit"]'))[0];

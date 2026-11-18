@@ -265,6 +265,57 @@ public class SnowstormClient {
 	}
 
 	/**
+	 * Concepts with an active description, in any of the given languages, containing words that
+	 * start with every word of the term, in any order. This is Snowstorm's own term search, so
+	 * "heart att" finds "Heart attack", a synonym of Myocardial infarction. Inactive concepts are
+	 * included, as stored concept lists may hold them.
+	 *
+	 * @param languages language codes such as "en" and "fr"; every description in them is searched
+	 * @return the first matches, with the total so a caller can tell when there were more
+	 */
+	public ExpansionPage conceptsWithDescriptionMatching(String term, String branch, Collection<String> languages,
+			int limit) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		// Snowstorm searches the descriptions in the languages of the Accept-Language header.
+		String acceptLanguage = String.join(",", languages);
+		if (!acceptLanguage.matches("[A-Za-z0-9,-]{1,100}")) {
+			throw new SnowstormException("Language is not valid: " + acceptLanguage, true, null);
+		}
+		Map<String, Object> body = new HashMap<>();
+		body.put("termFilter", term);
+		body.put("termActive", true);
+		body.put("offset", 0);
+		body.put("limit", limit);
+		SnowstormConceptPage page;
+		try {
+			page = restClient.post()
+					.uri(uriBuilder -> uriBuilder.pathSegment(branch.split("/")).pathSegment("concepts", "search").build())
+					.header(HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage)
+					.contentType(MediaType.APPLICATION_JSON)
+					.body(body)
+					.retrieve()
+					.body(SnowstormConceptPage.class);
+		}
+		catch (RestClientResponseException e) {
+			boolean rejected = e.getStatusCode().is4xxClientError();
+			throw new SnowstormException(rejected ? "Snowstorm rejected the search." : "Snowstorm returned an error.",
+					rejected, e);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+		}
+		if (page == null || page.items() == null) {
+			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
+		}
+		return new ExpansionPage(page.items().stream()
+				.map(item -> new ExpansionPage.Concept(item.conceptId(), termOf(item.pt()), termOf(item.fsn()),
+						item.pt() == null ? null : item.pt().lang()))
+				.toList(), page.total(), 0, limit);
+	}
+
+	/**
 	 * The same as {@link #expand(String, String, int, int)}, with the expression sent in the request
 	 * body. Used for expressions listing many concepts, which would be too long for a URL.
 	 */

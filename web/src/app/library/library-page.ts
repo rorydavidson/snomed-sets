@@ -45,6 +45,20 @@ import { StepsTip } from './steps-tip';
         }
 
         <p class="meta" role="status">{{ countLabel() }}</p>
+        @if (search(); as applied) {
+          @if (applied.mode === 'concepts' && applied.truncated) {
+            <p class="search-note">
+              These words match so many concepts that only the first 10,000 in each release were looked for,
+              so other sets may contain matches too. Add a word to narrow the search.
+            </p>
+          }
+          @if (applied.mode === 'concepts' && applied.storedTermsOnly) {
+            <p class="search-note">
+              The terminology server could not be reached, so only the preferred terms and fully specified
+              names stored with each set were searched, not synonyms.
+            </p>
+          }
+        }
 
         @if (shown().length > 0) {
           <div class="table-scroll">

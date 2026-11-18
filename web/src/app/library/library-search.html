@@ -35,8 +35,9 @@
       <p>Matches words in value set names, descriptions and tags.</p>
     } @else {
       <p>
-        Finds value sets whose concept list has a concept with every word you type in its term, or with
-        the SNOMED CT ID you type. Sets defined by ECL are searched once they have been published.
+        Finds value sets holding a concept with any active description, synonyms included, that has words
+        starting with each word you type, in any order: "heart att" finds Myocardial infarction. A SNOMED CT
+        ID finds that concept. Sets defined by ECL are searched once they have been published.
       </p>
       @if (!signedIn()) {
         <p class="limit">

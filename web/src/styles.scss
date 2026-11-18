@@ -601,3 +601,11 @@ fieldset.field {
   border: 1px solid var(--border-subtle);
   border-radius: 50%;
 }
+
+/* A short caveat about search results, such as a search that was cut short. */
+.search-note {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-body-sm);
+  background: #fff8db;
+  border-left: 3px solid var(--warning);
+}

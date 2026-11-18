@@ -85,6 +85,18 @@ describe('App', () => {
     expect(header.querySelector('#navbar-links')).toBeNull();
   });
 
+  it('ends every page with the SNOMED CT notice and a link to the privacy page', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    http.expectOne('/api/me').flush(null, { status: 401, statusText: 'Unauthorized' });
+    await fixture.whenStable();
+
+    const footer = (fixture.nativeElement as HTMLElement).querySelector('footer')!;
+    expect(footer.textContent).toContain('used by permission of SNOMED International');
+    expect(footer.textContent).toContain('registered trademarks of SNOMED International');
+    expect(footer.querySelector('a[href="/privacy"]')?.textContent).toContain('Privacy');
+  });
+
   it('reports a failure that is not a missing session', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();

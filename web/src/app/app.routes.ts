@@ -35,5 +35,10 @@ export const routes: Routes = [
     canActivate: [signedInGuard],
     title: 'Profile settings · SNOMED CT value sets',
   },
+  {
+    path: 'privacy',
+    loadComponent: () => import('./privacy/privacy-page').then((m) => m.PrivacyPage),
+    title: 'Privacy · SNOMED CT value sets',
+  },
   { path: '**', component: NotFoundPage, title: 'Not found · SNOMED CT value sets' },
 ];

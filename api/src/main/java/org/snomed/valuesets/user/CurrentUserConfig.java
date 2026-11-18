@@ -2,6 +2,7 @@ package org.snomed.valuesets.user;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,6 +16,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 class CurrentUserConfig implements WebMvcConfigurer {
 
+	private final String localLoginEmail;
+
+	CurrentUserConfig(@Value("${local-login.email:}") String localLoginEmail) {
+		this.localLoginEmail = localLoginEmail;
+	}
+
 	@Override
 	public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
 		resolvers.add(new HandlerMethodArgumentResolver() {
@@ -27,7 +34,7 @@ class CurrentUserConfig implements WebMvcConfigurer {
 			@Override
 			public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
 					NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-				return CurrentUser.of(SecurityContextHolder.getContext().getAuthentication());
+				return CurrentUser.of(SecurityContextHolder.getContext().getAuthentication(), localLoginEmail);
 			}
 		});
 	}

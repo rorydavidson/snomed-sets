@@ -85,6 +85,10 @@ public class ValueSet {
 	@Column(name = "owner_name", nullable = false)
 	private String ownerName;
 
+	/** When true, the owner's organisation is shown in place of their name, if they have one. */
+	@Column(name = "show_organisation", nullable = false)
+	private boolean showOrganisation;
+
 	/** Set when the owner marks this as not to be used any more. Null otherwise. */
 	@Column(name = "deprecated_at")
 	private Instant deprecatedAt;
@@ -105,7 +109,7 @@ public class ValueSet {
 	/** A new value set always starts as a draft. */
 	public ValueSet(DefinitionType definitionType, String codeSystem, String branch, String name,
 			String description, String ecl, Visibility visibility, Collection<String> tags, String ownerSubject,
-			String ownerName) {
+			String ownerName, boolean showOrganisation) {
 		this.definitionType = definitionType;
 		this.codeSystem = codeSystem;
 		this.branch = branch;
@@ -113,11 +117,12 @@ public class ValueSet {
 		this.ownerSubject = ownerSubject;
 		this.ownerName = ownerName;
 		this.createdAt = Instant.now();
-		update(name, description, ecl, visibility, tags);
+		update(name, description, ecl, visibility, tags, showOrganisation);
 	}
 
 	public void update(String name, String description, String ecl, Visibility visibility,
-			Collection<String> tags) {
+			Collection<String> tags, boolean showOrganisation) {
+		this.showOrganisation = showOrganisation;
 		this.tags.clear();
 		this.tags.addAll(tags);
 		this.name = name;
@@ -224,6 +229,10 @@ public class ValueSet {
 
 	public String getOwnerSubject() {
 		return ownerSubject;
+	}
+
+	public boolean isShowOrganisation() {
+		return showOrganisation;
 	}
 
 	public String getOwnerName() {

@@ -22,6 +22,8 @@ import jakarta.validation.constraints.Size;
  * @param tags free-text labels, at most ten
  * @param codeSystemVersion the release to build a new value set on, for example 2026-01-01; the
  *        latest when left out. Ignored when editing: a value set moves to another release only by an upgrade.
+ * @param showOrganisation whether to show the owner's organisation instead of their name; false when left out.
+ *        Their name is still shown if they have no organisation in their profile.
  * @param conceptIds the full list of a hand-picked value set; ignored for an ECL one.
  *        Only identifiers are accepted. The terms are looked up in Snowstorm, so a
  *        person cannot attach a made-up term to a concept.
@@ -34,7 +36,8 @@ public record ValueSetDefinition(ValueSet.DefinitionType type,
 		@NotNull ValueSet.Visibility visibility,
 		@Size(max = MAX_MEMBERS) List<@NotNull @Pattern(regexp = CONCEPT_ID_REGEX) String> conceptIds,
 		@Size(max = MAX_TAGS) List<@Pattern(regexp = TAG_REGEX) String> tags,
-		@Pattern(regexp = RELEASE_REGEX) String codeSystemVersion) {
+		@Pattern(regexp = RELEASE_REGEX) String codeSystemVersion,
+		Boolean showOrganisation) {
 
 	public static final String INTERNATIONAL_EDITION = "SNOMEDCT";
 	public static final int MAX_MEMBERS = 2000;
@@ -50,6 +53,7 @@ public record ValueSetDefinition(ValueSet.DefinitionType type,
 		codeSystem = codeSystem == null ? INTERNATIONAL_EDITION : codeSystem;
 		ecl = ecl == null ? "" : ecl;
 		conceptIds = conceptIds == null ? List.of() : conceptIds;
+		showOrganisation = Boolean.TRUE.equals(showOrganisation);
 		// Lower case and single spaces, so the same tag typed two ways is stored once.
 		tags = tags == null ? List.of() : tags.stream()
 				.filter(Objects::nonNull)

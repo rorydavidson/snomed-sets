@@ -7,8 +7,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.snomed.valuesets.message.MessagingProperties;
@@ -22,6 +24,7 @@ import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.snomed.valuesets.user.CurrentUser;
 import org.snomed.valuesets.valueset.ValueSetView.VersionView;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -51,10 +54,12 @@ public class ValueSetService {
 	private final JdbcTemplate jdbc;
 	private final ProfileService profiles;
 	private final MessagingProperties messaging;
+	private final SetIdentifierService identifiers;
 
 	public ValueSetService(ValueSetRepository valueSets, ValueSetVersionRepository versions,
 			ValueSetMemberRepository members, SnowstormClient snowstorm, TransactionTemplate transaction,
-			JdbcTemplate jdbc, ProfileService profiles, MessagingProperties messaging) {
+			JdbcTemplate jdbc, ProfileService profiles, MessagingProperties messaging, SetIdentifierService identifiers) {
+		this.identifiers = identifiers;
 		this.jdbc = jdbc;
 		this.profiles = profiles;
 		this.messaging = messaging;
@@ -87,6 +92,25 @@ public class ValueSetService {
 		return valueSets.findTagsVisibleTo(user.subject());
 	}
 
+	/**
+	 * Saves, reporting a clash when someone else gave another set the same identifier in the moment
+	 * since it was checked.
+	 */
+	private static <T> T saveUniquely(Supplier<T> save) {
+		try {
+			return save.get();
+		} catch (DataIntegrityViolationException e) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "This SNOMED CT identifier already identifies another value set.");
+		}
+	}
+
+	/** The value set a SNOMED CT identifier names, if the person may see it; otherwise a 404. */
+	public ValueSetView getByIdentifier(String sctid, CurrentUser user) {
+		return identifiers.valueSetIdentifiedBy(sctid)
+				.map(id -> get(id, user))
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Value set not found"));
+	}
+
 	/** A value set the person may see, or a 404 as if it did not exist. */
 	public ValueSet visible(long id, CurrentUser user) {
 		return findVisible(id, user);
@@ -105,15 +129,19 @@ public class ValueSetService {
 				: releaseBranchOf(definition.codeSystem(), definition.codeSystemVersion());
 		List<Concept> concepts = manual ? resolveConcepts(definition, branch, List.of()) : List.of();
 		String ecl = manual ? "" : withTerms(definition.ecl(), branch);
+		SetIdentifier identifier = definition.sctid() == null ? null
+				: identifiers.check(definition.sctid(), branch, null, user);
 
-		ValueSet created = transaction.execute(status -> {
-			ValueSet valueSet = valueSets.save(new ValueSet(definition.type(), definition.codeSystem(), branch,
+		ValueSet created = saveUniquely(() -> transaction.execute(status -> {
+			ValueSet valueSet = new ValueSet(definition.type(), definition.codeSystem(), branch,
 					definition.name(), definition.description(), ecl,
 					definition.visibility(), definition.tags(), user.subject(), user.name(),
-					definition.showOrganisation()));
+					definition.showOrganisation());
+			valueSet.identifyAs(identifier);
+			valueSet = valueSets.save(valueSet);
 			saveWorkingList(valueSet, concepts);
 			return valueSet;
-		});
+		}));
 		return view(created, null, user);
 	}
 
@@ -133,16 +161,25 @@ public class ValueSetService {
 				: List.of();
 
 		String ecl = valueSet.isManual() ? "" : withTerms(definition.ecl(), valueSet.getBranch());
+		// Snowstorm is only asked about an identifier that is new or changed.
+		boolean identifierChanged = !Objects.equals(definition.sctid(), valueSet.getSctid());
+		SetIdentifier identifier = identifierChanged && definition.sctid() != null
+				? identifiers.check(definition.sctid(), valueSet.getBranch(), valueSet.getId(), user)
+				: null;
 
-		transaction.executeWithoutResult(status -> {
+		saveUniquely(() -> transaction.execute(status -> {
 			valueSet.update(definition.name(), definition.description(), ecl, definition.visibility(),
 					definition.tags(), definition.showOrganisation());
+			if (identifierChanged) {
+				valueSet.identifyAs(identifier);
+			}
 			valueSets.save(valueSet);
 			if (valueSet.isManual()) {
 				members.deleteWorkingList(valueSet.getId());
 				saveWorkingList(valueSet, concepts);
 			}
-		});
+			return valueSet;
+		}));
 		return view(valueSet, latestVersionOf(valueSet), user);
 	}
 

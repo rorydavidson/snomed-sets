@@ -85,6 +85,17 @@ public class ValueSet {
 	@Column(name = "owner_name", nullable = false)
 	private String ownerName;
 
+	/**
+	 * A SNOMED CT reference set concept identifying this set, or null. Unique across all sets, and
+	 * checked against Snowstorm before it is saved.
+	 */
+	@Column(length = 18)
+	private String sctid;
+
+	/** The identifier's fully specified name when it was checked. */
+	@Column(name = "sctid_term", length = 500)
+	private String sctidTerm;
+
 	/** When true, the owner's organisation is shown in place of their name, if they have one. */
 	@Column(name = "show_organisation", nullable = false)
 	private boolean showOrganisation;
@@ -229,6 +240,20 @@ public class ValueSet {
 
 	public String getOwnerSubject() {
 		return ownerSubject;
+	}
+
+	public String getSctid() {
+		return sctid;
+	}
+
+	public String getSctidTerm() {
+		return sctidTerm;
+	}
+
+	/** @param identifier null to remove it */
+	void identifyAs(SetIdentifier identifier) {
+		this.sctid = identifier == null ? null : identifier.conceptId();
+		this.sctidTerm = identifier == null ? null : identifier.fullySpecifiedName();
 	}
 
 	public boolean isShowOrganisation() {

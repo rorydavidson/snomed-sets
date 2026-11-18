@@ -942,6 +942,14 @@ class ValueSetApiTests {
 	}
 
 	@Test
+	void saysNothingAboutWhoRunsTheSiteUntilItIsSetUp() throws Exception {
+		mvc.perform(get("/api/site"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.operator").value(nullValue()))
+				.andExpect(jsonPath("$.privacyContact").value(nullValue()));
+	}
+
+	@Test
 	void signInLinkSendsASignedOutBrowserToKeycloak() throws Exception {
 		mvc.perform(get("/sign-in").accept(MediaType.TEXT_HTML))
 				.andExpect(status().isFound())

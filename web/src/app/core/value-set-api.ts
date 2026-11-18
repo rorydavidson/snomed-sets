@@ -45,6 +45,15 @@ export interface ValueSet {
   deprecationReason: string | null;
 }
 
+/** A value set whose concept list has concepts matching a concept search. */
+export interface ConceptSearchHit {
+  valueSetId: number;
+  /** How many of its concepts match. */
+  matchCount: number;
+  /** The first few matching concepts, to show why the set was found. */
+  examples: { conceptId: string; term: string }[];
+}
+
 /** A definition frozen at the moment it was published. */
 export interface ValueSetVersion {
   number: number;
@@ -329,6 +338,14 @@ export class ValueSetApi {
 
   list(): Observable<ValueSet[]> {
     return this.http.get<ValueSet[]>('/api/value-sets');
+  }
+
+  /**
+   * Value sets whose stored concept list has a concept matching every word, or the given SNOMED CT
+   * ID. Without signing in this is allowed once every three minutes.
+   */
+  conceptSearch(term: string): Observable<ConceptSearchHit[]> {
+    return this.http.get<ConceptSearchHit[]>('/api/concept-search', { params: { term } });
   }
 
   get(id: number): Observable<ValueSet> {

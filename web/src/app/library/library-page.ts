@@ -1,14 +1,15 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Session } from '../core/session';
-import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
+import { ConceptSearchHit, ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 import { LibraryHero } from './library-hero';
+import { LibrarySearch, LibrarySearchResult } from './library-search';
 import { StepsTip } from './steps-tip';
 
 @Component({
   selector: 'app-library-page',
-  imports: [RouterLink, DatePipe, LibraryHero, StepsTip],
+  imports: [RouterLink, DatePipe, LibraryHero, StepsTip, LibrarySearch],
   template: `
     @if (!signedIn()) {
       <app-library-hero />
@@ -34,17 +35,7 @@ import { StepsTip } from './steps-tip';
           <button type="button" class="button button-secondary" (click)="load()">Try again</button>
         </div>
       } @else if (valueSets(); as sets) {
-        <div class="filters">
-          <div class="field">
-            <label for="library-search">Search by name or tag</label>
-            <input id="library-search" type="text" autocomplete="off" [value]="query()" (input)="query.set($any($event.target).value)" />
-          </div>
-          <div class="field">
-            <label for="concept-search-placeholder">Find sets containing a concept</label>
-            <input id="concept-search-placeholder" type="text" disabled placeholder="Coming soon" aria-describedby="concept-search-note" />
-            <span id="concept-search-note" class="visually-hidden">This search is not available yet.</span>
-          </div>
-        </div>
+        <app-library-search [signedIn]="signedIn()" (results)="search.set($event)" />
 
         @if (deprecatedCount() > 0) {
           <label class="checkbox">
@@ -90,12 +81,17 @@ import { StepsTip } from './steps-tip';
                       @if (set.description) {
                         <p class="meta one-line" [title]="set.description">{{ set.description }}</p>
                       }
+                      @if (conceptHits().get(set.id); as hit) {
+                        <p class="meta matches">
+                          Contains {{ describeMatches(hit) }}
+                        </p>
+                      }
                     </td>
                     <td>
                       <ul class="tags">
                         @for (tag of set.tags; track tag) {
                           <li>
-                            <button type="button" class="tag tag-button" (click)="query.set(tag)" [attr.aria-label]="'Show sets tagged ' + tag">
+                            <button type="button" class="tag tag-button" (click)="searchBox()?.searchTag(tag)" [attr.aria-label]="'Show sets tagged ' + tag">
                               {{ tag }}
                             </button>
                           </li>
@@ -142,7 +138,14 @@ export class LibraryPage implements OnInit {
 
   protected readonly valueSets = signal<ValueSet[] | null>(null);
   protected readonly error = signal<string | null>(null);
-  protected readonly query = signal('');
+  /** The search applied, or null to list every set. */
+  protected readonly search = signal<LibrarySearchResult>(null);
+  protected readonly searchBox = viewChild(LibrarySearch);
+  /** Matching concepts by value set id, while a concept search is applied. */
+  protected readonly conceptHits = computed(() => {
+    const search = this.search();
+    return new Map(search?.mode === 'concepts' ? search.hits.map((hit) => [hit.valueSetId, hit]) : []);
+  });
   /** Display names of editions, by code system short name. Empty until loaded, or if Snowstorm cannot say. */
   private readonly editionNames = signal<Record<string, string>>({});
 
@@ -153,11 +156,22 @@ export class LibraryPage implements OnInit {
     (this.valueSets() ?? []).filter((set) => !this.hideDeprecated() || !this.isDeprecated(set)),
   );
 
-  /** Value sets whose name or one of whose tags contains every word that was typed. */
+  /**
+   * The sets to list: for a set search, those whose name, description or tags contain every word;
+   * for a concept search, those the server found, in the library's order.
+   */
   protected readonly shown = computed(() => {
-    const words = this.query().toLowerCase().split(/\s+/).filter((word) => word !== '');
+    const search = this.search();
+    if (search === null) {
+      return this.listed();
+    }
+    if (search.mode === 'concepts') {
+      const hits = this.conceptHits();
+      return this.listed().filter((set) => hits.has(set.id));
+    }
+    const words = search.query.toLowerCase().split(/\s+/).filter((word) => word !== '');
     return this.listed().filter((set) => {
-      const searchable = [set.name, ...set.tags].join(' ').toLowerCase();
+      const searchable = [set.name, set.description, ...set.tags].join(' ').toLowerCase();
       return words.every((word) => searchable.includes(word));
     });
   });
@@ -167,11 +181,28 @@ export class LibraryPage implements OnInit {
     if (total === 0) {
       return 'No value sets yet.';
     }
-    if (this.query().trim() === '') {
+    const search = this.search();
+    if (search === null) {
       return total === 1 ? '1 value set' : `${total} value sets`;
     }
-    return this.shown().length === 0 ? `None of the ${total} value sets match.` : `${this.shown().length} of ${total} value sets`;
+    const found = this.shown().length;
+    if (search.mode === 'concepts') {
+      return found === 0
+        ? `No value sets contain a concept matching "${search.query}".`
+        : `${found} of ${total} value sets contain a concept matching "${search.query}".`;
+    }
+    return found === 0 ? `None of the ${total} value sets match "${search.query}".` : `${found} of ${total} value sets match "${search.query}".`;
   });
+
+  /** "Allergic asthma, Childhood asthma and 4 more". */
+  protected describeMatches(hit: ConceptSearchHit): string {
+    const terms = hit.examples.map((example) => example.term);
+    const more = hit.matchCount - terms.length;
+    if (more > 0) {
+      return `${terms.join(', ')} and ${more} more`;
+    }
+    return terms.length > 1 ? `${terms.slice(0, -1).join(', ')} and ${terms[terms.length - 1]}` : terms[0];
+  }
 
   /** Deprecated as a whole, or with nothing left in use because every version is deprecated. */
   protected isDeprecated(set: ValueSet): boolean {

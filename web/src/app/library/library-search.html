@@ -1,0 +1,56 @@
+<form class="search" role="search" aria-label="Search the library" (submit)="submit($event)">
+  <div class="search-head">
+    <span class="search-label" id="search-mode-label">Search for</span>
+    <div class="modes" role="radiogroup" aria-labelledby="search-mode-label">
+      <label class="mode" [class.is-on]="mode() === 'sets'">
+        <input type="radio" name="search-mode" value="sets" [checked]="mode() === 'sets'" (change)="setMode('sets')" />
+        Value sets
+      </label>
+      <label class="mode" [class.is-on]="mode() === 'concepts'">
+        <input type="radio" name="search-mode" value="concepts" [checked]="mode() === 'concepts'" (change)="setMode('concepts')" />
+        Concepts in sets
+      </label>
+    </div>
+  </div>
+
+  <div class="search-row">
+    <label class="visually-hidden" for="library-search">
+      {{ mode() === 'sets' ? 'Value set name, description or tag' : 'Concept term or SNOMED CT ID' }}
+    </label>
+    <input id="library-search" type="search" autocomplete="off" maxlength="100"
+           [placeholder]="mode() === 'sets' ? 'Name, description or tag' : 'Concept term or SNOMED CT ID'"
+           [value]="text()" (input)="text.set($any($event.target).value)"
+           aria-describedby="search-hint" />
+    <button type="submit" class="button button-primary"
+            [disabled]="searching() || (mode() === 'concepts' && waitSeconds() > 0)">
+      {{ searching() ? 'Searching…' : 'Search' }}
+    </button>
+    @if (active()) {
+      <button type="button" class="button button-secondary" (click)="clear()">Clear</button>
+    }
+  </div>
+
+  <div id="search-hint" class="hint">
+    @if (mode() === 'sets') {
+      <p>Matches words in value set names, descriptions and tags.</p>
+    } @else {
+      <p>
+        Finds value sets whose concept list has a concept with every word you type in its term, or with
+        the SNOMED CT ID you type. Sets defined by ECL are searched once they have been published.
+      </p>
+      @if (!signedIn()) {
+        <p class="limit">
+          Without signing in you can search for concepts once every 3 minutes, so the service stays quick
+          for everyone. <a [href]="signInUrl">Sign in</a> to search as often as you like.
+          @if (waitSeconds() > 0) {
+            <strong role="timer">Next concept search in {{ waitLabel() }}.</strong>
+          }
+        </p>
+      }
+    }
+  </div>
+
+  @if (error(); as message) {
+    <p class="field-error" role="alert">{{ message }}</p>
+  }
+</form>

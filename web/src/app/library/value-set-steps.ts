@@ -1,8 +1,8 @@
 import { Component, input } from '@angular/core';
 
 /**
- * The three steps of making a value set. Visitors see them under the landing hero, and people who
- * have just signed in see them once as a tip above their library.
+ * The three steps of making a value set, shown as a tip above the library to people who have
+ * signed in.
  */
 @Component({
   selector: 'app-value-set-steps',

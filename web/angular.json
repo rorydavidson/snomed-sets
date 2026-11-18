@@ -33,6 +33,9 @@
               "src/styles/tokens/colors.css",
               "src/styles/tokens/typography.css",
               "src/styles/tokens/spacing.css",
+              "node_modules/@fortawesome/fontawesome-free/css/fontawesome.min.css",
+              "node_modules/@fortawesome/fontawesome-free/css/solid.min.css",
+              "src/styles/tailwind.css",
               "src/styles.scss"
             ]
           },
@@ -46,7 +49,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
+                  "maximumWarning": "600kB",
                   "maximumError": "1MB"
                 },
                 {

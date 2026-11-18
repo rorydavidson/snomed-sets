@@ -143,6 +143,20 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   `http://snomed.info/sct/900000000000207008/version/20260101`, and left out for a set on the live
   branch. The owner's name is not included.
 
+### Top bar
+
+- The bar across the top uses the same design as SNOMED International's tools, but carries this
+  app's own logo rather than SNOMED International's, as it is not one of their apps. It is a local
+  copy of the navbar in the shared-ui library (IHTSDO/snomed-ui), in `web/src/app/shell/`, with the
+  same Tailwind classes and Font Awesome icons. It does not need that library's translation or
+  sign-in set-up. Keep the two in step when either changes.
+- Tailwind is used only for the bar. It is set up in `web/src/styles/tailwind.css` without its
+  base reset, so the rest of the app keeps its own styles and design tokens.
+- It holds a sign-in link for visitors, or the account initials with a menu to sign out. It also has
+  a grid of public SNOMED International tools, headed with their logo so it is clear those sites
+  are theirs, and a menu with a link to snomed.org, each opening in a new tab. SNOMED
+  International's status page and privacy policy are left out, as they do not cover this app.
+
 ## How it fits together
 
 | Part | What it is |

@@ -1,23 +1,4 @@
-<header class="site-header">
-  <a class="brand" routerLink="/">
-    <img class="brand-mark" src="logo.svg" alt="" width="32" height="32" />
-    <span>SNOMED CT <span class="brand-light">value sets</span></span>
-  </a>
-  @if (session.state(); as state) {
-    @if (state.status === 'signedIn') {
-      <nav aria-label="Primary">
-        <a routerLink="/">Library</a>
-      </nav>
-      <span class="who">{{ state.name }}</span>
-      <button type="button" class="button button-on-dark" (click)="session.signOut()">Sign out</button>
-    } @else if (state.status === 'signedOut') {
-      <nav aria-label="Primary">
-        <a routerLink="/">Library</a>
-      </nav>
-      <a class="button button-on-dark" [href]="signInUrl">Sign in</a>
-    }
-  }
-</header>
+<app-navbar title="SNOMED CT value sets" [session]="session.state()" (signOut)="session.signOut()" />
 
 @switch (session.state().status) {
   @case ('loading') {

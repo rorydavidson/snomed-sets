@@ -22,21 +22,66 @@ describe('App', () => {
     await fixture.whenStable();
 
     const page = fixture.nativeElement as HTMLElement;
-    const link = page.querySelector<HTMLAnchorElement>('header a.button');
+    const link = page.querySelector<HTMLAnchorElement>('header a.sign-in');
     expect(link?.textContent).toContain('Sign in');
     expect(link?.getAttribute('href')).toBe('/sign-in');
     expect(page.querySelector('router-outlet')).not.toBeNull();
   });
 
-  it('shows the signed-in name and a sign-out button', async () => {
+  it('shows the signed-in initials, with the name and sign-out in the account menu', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     http.expectOne('/api/me').flush({ name: 'Sample Person' });
     await fixture.whenStable();
 
-    const header = (fixture.nativeElement as HTMLElement).querySelector('header');
-    expect(header?.textContent).toContain('Sample Person');
-    expect(header?.querySelector('button')?.textContent).toContain('Sign out');
+    const header = (fixture.nativeElement as HTMLElement).querySelector('header')!;
+    const account = header.querySelector<HTMLButtonElement>('[aria-controls="navbar-user"]')!;
+    expect(account.textContent).toContain('SP');
+    expect(account.getAttribute('aria-expanded')).toBe('false');
+    expect(header.querySelector('a.sign-in')).toBeNull();
+
+    account.click();
+    await fixture.whenStable();
+
+    expect(account.getAttribute('aria-expanded')).toBe('true');
+    const menu = header.querySelector('#navbar-user')!;
+    expect(menu.textContent).toContain('Sample Person');
+    const signOut = menu.querySelector('button')!;
+    expect(signOut.textContent).toContain('Sign out');
+
+    signOut.click();
+    http.expectOne('/logout');
+    await fixture.whenStable();
+    expect(header.querySelector('#navbar-user')).toBeNull();
+  });
+
+  it('opens one menu at a time and closes it with Escape', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    http.expectOne('/api/me').flush(null, { status: 401, statusText: 'Unauthorized' });
+    await fixture.whenStable();
+
+    const header = (fixture.nativeElement as HTMLElement).querySelector('header')!;
+    header.querySelector<HTMLButtonElement>('[aria-controls="navbar-apps"]')!.click();
+    await fixture.whenStable();
+    const apps = header.querySelectorAll<HTMLAnchorElement>('#navbar-apps a');
+    expect(apps.length).toBeGreaterThan(0);
+    expect(header.querySelector('#navbar-apps')?.textContent).toContain('Tools from SNOMED International');
+    apps.forEach((app) => {
+      expect(app.target).toBe('_blank');
+      expect(app.rel).toContain('noopener');
+    });
+
+    header.querySelector<HTMLButtonElement>('[aria-controls="navbar-links"]')!.click();
+    await fixture.whenStable();
+    expect(header.querySelector('#navbar-apps')).toBeNull();
+    const links = header.querySelector('#navbar-links')?.textContent;
+    expect(links).toContain('SNOMED International');
+    expect(links).not.toContain('Privacy policy');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await fixture.whenStable();
+    expect(header.querySelector('#navbar-links')).toBeNull();
   });
 
   it('reports a failure that is not a missing session', async () => {

@@ -496,6 +496,33 @@ describe('ValueSetPage', () => {
     });
   });
 
+  describe('Global Patient Set licence', () => {
+    const PUBLISHED: ValueSet = { ...SET, ownedByMe: false, visibility: 'COMMUNITY', status: 'PUBLISHED', latestVersion: 1 };
+
+    async function openOn(set: ValueSet, versionBranch: string): Promise<void> {
+      open(set, [{ ...VERSION_1, branch: versionBranch }]);
+      http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+      await fixture.whenStable();
+    }
+
+    it('says the download is free to use when built on the International Edition from January 2026', async () => {
+      await openOn({ ...PUBLISHED, branch: 'MAIN/2026-01-01' }, 'MAIN/2026-01-01');
+      const note = page.querySelector('.gps-licence');
+      expect(note?.textContent).toContain('free to use under');
+      expect(note?.querySelector('a[href="https://creativecommons.org/licenses/by-nd/4.0/"]')).not.toBeNull();
+    });
+
+    it('says nothing for an older release', async () => {
+      await openOn({ ...PUBLISHED, branch: 'MAIN/2026-01-01' }, 'MAIN/2025-07-01');
+      expect(page.querySelector('.gps-licence')).toBeNull();
+    });
+
+    it("warns that a national extension's own concepts need a licence", async () => {
+      await openOn({ ...PUBLISHED, codeSystem: 'SNOMEDCT-NO', branch: 'MAIN/SNOMEDCT-NO/2026-03-15' }, 'MAIN/SNOMEDCT-NO/2026-03-15');
+      expect(page.querySelector('.gps-licence')?.textContent).toContain('needs a licence');
+    });
+  });
+
   it('offers no owner actions on a value set owned by someone else', async () => {
     open({ ...SET, ownedByMe: false });
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);

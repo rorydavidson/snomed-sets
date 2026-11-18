@@ -95,6 +95,8 @@ describe('App', () => {
     expect(footer.textContent).toContain('used by permission of SNOMED International');
     expect(footer.textContent).toContain('registered trademarks of SNOMED International');
     expect(footer.querySelector('a[href="/privacy"]')?.textContent).toContain('Privacy');
+    expect(footer.textContent).toContain('licence (CC BY-ND 4.0)');
+    expect(footer.textContent).toContain('Concepts from national extensions are not part of the GPS.');
   });
 
   it('reports a failure that is not a missing session', async () => {

@@ -185,6 +185,11 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   The owner can also download the working draft, whether the set is shared or private.
 - The Global Patient Set layout is a tab-separated file of SNOMED CT ID, FSN (en-us), PT (en-us)
   and Active.
+- Since the January 2026 release the Global Patient Set holds every International Edition concept
+  and is published under CC BY-ND 4.0. The page says so beside the downloads of a set built on the
+  International Edition from 2026-01-01, as that TSV can be used without an Affiliate Licence. For a
+  set built on a national extension it says instead that the extension's own concepts need a
+  licence. It says nothing for older releases or the live branch.
 - The FHIR download is an R4 `ValueSet` resource in JSON. Its compose holds the definition (the ECL
   as a SNOMED CT `constraint` filter, or the hand-picked concepts) and its expansion holds the
   concept list: the one stored when the version was published, or for a draft its current content.
@@ -234,8 +239,9 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 
 - Every page ends with the SNOMED CT notice: SNOMED CT is used by permission of SNOMED International,
   was originally created by the College of American Pathologists, and "SNOMED" and "SNOMED CT" are
-  registered trademarks of SNOMED International. It says that using SNOMED CT needs a licence, and
-  links to SNOMED CT licensing, SNOMED International and the privacy page.
+  registered trademarks of SNOMED International. It says that using SNOMED CT needs a licence, that
+  the Global Patient Set (every International Edition concept since January 2026) is published under
+  CC BY-ND 4.0, and links to SNOMED CT licensing, SNOMED International and the privacy page.
 - The privacy page lists everything the site keeps about people, why and for how long: an internal
   account ID (a random code from the SNOMED International account, never shown), name, the email
   address only while messages are switched on, organisation and picture, value sets, and a one-day

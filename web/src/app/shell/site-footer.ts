@@ -23,6 +23,17 @@ import { RouterLink } from '@angular/router';
           Members and license it to everyone in their territory at no charge; elsewhere, an Affiliate Licence is
           available from SNOMED International.
         </p>
+        <p>
+          Since the January 2026 release, the
+          <a href="https://www.snomed.org/gps" target="_blank" rel="noopener noreferrer">SNOMED CT Global Patient Set</a>
+          (GPS) includes every concept in the International Edition and is published under the
+          <a href="https://creativecommons.org/licenses/by-nd/4.0/" target="_blank" rel="noopener noreferrer"
+            >Creative Commons Attribution-NoDerivatives 4.0</a
+          >
+          licence (CC BY-ND 4.0). Downloads in the GPS layout of value sets built on the International Edition can be
+          used under that licence, without a SNOMED CT Affiliate Licence. Concepts from national extensions are not
+          part of the GPS.
+        </p>
       </div>
     </footer>
   `,

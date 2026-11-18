@@ -40,7 +40,8 @@ describe('ProfilePage', () => {
 
   it('saves the organisation and lets the person be messaged at their account address', async () => {
     await open(PROFILE);
-    expect(page.textContent).toContain('Messages are emailed to olive@example.org');
+    expect(page.querySelector('.account-email-value')?.textContent).toContain('olive@example.org');
+    expect(page.textContent).toContain('Messages are emailed to this address.');
     const save = page.querySelector<HTMLButtonElement>('button[type="submit"]')!;
     expect(save.disabled).toBe(true);
 
@@ -83,6 +84,7 @@ describe('ProfilePage', () => {
 
     expect(page.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
     expect(page.textContent).toContain('no verified email address');
+    expect(page.querySelector('.account-email-value')?.textContent).toContain('None on your account');
   });
 
   it('uploads a picture and shows it in the top bar straight away', async () => {

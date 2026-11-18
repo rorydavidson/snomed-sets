@@ -58,6 +58,15 @@
 
       <fieldset class="field">
         <legend>Messages from other people</legend>
+        <div class="account-email">
+          <span class="account-email-label">Email address</span>
+          @if (me.accountEmail) {
+            <span class="account-email-value">{{ me.accountEmail }}</span>
+            <span class="muted">From your SNOMED International account, where it can be changed.</span>
+          } @else {
+            <span class="account-email-value is-missing">None on your account</span>
+          }
+        </div>
         <label class="checkbox">
           <input type="checkbox" [checked]="contactable()" [disabled]="!me.accountEmail"
                  (change)="contactable.set($any($event.target).checked); edited()" aria-describedby="contact-hint" />
@@ -65,8 +74,7 @@
         </label>
         <p id="contact-hint" class="muted">
           @if (me.accountEmail) {
-            Messages are emailed to {{ me.accountEmail }}, the address on your SNOMED International account.
-            Senders never see it, unless you reply to them.
+            Messages are emailed to this address. Senders never see it, unless you reply to them.
           } @else {
             Your account has no verified email address, so messages could not reach you. If you have just
             added one, sign out and in again.

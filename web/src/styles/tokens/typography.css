@@ -1,12 +1,16 @@
 /* ============================================================
    SNOMED International — Typography tokens
-   Font: MULISH.  Styling guidance (Brand Guidelines 2025):
+   The brand font is Mulish, but this app uses Google Sans. It is bundled with the app
+   (@fontsource-variable/google-sans, see angular.json) so no request goes to Google.
+   It only has weights 400 to 700, so ExtraLight (200) and Light (300) below render as
+   Regular, and ExtraBold (800) as Bold.
+   Styling guidance (Brand Guidelines 2025):
      • Display / Headings — ExtraLight (200), oversized, often lowercase
      • Subheadings — SemiBold/Bold, tracking ~100, often ALL CAPS
      • Body — Regular (400)
    ============================================================ */
 :root {
-  --font-sans: 'Mulish', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: 'Google Sans Variable', 'Google Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* Weights */

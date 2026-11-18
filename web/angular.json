@@ -30,6 +30,7 @@
               }
             ],
             "styles": [
+              "node_modules/@fontsource-variable/google-sans/index.css",
               "src/styles/tokens/colors.css",
               "src/styles/tokens/typography.css",
               "src/styles/tokens/spacing.css",

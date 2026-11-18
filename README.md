@@ -150,6 +150,8 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   copy of the navbar in the shared-ui library (IHTSDO/snomed-ui), in `web/src/app/shell/`, with the
   same Tailwind classes and Font Awesome icons. It does not need that library's translation or
   sign-in set-up. Keep the two in step when either changes.
+- Text across the app, the bar included, is set in Google Sans. The font is bundled with the app
+  rather than loaded from Google Fonts, so visitors' browsers do not contact Google.
 - Tailwind is used only for the bar. It is set up in `web/src/styles/tailwind.css` without its
   base reset, so the rest of the app keeps its own styles and design tokens.
 - It holds a sign-in link for visitors, or the account initials with a menu to sign out. It also has

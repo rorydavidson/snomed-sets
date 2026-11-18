@@ -49,6 +49,8 @@ describe('LibraryPage', () => {
     const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.set-name');
     expect(link?.textContent).toContain('Asthma diagnoses');
     expect(link?.getAttribute('href')).toBe('/value-sets/1');
+    // Signed in, people go straight to their library without the introduction.
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-library-hero')).toBeNull();
   });
 
   it('filters by name and by tag, and a tag can be clicked to filter on it', async () => {
@@ -115,7 +117,11 @@ describe('LibraryPage', () => {
     expect(page.querySelector('a.set-name')?.textContent).toContain('Asthma diagnoses');
     expect(page.textContent).not.toContain('New value set');
     expect(page.querySelector('th')?.parentElement?.textContent).not.toContain('Owner');
-    expect(page.querySelector<HTMLAnchorElement>('a[href="/sign-in"]')).not.toBeNull();
+    const signIn = page.querySelector<HTMLAnchorElement>('app-library-hero a[href="/sign-in"]');
+    expect(signIn?.textContent).toContain('with your SNOMED International account');
+    expect(page.querySelector('h1')?.textContent).toContain('Shared lists of SNOMED CT concepts');
+    expect(page.querySelector('a[href="#library"]')).not.toBeNull();
+    expect(page.querySelector('#library h2')?.textContent).toContain('Published value sets');
   });
 
   it('shows the backend explanation and a retry when loading fails', async () => {

@@ -10,6 +10,10 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 
 ### Without signing in
 
+- Visitors land on a short introduction above the library: what a value set is, an example of an
+  ECL rule and the concepts it gathers, and the three steps of making one (define, publish, share).
+  It has a "Sign in with your SNOMED International account" button. People who are signed in go
+  straight to their library instead.
 - Anyone can open the library and see the value sets that have been published and shared with
   the community. Drafts and private sets are not shown, and nor is who made a set.
 - A published set can be opened to read its definition, versions and concept lists, and downloaded

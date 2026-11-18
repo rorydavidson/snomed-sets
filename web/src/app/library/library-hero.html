@@ -1,0 +1,56 @@
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-inner">
+    <div class="intro">
+      <h1 id="hero-title">Shared lists of SNOMED CT concepts, ready to use</h1>
+      <p class="lead">
+        A value set is the list of SNOMED CT concepts that fits one purpose, such as every kind of
+        asthma a registry should count. Define it once, publish a version, and anyone can use the
+        same list.
+      </p>
+      <div class="actions">
+        <app-snomed-sign-in />
+        <a class="browse" href="#library">Browse published sets</a>
+      </div>
+      <p class="note">Browsing and downloading published sets needs no account.</p>
+    </div>
+
+    <figure class="example">
+      <svg class="brace" viewBox="0 0 24 240" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M22 2C12 2 12 8 12 20V100C12 112 8 120 2 120C8 120 12 128 12 140V220C12 232 12 238 22 238" />
+      </svg>
+      <div class="example-body">
+        <code class="rule">&lt;&lt; 195967001 |Asthma|</code>
+        <ul class="members">
+          @for (concept of concepts; track concept.id) {
+            <li [style.--i]="$index">
+              <span>{{ concept.term }}</span>
+              <span class="sctid">{{ concept.id }}</span>
+            </li>
+          }
+        </ul>
+        <figcaption>One rule gathers every kind of asthma, and picks up new ones when the set moves to a new release.</figcaption>
+      </div>
+      <svg class="brace brace-close" viewBox="0 0 24 240" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M22 2C12 2 12 8 12 20V100C12 112 8 120 2 120C8 120 12 128 12 140V220C12 232 12 238 22 238" />
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section class="steps" aria-labelledby="steps-title">
+  <h2 id="steps-title">How a value set is made</h2>
+  <ol>
+    <li>
+      <h3>Define</h3>
+      <p>Write an ECL rule, or pick concepts one by one. The list of concepts updates as you go.</p>
+    </li>
+    <li>
+      <h3>Publish</h3>
+      <p>Fix a version against a SNOMED CT release, so everyone using it gets exactly the same list.</p>
+    </li>
+    <li>
+      <h3>Share and download</h3>
+      <p>Share it with the community and download it as a Global Patient Set file or a FHIR ValueSet.</p>
+    </li>
+  </ol>
+</section>

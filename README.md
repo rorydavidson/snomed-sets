@@ -118,8 +118,11 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - Other people always see the version in use. The owner works on a draft and can publish again or
   discard the changes made since the last version.
 - Every version stays in the history and can be browsed.
-- A version can be given a name, such as the date it was published, when it is published or later
-  from the version history. The name is shown instead of "Version 3" across the pages, with the
+- A version can be given a name when it is published or later from the version history. It starts
+  as the date of the code system release the set is built on, such as 2026-07-01, or 2026-07-01 (2)
+  when another version of the set already has that name; clearing it shows the number instead. A
+  version made by upgrading to a new release is named after that release. Sets on a live branch
+  have no release date, so their versions start without a name. The name is shown instead of "Version 3" across the pages, with the
   number still shown beside it. Names are unique within a set, whatever their capitals, and use
   letters, digits, spaces and `. _ / : ( ) + -`, up to 40 characters. Links and downloads keep using
   the number, so renaming a version does not break them.

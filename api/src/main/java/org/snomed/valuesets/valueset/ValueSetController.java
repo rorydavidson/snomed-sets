@@ -216,7 +216,10 @@ public class ValueSetController {
 	}
 
 	/** @param note what changed in this version; may be empty */
-	/** @param label a name for the version, such as a date, shown instead of its number; optional */
+	/**
+	 * @param label a name for the version, shown instead of its number. Left out for the default,
+	 *        the date of the release the set is built on; empty for no name.
+	 */
 	public record PublishRequest(@NotNull @Size(max = 500) String note, @Size(max = 60) String label) {
 	}
 }

@@ -516,6 +516,37 @@ describe('ValueSetPage', () => {
     expect(button(page, 'Deprecate 2026-03-01')).toBeDefined();
   });
 
+  it('starts a new version with the release date as its name, numbered if already used, and can be cleared', async () => {
+    const onRelease: ValueSet = {
+      ...SET,
+      branch: 'MAIN/2026-01-01',
+      codeSystemVersion: '2026-01-01',
+      status: 'PUBLISHED',
+      latestVersion: 1,
+      latestVersionLabel: '2026-01-01',
+      unpublishedChanges: true,
+    };
+    open(onRelease, [{ ...VERSION_1, label: '2026-01-01' }]);
+    http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);
+    await fixture.whenStable();
+
+    button(page, 'Publish')?.click();
+    await fixture.whenStable();
+    const label = page.querySelector<HTMLInputElement>('#publish-label')!;
+    expect(label.value).toBe('2026-01-01 (2)');
+    expect(page.textContent).toContain('It starts as the date of the release the set is built on.');
+
+    // Cleared, the version is shown by its number.
+    label.value = '';
+    button(page, 'Publish version 2')?.click();
+    const request = http.expectOne({ method: 'POST', url: '/api/value-sets/7/versions' });
+    expect(request.request.body).toEqual({ note: '', label: '' });
+    request.flush({ ...VERSION_1, number: 2 });
+    http.expectOne('/api/value-sets/7').flush(onRelease);
+    http.expectOne('/api/value-sets/7/versions').flush([{ ...VERSION_1, number: 2 }, { ...VERSION_1, label: '2026-01-01' }]);
+    http.expectOne((r) => r.url.includes('/expansion')).flush(EMPTY_PAGE);
+  });
+
   it('lets the owner rename a version, and shows why a name is refused', async () => {
     open({ ...SET, status: 'PUBLISHED', latestVersion: 1 }, [VERSION_1]);
     http.expectOne('/api/value-sets/7/expansion?offset=0&limit=50').flush(EMPTY_PAGE);

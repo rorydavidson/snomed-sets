@@ -258,10 +258,13 @@ const PAGE_SIZE = 50;
                 <div class="field grow">
                   <label for="publish-label">Name for version {{ nextVersion() }} (optional)</label>
                   <input id="publish-label" type="text" maxlength="40" autocomplete="off" #label
-                         [placeholder]="'For example ' + today" aria-describedby="publish-label-hint" />
+                         [value]="defaultLabel() ?? ''" aria-describedby="publish-label-hint" />
                   <p id="publish-label-hint" class="meta">
-                    Shown instead of "Version {{ nextVersion() }}", for example the date it was published. You can
-                    change it later.
+                    Shown instead of "Version {{ nextVersion() }}".
+                    @if (defaultLabel()) {
+                      It starts as the date of the release the set is built on. Change it, or clear it to show the number.
+                    }
+                    You can change it later.
                   </p>
                 </div>
                 <div class="field grow">
@@ -451,7 +454,7 @@ const PAGE_SIZE = 50;
                           <form class="rename" (submit)="saveLabel($event, version.number, newLabel.value)">
                             <label class="visually-hidden" [for]="'rename-' + version.number">Name for version {{ version.number }}</label>
                             <input #newLabel [id]="'rename-' + version.number" type="text" maxlength="40" autocomplete="off"
-                                   [value]="version.label ?? ''" [placeholder]="'For example ' + today" />
+                                   [value]="version.label ?? ''" [placeholder]="releaseDate(version.branch) ?? 'For example 2026-07-01'" />
                             <button type="submit" class="button button-primary button-small" [disabled]="busy()">Save name</button>
                             <button type="button" class="link-button" (click)="renaming.set(null)">Cancel</button>
                             @if (renameError(); as message) {
@@ -733,8 +736,27 @@ export class ValueSetPage implements OnInit {
 
   protected readonly versionName = versionName;
   protected readonly versionInSentence = versionInSentence;
-  /** Today in the form a label might take, as a hint. */
-  protected readonly today = new Date().toISOString().slice(0, 10);
+  /**
+   * The name a new version starts with: the date of the release the set is built on, numbered
+   * if another version already has it, as the backend does. Null on a live branch.
+   */
+  protected readonly defaultLabel = computed(() => {
+    const release = this.valueSet()?.codeSystemVersion;
+    if (!release) {
+      return null;
+    }
+    const taken = new Set((this.versions() ?? []).map((version) => version.label?.toLowerCase()));
+    let label = release;
+    for (let n = 2; taken.has(label.toLowerCase()); n++) {
+      label = `${release} (${n})`;
+    }
+    return label;
+  });
+
+  /** The release date in a branch such as MAIN/2026-07-01, or null for a live branch. */
+  protected releaseDate(branch: string): string | null {
+    return /\/(\d{4}-\d{2}-\d{2})$/.exec(branch)?.[1] ?? null;
+  }
   /** The version whose name is being edited, or null. */
   protected readonly renaming = signal<number | null>(null);
   protected readonly renameError = signal<string | null>(null);

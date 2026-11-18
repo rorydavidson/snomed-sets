@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { SnomedSignIn } from '../shell/snomed-sign-in';
+import { ValueSetSteps } from './value-set-steps';
 
 /** A few real children of 195967001 |Asthma|, to show what an ECL rule selects. */
 const EXAMPLE_CONCEPTS = [
@@ -18,7 +19,7 @@ const EXAMPLE_CONCEPTS = [
  */
 @Component({
   selector: 'app-library-hero',
-  imports: [SnomedSignIn],
+  imports: [SnomedSignIn, ValueSetSteps],
   templateUrl: './library-hero.html',
   styleUrl: './library-hero.scss',
 })

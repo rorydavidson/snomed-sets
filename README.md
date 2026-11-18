@@ -23,6 +23,8 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 ### Library
 
 - Every value set you own, and every set others have shared with the community, in one compact table.
+- Above the table, a tip shows the three steps of making a value set until you close it. Closing it
+  is remembered in that browser only, so nothing about it is stored on the server.
 - Search by name or tag. Clicking a tag shows the other sets that carry it.
 - Each row shows the latest version (or Draft), whether the set is private, how it is defined, the
   edition and release it is built on, its owner and last update.

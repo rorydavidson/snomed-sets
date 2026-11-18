@@ -37,6 +37,7 @@ describe('LibraryPage', () => {
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
+    localStorage.clear();
     TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me' });
   });
 
@@ -51,6 +52,28 @@ describe('LibraryPage', () => {
     expect(link?.getAttribute('href')).toBe('/value-sets/1');
     // Signed in, people go straight to their library without the introduction.
     expect((fixture.nativeElement as HTMLElement).querySelector('app-library-hero')).toBeNull();
+  });
+
+  it('shows how a value set is made as a tip until it is dismissed, and remembers that', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    const page = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    await fixture.whenStable();
+
+    const tip = page.querySelector('app-steps-tip section');
+    expect(tip?.textContent).toContain('How a value set is made');
+    expect(tip?.querySelectorAll('li').length).toBe(3);
+
+    tip!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss tip"]')!.click();
+    await fixture.whenStable();
+    expect(page.querySelector('app-steps-tip section')).toBeNull();
+
+    const again = TestBed.createComponent(LibraryPage);
+    again.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    await again.whenStable();
+    expect((again.nativeElement as HTMLElement).querySelector('app-steps-tip section')).toBeNull();
   });
 
   it('filters by name and by tag, and a tag can be clicked to filter on it', async () => {

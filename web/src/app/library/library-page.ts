@@ -4,10 +4,11 @@ import { RouterLink } from '@angular/router';
 import { Session } from '../core/session';
 import { ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 import { LibraryHero } from './library-hero';
+import { StepsTip } from './steps-tip';
 
 @Component({
   selector: 'app-library-page',
-  imports: [RouterLink, DatePipe, LibraryHero],
+  imports: [RouterLink, DatePipe, LibraryHero, StepsTip],
   template: `
     @if (!signedIn()) {
       <app-library-hero />
@@ -22,6 +23,9 @@ import { LibraryHero } from './library-hero';
           <h2 class="grow-heading">Published value sets</h2>
         }
       </div>
+      @if (signedIn()) {
+        <app-steps-tip />
+      }
 
       @if (error(); as message) {
         <div class="error-panel" role="alert">

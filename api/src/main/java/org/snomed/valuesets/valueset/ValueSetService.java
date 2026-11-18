@@ -2,6 +2,7 @@ package org.snomed.valuesets.valueset;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -18,6 +19,7 @@ import org.snomed.valuesets.profile.OwnerProfile;
 import org.snomed.valuesets.profile.ProfileService;
 import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.CodeSystemVersion;
+import org.snomed.valuesets.snowstorm.Edition;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
@@ -260,16 +262,76 @@ public class ValueSetService {
 	 * working on. Everyone else sees the latest published version, so a set they rely on
 	 * does not change until its owner publishes again.
 	 */
-	public ExpansionPage expansion(long id, CurrentUser user, int offset, int limit) {
+	/**
+	 * @param language a language code such as "no" for preferred terms in that language where the
+	 *        concepts have them; null or "en" for US English, as stored
+	 */
+	public ExpansionPage expansion(long id, CurrentUser user, int offset, int limit, String language) {
 		ValueSet valueSet = findVisible(id, user);
 		ValueSetVersion latest = latestVersionOf(valueSet);
 		boolean showPublished = latest != null && !valueSet.isOwnedBy(user.subject());
 		if (showPublished) {
-			return versionContent(valueSet, latest, offset, limit);
+			return versionContent(valueSet, latest, offset, limit, language);
 		}
 		return valueSet.isManual()
-				? memberPage(valueSet, ValueSetMember.WORKING_LIST, offset, limit)
-				: snowstorm.expand(valueSet.getEcl(), valueSet.getBranch(), offset, limit);
+				? inLanguage(memberPage(valueSet, ValueSetMember.WORKING_LIST, offset, limit), valueSet.getBranch(), language)
+				: liveExpansion(valueSet.getEcl(), valueSet.getBranch(), offset, limit, language);
+	}
+
+	/**
+	 * The edition's own language, which a set's concepts are shown in by default, and every
+	 * language the edition holds. English only when Snowstorm cannot say.
+	 */
+	public SetLanguages languages(long id, CurrentUser user) {
+		ValueSet valueSet = findVisible(id, user);
+		try {
+			Edition edition = snowstorm.editionFor(valueSet.getBranch());
+			if (edition != null && edition.languages() != null && !edition.languages().isEmpty()) {
+				List<SetLanguages.Language> available = edition.languages().entrySet().stream()
+						.map(entry -> new SetLanguages.Language(entry.getKey(), entry.getValue()))
+						.sorted(Comparator.comparing((SetLanguages.Language language) -> !language.code().equals(edition.language()))
+								.thenComparing(SetLanguages.Language::name))
+						.toList();
+				return new SetLanguages(edition.language(), available);
+			}
+		} catch (SnowstormException e) {
+			// The list is still shown, in English.
+		}
+		return new SetLanguages("en", List.of(new SetLanguages.Language("en", "English")));
+	}
+
+	/** What an ECL definition expands to now, with preferred terms in the language asked for. */
+	private ExpansionPage liveExpansion(String ecl, String branch, int offset, int limit, String language) {
+		return language == null || language.equals("en")
+				? snowstorm.expand(ecl, branch, offset, limit)
+				: snowstorm.expand(ecl, branch, offset, limit, language);
+	}
+
+	/**
+	 * A page of a stored list with its preferred terms in another language, looked up for just
+	 * that page. A concept with no term in the language, an inactive one, or every concept if
+	 * Snowstorm cannot be reached, keeps its stored US English term, marked as English.
+	 */
+	private ExpansionPage inLanguage(ExpansionPage page, String branch, String language) {
+		if (language == null || language.equals("en") || page.items().isEmpty()) {
+			return page;
+		}
+		Map<String, Concept> translated;
+		try {
+			translated = snowstorm.activeConcepts(page.items().stream().map(Concept::conceptId).toList(), branch, language)
+					.items().stream()
+					.collect(Collectors.toMap(Concept::conceptId, Function.identity(), (a, b) -> a));
+		} catch (SnowstormException e) {
+			return page;
+		}
+		return new ExpansionPage(page.items().stream()
+				.map(stored -> {
+					Concept found = translated.get(stored.conceptId());
+					return found == null || found.preferredTerm() == null ? stored
+							: new Concept(stored.conceptId(), found.preferredTerm(), stored.fullySpecifiedName(),
+									found.language(), stored.active());
+				})
+				.toList(), page.total(), page.offset(), page.limit());
 	}
 
 	/**
@@ -290,10 +352,11 @@ public class ValueSetService {
 	}
 
 	/** A published version is read from its stored concept list, so it never changes. */
-	private ExpansionPage versionContent(ValueSet valueSet, ValueSetVersion version, int offset, int limit) {
+	private ExpansionPage versionContent(ValueSet valueSet, ValueSetVersion version, int offset, int limit,
+			String language) {
 		return version.isContentFrozen()
-				? memberPage(valueSet, version.getVersionNumber(), offset, limit)
-				: snowstorm.expand(version.getEcl(), version.getBranch(), offset, limit);
+				? inLanguage(memberPage(valueSet, version.getVersionNumber(), offset, limit), version.getBranch(), language)
+				: liveExpansion(version.getEcl(), version.getBranch(), offset, limit, language);
 	}
 
 	public List<VersionView> versions(long id, CurrentUser user) {
@@ -303,11 +366,12 @@ public class ValueSetService {
 				.toList();
 	}
 
-	public ExpansionPage versionExpansion(long id, int versionNumber, CurrentUser user, int offset, int limit) {
+	public ExpansionPage versionExpansion(long id, int versionNumber, CurrentUser user, int offset, int limit,
+			String language) {
 		ValueSet valueSet = findVisible(id, user);
 		ValueSetVersion version = versions.findByValueSetIdAndVersionNumber(valueSet.getId(), versionNumber)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Version not found"));
-		return versionContent(valueSet, version, offset, limit);
+		return versionContent(valueSet, version, offset, limit, language);
 	}
 
 	/**

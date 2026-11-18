@@ -28,6 +28,7 @@ public class SecurityConfig {
 		"/api/value-sets/{id}",
 		"/api/value-sets/sct/{sctid}",
 		"/api/value-sets/{id}/expansion",
+		"/api/value-sets/{id}/languages",
 		"/api/value-sets/{id}/versions",
 		"/api/value-sets/{id}/versions/{number}/expansion",
 		"/api/value-sets/{id}/download",

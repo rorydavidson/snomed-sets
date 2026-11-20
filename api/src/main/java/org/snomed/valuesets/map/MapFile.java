@@ -17,12 +17,14 @@ public record MapFile(String fileName, String content, MediaType mediaType) {
 
 	public enum Format { CSV, TSV }
 
-	private static final List<String> HEADER = List.of("Source code", "Source term", "Target SNOMED CT ID",
+	private static final List<String> TO_SNOMED_HEADER = List.of("Source code", "Source term", "Target SNOMED CT ID",
+			"Target term", "Relationship", "Status", "Note");
+	private static final List<String> FROM_SNOMED_HEADER = List.of("Source SNOMED CT ID", "Source term", "Target code",
 			"Target term", "Relationship", "Status", "Note");
 
 	static MapFile of(CodeMap map, List<CodeMapRow> rows, Format format) {
 		StringBuilder content = new StringBuilder();
-		line(content, format, HEADER);
+		line(content, format, map.isFromSnomed() ? FROM_SNOMED_HEADER : TO_SNOMED_HEADER);
 		for (CodeMapRow row : rows) {
 			// A suggestion nobody has accepted is not part of the map, so the row is written as unmapped.
 			boolean mapped = row.getStatus() == CodeMapRow.Status.MAPPED;

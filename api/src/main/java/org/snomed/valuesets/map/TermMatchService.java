@@ -2,6 +2,7 @@ package org.snomed.valuesets.map;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,7 +17,6 @@ import java.util.concurrent.Future;
 import org.snomed.valuesets.map.MapView.RowView;
 import org.snomed.valuesets.snowstorm.DescriptionMatch;
 import org.snomed.valuesets.snowstorm.Edition;
-import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.snowstorm.SnowstormException;
 import org.snomed.valuesets.user.CurrentUser;
@@ -24,8 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Looks for each row's term among SNOMED CT descriptions, synonyms included, and stores the
- * concepts whose description is the same words as suggestions. Nothing is accepted here: the same
+ * Looks for the same words on both sides of a map and stores what is found as suggestions. In a
+ * map to SNOMED CT each row's term is looked for among SNOMED CT descriptions, synonyms included.
+ * In a map from SNOMED CT every name of each row's concept is looked for among the local terms. Nothing is accepted here: the same
  * words can name a finding, a disorder and a morphology, so a person decides.
  */
 @Service
@@ -39,6 +40,8 @@ public class TermMatchService {
 	private static final int SHORTEST_SEARCH = 3;
 	/** Exact matches are the shortest descriptions found, so they are in the first few. */
 	private static final int DESCRIPTIONS_READ = 50;
+	/** How many concepts' names are asked for at once. They go in the address, so not too many. */
+	private static final int CONCEPTS_PER_REQUEST = 25;
 
 	private final CodeMapService maps;
 	private final CodeMapRowRepository rows;
@@ -61,15 +64,7 @@ public class TermMatchService {
 		CodeMap map = maps.owned(mapId, user);
 		List<CodeMapRow> unmapped = rows.findByMapIdAndVersionNumberAndIdInOrderByPosition(map.getId(),
 				CodeMapRow.WORKING, rowIds).stream().filter(row -> row.getStatus() == CodeMapRow.Status.UNMAPPED).toList();
-		List<String> languages = languagesOf(map.getBranch());
-
-		Map<Long, Future<List<Concept>>> pending = new LinkedHashMap<>();
-		try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_SEARCHES, Thread.ofVirtual().factory())) {
-			unmapped.forEach(row -> pending.put(row.getId(),
-					executor.submit(() -> conceptsNamed(row.getSourceTerm(), map.getBranch(), languages))));
-		}
-		Map<Long, List<Concept>> matches = new LinkedHashMap<>();
-		pending.forEach((rowId, future) -> matches.put(rowId, resultOf(future)));
+		Map<Long, List<MapCode>> matches = map.isFromSnomed() ? localCodesNamedLike(unmapped, map) : conceptsNamedLike(unmapped, map);
 
 		return transaction.execute(status -> {
 			List<RowView> matched = new ArrayList<>();
@@ -83,8 +78,50 @@ public class TermMatchService {
 		});
 	}
 
+	/** For each row of a map to SNOMED CT, the concepts with a description that is the row's term. */
+	private Map<Long, List<MapCode>> conceptsNamedLike(List<CodeMapRow> unmapped, CodeMap map) {
+		List<String> languages = languagesOf(map.getBranch());
+		Map<Long, Future<List<MapCode>>> pending = new LinkedHashMap<>();
+		try (ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_SEARCHES, Thread.ofVirtual().factory())) {
+			unmapped.forEach(row -> pending.put(row.getId(),
+					executor.submit(() -> conceptsNamed(row.getSourceTerm(), map.getBranch(), languages))));
+		}
+		Map<Long, List<MapCode>> matches = new LinkedHashMap<>();
+		pending.forEach((rowId, future) -> matches.put(rowId, resultOf(future)));
+		return matches;
+	}
+
+	/**
+	 * For each row of a map from SNOMED CT, the local codes whose term is one of the names of the
+	 * row's concept: its preferred term, fully specified name or any synonym, in any language.
+	 */
+	private Map<Long, List<MapCode>> localCodesNamedLike(List<CodeMapRow> unmapped, CodeMap map) {
+		Map<String, List<MapCode>> localByTerm = new HashMap<>();
+		maps.localCodes(map).stream()
+				.filter(local -> !local.term().isBlank())
+				.forEach(local -> localByTerm.computeIfAbsent(normalised(local.term()), term -> new ArrayList<>())
+						.add(MapCode.local(local.code(), local.term())));
+
+		Map<String, Set<String>> namesByConcept = new HashMap<>();
+		List<String> conceptIds = unmapped.stream().map(CodeMapRow::getSourceCode).toList();
+		for (int start = 0; start < conceptIds.size(); start += CONCEPTS_PER_REQUEST) {
+			snowstorm.termsOf(conceptIds.subList(start, Math.min(start + CONCEPTS_PER_REQUEST, conceptIds.size())),
+					map.getBranch()).forEach(name -> namesByConcept
+							.computeIfAbsent(name.conceptId(), conceptId -> new LinkedHashSet<>()).add(normalised(name.term())));
+		}
+
+		Map<Long, List<MapCode>> matches = new LinkedHashMap<>();
+		for (CodeMapRow row : unmapped) {
+			Map<String, MapCode> found = new LinkedHashMap<>();
+			namesByConcept.getOrDefault(row.getSourceCode(), Set.of()).forEach(name -> localByTerm
+					.getOrDefault(name, List.of()).forEach(local -> found.putIfAbsent(local.code(), local)));
+			matches.put(row.getId(), found.values().stream().limit(CodeMapService.MAX_TARGETS).toList());
+		}
+		return matches;
+	}
+
 	/** The active concepts with a description that is the term, apart from case and spacing. */
-	private List<Concept> conceptsNamed(String term, String branch, List<String> languages) {
+	private List<MapCode> conceptsNamed(String term, String branch, List<String> languages) {
 		String wanted = normalised(term);
 		if (wanted.length() < SHORTEST_SEARCH) {
 			return List.of();
@@ -101,10 +138,10 @@ public class TermMatchService {
 			}
 			throw e;
 		}
-		Map<String, Concept> found = new LinkedHashMap<>();
+		Map<String, MapCode> found = new LinkedHashMap<>();
 		descriptions.stream()
 				.filter(description -> normalised(description.term()).equals(wanted))
-				.forEach(description -> found.putIfAbsent(description.concept().conceptId(), description.concept()));
+				.forEach(description -> found.putIfAbsent(description.concept().conceptId(), MapCode.of(description.concept())));
 		return found.values().stream().limit(CodeMapService.MAX_TARGETS).toList();
 	}
 

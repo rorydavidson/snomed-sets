@@ -1,5 +1,6 @@
 package org.snomed.valuesets.snowstorm;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -371,6 +372,64 @@ public class SnowstormClient {
 	}
 
 	record SnowstormDescriptionPage(List<SnowstormDescriptionMatch> items) {
+	}
+
+	/**
+	 * Every active name of the given concepts: fully specified names and synonyms in every language
+	 * the branch holds. Text definitions are left out, as they describe a concept and do not name it.
+	 *
+	 * @param conceptIds a few dozen at most, as they go in the address
+	 */
+	public List<ConceptTerm> termsOf(Collection<String> conceptIds, String branch) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		if (conceptIds.stream().anyMatch(conceptId -> !conceptId.matches("\\d{6,18}"))) {
+			throw new SnowstormException("A concept identifier is not valid.", true, null);
+		}
+		List<ConceptTerm> terms = new ArrayList<>();
+		// Inactive descriptions are sent too and dropped here, so the pages are read until one comes back short.
+		for (int offset = 0; ; offset += TERMS_PAGE_SIZE) {
+			int from = offset;
+			SnowstormConceptDescriptions page;
+			try {
+				page = restClient.get()
+						.uri(uriBuilder -> uriBuilder
+								.pathSegment(branch.split("/"))
+								.pathSegment("descriptions")
+								.queryParam("conceptIds", conceptIds.toArray())
+								.queryParam("offset", from)
+								.queryParam("limit", TERMS_PAGE_SIZE)
+								.build())
+						.retrieve()
+						.body(SnowstormConceptDescriptions.class);
+			}
+			catch (RestClientResponseException e) {
+				boolean rejected = e.getStatusCode().is4xxClientError();
+				throw new SnowstormException(rejected ? "Snowstorm rejected the request." : "Snowstorm returned an error.",
+						rejected, e);
+			}
+			catch (RestClientException e) {
+				throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+			}
+			if (page == null || page.items() == null) {
+				throw new SnowstormException("Snowstorm returned an empty response.", false, null);
+			}
+			page.items().stream()
+					.filter(item -> item.active() && item.term() != null && !"DEFINITION".equals(item.type()))
+					.forEach(item -> terms.add(new ConceptTerm(item.conceptId(), item.term(), item.lang())));
+			if (page.items().size() < TERMS_PAGE_SIZE) {
+				return terms;
+			}
+		}
+	}
+
+	private static final int TERMS_PAGE_SIZE = 1000;
+
+	record SnowstormConceptDescriptions(List<SnowstormConceptDescription> items) {
+	}
+
+	record SnowstormConceptDescription(String conceptId, String term, String lang, String type, boolean active) {
 	}
 
 	record SnowstormDescriptionMatch(String term, String languageCode, SnowstormConcept concept) {

@@ -21,9 +21,11 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.BatchSize;
 import org.snomed.valuesets.map.CodeMapTarget.Origin;
 import org.snomed.valuesets.map.CodeMapTarget.Relationship;
-import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 
-/** One source of a map: a local code and its term, with the targets it has been given. */
+/**
+ * One source of a map, with the targets it has been given: a local code and its term in a map to
+ * SNOMED CT, or a concept in a map from it.
+ */
 @Entity
 @Table(name = "code_map_row")
 public class CodeMapRow {
@@ -54,6 +56,10 @@ public class CodeMapRow {
 	@Column(name = "source_term", nullable = false, length = 500)
 	private String sourceTerm;
 
+	/** The fully specified name of a SNOMED CT source; empty for a local code. */
+	@Column(name = "source_fsn", nullable = false, length = 500)
+	private String sourceFsn;
+
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 20)
 	private Status status;
@@ -81,7 +87,7 @@ public class CodeMapRow {
 	 * Stores what a term match found. One or more matches become suggestions for the owner to
 	 * accept; none leaves the row unmapped. Does nothing to a row the owner has already dealt with.
 	 */
-	void suggest(List<Concept> matches) {
+	void suggest(List<MapCode> matches) {
 		if (status != Status.UNMAPPED) {
 			return;
 		}
@@ -103,19 +109,19 @@ public class CodeMapRow {
 	 * Sets the targets the owner chose, in their order. A target that was already on the row, as a
 	 * suggestion or otherwise, keeps its record of how it got there.
 	 */
-	void mapTo(Map<Concept, Relationship> chosen, String note) {
+	void mapTo(Map<MapCode, Relationship> chosen, String note) {
 		Map<String, CodeMapTarget> existing = new LinkedHashMap<>();
 		targets.forEach(target -> existing.put(target.getCode(), target));
 		// Changed in place rather than cleared and refilled: Hibernate inserts before it deletes,
 		// which would break the unique key on a target that stays.
-		targets.removeIf(target -> chosen.keySet().stream().noneMatch(concept -> concept.conceptId().equals(target.getCode())));
-		chosen.forEach((concept, relationship) -> {
-			CodeMapTarget kept = existing.get(concept.conceptId());
+		targets.removeIf(target -> chosen.keySet().stream().noneMatch(wanted -> wanted.code().equals(target.getCode())));
+		chosen.forEach((wanted, relationship) -> {
+			CodeMapTarget kept = existing.get(wanted.code());
 			if (kept != null) {
 				kept.relateAs(relationship);
 			}
 			else {
-				targets.add(new CodeMapTarget(this, concept, relationship, Origin.MANUAL));
+				targets.add(new CodeMapTarget(this, wanted, relationship, Origin.MANUAL));
 			}
 		});
 		this.status = targets.isEmpty() ? Status.UNMAPPED : Status.MAPPED;
@@ -143,6 +149,10 @@ public class CodeMapRow {
 
 	public String getSourceTerm() {
 		return sourceTerm;
+	}
+
+	public String getSourceFsn() {
+		return sourceFsn;
 	}
 
 	public Status getStatus() {

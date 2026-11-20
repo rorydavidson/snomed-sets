@@ -28,6 +28,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.snomed.valuesets.snowstorm.CodeSystem;
+import org.snomed.valuesets.snowstorm.ConceptTerm;
 import org.snomed.valuesets.snowstorm.DescriptionMatch;
 import org.snomed.valuesets.snowstorm.ExpansionPage;
 import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
@@ -269,8 +270,8 @@ class CodeMapApiTests {
 
 		mvc.perform(put("/api/maps/" + id + "/rows/" + rowId(id, "A1")).contentType(MediaType.APPLICATION_JSON)
 				.content("""
-						{"targets": [{"conceptId": "195967001"},
-						             {"conceptId": "82272006", "relationship": "TARGET_BROADER"}],
+						{"targets": [{"code": "195967001"},
+						             {"code": "82272006", "relationship": "TARGET_BROADER"}],
 						 "note": "Checked with the ward"}
 						""").with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isOk())
@@ -288,7 +289,7 @@ class CodeMapApiTests {
 		given(snowstorm.activeConcepts(anyList(), eq(RELEASE))).willReturn(new ExpansionPage(List.of(), 0, 0, 1));
 
 		mvc.perform(put("/api/maps/" + id + "/rows/" + rowId(id, "A1")).contentType(MediaType.APPLICATION_JSON)
-				.content("{\"targets\": [{\"conceptId\": \"195967001\"}]}").with(signedInAs("alice")).with(csrf()))
+				.content("{\"targets\": [{\"code\": \"195967001\"}]}").with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest());
 	}
 
@@ -303,7 +304,7 @@ class CodeMapApiTests {
 				.willReturn(new ExpansionPage(List.of(ASTHMA, COMMON_COLD), 2, 0, 2));
 
 		mvc.perform(put("/api/maps/" + id + "/rows/" + row).contentType(MediaType.APPLICATION_JSON)
-				.content("{\"targets\": [{\"conceptId\": \"195967001\"}, {\"conceptId\": \"82272006\"}]}")
+				.content("{\"targets\": [{\"code\": \"195967001\"}, {\"code\": \"82272006\"}]}")
 				.with(signedInAs("alice")).with(csrf()))
 				.andExpect(jsonPath("$.status").value("MAPPED"))
 				// The accepted suggestion still says where it came from.
@@ -320,10 +321,10 @@ class CodeMapApiTests {
 	void moreCodesCanBeAddedButNotOnesAlreadyThere() throws Exception {
 		long id = createMap("alice");
 
-		mvc.perform(post("/api/maps/" + id + "/rows").contentType(MediaType.APPLICATION_JSON)
+		mvc.perform(post("/api/maps/" + id + "/local-codes").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"rows\": [{\"code\": \"B2\", \"term\": \"Bronchitis\"}]}").with(signedInAs("alice")).with(csrf()))
 				.andExpect(jsonPath("$.counts.total").value(4));
-		mvc.perform(post("/api/maps/" + id + "/rows").contentType(MediaType.APPLICATION_JSON)
+		mvc.perform(post("/api/maps/" + id + "/local-codes").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"rows\": [{\"code\": \"Z9\", \"term\": \"Again\"}]}").with(signedInAs("alice")).with(csrf()))
 				.andExpect(status().isBadRequest());
 
@@ -339,7 +340,7 @@ class CodeMapApiTests {
 		matchAllTerms(id);
 		given(snowstorm.activeConcepts(anyList(), eq(RELEASE))).willReturn(new ExpansionPage(List.of(ASTHMA), 1, 0, 1));
 		mvc.perform(put("/api/maps/" + id + "/rows/" + rowId(id, "A1")).contentType(MediaType.APPLICATION_JSON)
-				.content("{\"targets\": [{\"conceptId\": \"195967001\"}]}").with(signedInAs("alice")).with(csrf()));
+				.content("{\"targets\": [{\"code\": \"195967001\"}]}").with(signedInAs("alice")).with(csrf()));
 		mvc.perform(put("/api/maps/" + id + "/rows/" + rowId(id, "Z9")).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"noMap\": true}").with(signedInAs("alice")).with(csrf()));
 
@@ -362,5 +363,163 @@ class CodeMapApiTests {
 		mvc.perform(get("/api/maps/" + id).with(signedInAs("alice"))).andExpect(status().isNotFound());
 		org.assertj.core.api.Assertions.assertThat(
 				jdbc.queryForObject("SELECT COUNT(*) FROM code_map_row WHERE map_id = ?", Integer.class, id)).isZero();
+	}
+
+	private static final String FROM_SNOMED_MAP = """
+			{"details": {"name": "Asthma clinic codes", "description": "", "localSystemName": "Clinic codes"},
+			 "direction": "FROM_SNOMED",
+			 "conceptIds": ["195967001", "82272006"],
+			 "rows": [{"code": "L1", "term": "Bronchial asthma"}, {"code": "L2", "term": "Head cold"}, {"code": "L3", "term": "Other"}]}
+			""";
+
+	private long createMapFromSnomed() throws Exception {
+		given(snowstorm.activeConcepts(anyList(), eq(RELEASE)))
+				.willReturn(new ExpansionPage(List.of(COMMON_COLD, ASTHMA), 2, 0, 2));
+		mvc.perform(post("/api/maps").contentType(MediaType.APPLICATION_JSON).content(FROM_SNOMED_MAP)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated());
+		return jdbc.queryForObject("SELECT id FROM code_map WHERE owner_subject = 'alice'", Long.class);
+	}
+
+	@Test
+	void aMapFromSnomedHasConceptsAsRowsAndKeepsTheLocalCodesApart() throws Exception {
+		given(snowstorm.activeConcepts(anyList(), eq(RELEASE)))
+				.willReturn(new ExpansionPage(List.of(COMMON_COLD, ASTHMA), 2, 0, 2));
+
+		mvc.perform(post("/api/maps").contentType(MediaType.APPLICATION_JSON).content(FROM_SNOMED_MAP)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.direction").value("FROM_SNOMED"))
+				.andExpect(jsonPath("$.counts.total").value(2))
+				.andExpect(jsonPath("$.localCodeCount").value(3));
+
+		long id = jdbc.queryForObject("SELECT id FROM code_map WHERE owner_subject = 'alice'", Long.class);
+		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
+				// In the order asked for, with the terms Snowstorm has.
+				.andExpect(jsonPath("$[*].code", contains("195967001", "82272006")))
+				.andExpect(jsonPath("$[0].term").value("Asthma"))
+				.andExpect(jsonPath("$[0].fullySpecifiedName").value("Asthma (disorder)"));
+		mvc.perform(get("/api/maps/" + id + "/local-codes").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[*].code", contains("L1", "L2", "L3")));
+		mvc.perform(get("/api/maps/" + id + "/local-codes").with(signedInAs("bob"))).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void aMapFromSnomedRefusesAConceptThatIsNotActive() throws Exception {
+		given(snowstorm.activeConcepts(anyList(), eq(RELEASE))).willReturn(new ExpansionPage(List.of(ASTHMA), 1, 0, 2));
+
+		mvc.perform(post("/api/maps").contentType(MediaType.APPLICATION_JSON).content(FROM_SNOMED_MAP)
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail", containsString("82272006")));
+	}
+
+	@Test
+	void aLocalTermThatIsASynonymOfTheConceptIsSuggested() throws Exception {
+		long id = createMapFromSnomed();
+		given(snowstorm.termsOf(anyCollection(), eq(RELEASE))).willReturn(List.of(
+				new ConceptTerm("195967001", "Asthma", "en"),
+				new ConceptTerm("195967001", "BRONCHIAL  asthma", "en"),
+				new ConceptTerm("82272006", "Common cold", "en")));
+
+		matchAllTerms(id);
+
+		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[0].status").value("SUGGESTED"))
+				.andExpect(jsonPath("$[0].targets[0].code").value("L1"))
+				.andExpect(jsonPath("$[0].targets[0].term").value("Bronchial asthma"))
+				.andExpect(jsonPath("$[0].targets[0].origin").value("EXACT_TERM"))
+				.andExpect(jsonPath("$[1].status").value("UNMAPPED"))
+				.andExpect(jsonPath("$[1].termChecked").value(true));
+		// Nothing is searched for one term at a time in this direction.
+		verify(snowstorm, never()).descriptionsMatching(anyString(), anyString(), anyCollection(), anyInt());
+	}
+
+	@Test
+	void targetsOfAMapFromSnomedMustBeItsOwnLocalCodes() throws Exception {
+		long id = createMapFromSnomed();
+		long row = rowId(id, "82272006");
+
+		mvc.perform(put("/api/maps/" + id + "/rows/" + row).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"targets\": [{\"code\": \"L2\", \"relationship\": \"TARGET_NARROWER\"}]}")
+				.with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("MAPPED"))
+				// The term comes from the stored list, not from the request.
+				.andExpect(jsonPath("$.targets[0].term").value("Head cold"))
+				.andExpect(jsonPath("$.targets[0].relationship").value("TARGET_NARROWER"));
+
+		mvc.perform(put("/api/maps/" + id + "/rows/" + row).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"targets\": [{\"code\": \"195967001\"}]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail", containsString("local codes")));
+	}
+
+	@Test
+	void addingLocalCodesHasUnmappedConceptsLookedAtAgain() throws Exception {
+		long id = createMapFromSnomed();
+		given(snowstorm.termsOf(anyCollection(), eq(RELEASE))).willReturn(List.of(new ConceptTerm("82272006", "Common cold", "en")));
+		matchAllTerms(id);
+
+		mvc.perform(post("/api/maps/" + id + "/local-codes").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"rows\": [{\"code\": \"L4\", \"term\": \"Common cold\"}]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.localCodeCount").value(4))
+				// The concepts are still the rows; the new code is only something to choose.
+				.andExpect(jsonPath("$.counts.total").value(2));
+		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[1].termChecked").value(false));
+
+		matchAllTerms(id);
+
+		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[1].status").value("SUGGESTED"))
+				.andExpect(jsonPath("$[1].targets[0].code").value("L4"));
+	}
+
+	@Test
+	void moreConceptsCanBeAddedAndOnesAlreadyThereAreLeftAlone() throws Exception {
+		long id = createMapFromSnomed();
+		Concept bronchitis = new Concept("32398004", "Bronchitis", "Bronchitis (disorder)", "en");
+		given(snowstorm.activeConcepts(anyList(), eq(RELEASE))).willReturn(new ExpansionPage(List.of(ASTHMA, bronchitis), 2, 0, 2));
+
+		mvc.perform(post("/api/maps/" + id + "/concepts").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"conceptIds\": [\"195967001\", \"32398004\"]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$.counts.total").value(3));
+
+		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[*].code", contains("195967001", "82272006", "32398004")));
+	}
+
+	@Test
+	void conceptsCannotBeAddedToAMapToSnomed() throws Exception {
+		long id = createMap("alice");
+
+		mvc.perform(post("/api/maps/" + id + "/concepts").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"conceptIds\": [\"195967001\"]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void aTargetOfAMapToSnomedMustLookLikeAConceptIdentifier() throws Exception {
+		long id = createMap("alice");
+
+		mvc.perform(put("/api/maps/" + id + "/rows/" + rowId(id, "A1")).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"targets\": [{\"code\": \"MAIN/../x\"}]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isBadRequest());
+		verify(snowstorm, never()).activeConcepts(anyList(), anyString());
+	}
+
+	@Test
+	void downloadOfAMapFromSnomedNamesTheColumnsTheOtherWayRound() throws Exception {
+		long id = createMapFromSnomed();
+		mvc.perform(put("/api/maps/" + id + "/rows/" + rowId(id, "195967001")).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"targets\": [{\"code\": \"L1\"}]}").with(signedInAs("alice")).with(csrf()));
+
+		mvc.perform(get("/api/maps/" + id + "/download").param("format", "TSV").with(signedInAs("alice")))
+				.andExpect(content().string("""
+						Source SNOMED CT ID\tSource term\tTarget code\tTarget term\tRelationship\tStatus\tNote
+						195967001\tAsthma\tL1\tBronchial asthma\tEQUIVALENT\tMAPPED\t
+						82272006\tCommon cold\t\t\t\tUNMAPPED\t
+						"""));
 	}
 }

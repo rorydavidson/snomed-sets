@@ -19,7 +19,7 @@ import jakarta.persistence.Table;
 @Table(name = "code_map")
 public class CodeMap {
 
-	/** Which side the rows come from. Only maps to SNOMED CT can be made so far. */
+	/** Which side the rows come from: local codes given SNOMED CT targets, or concepts given local codes. */
 	public enum Direction { TO_SNOMED, FROM_SNOMED }
 
 	@Id
@@ -108,6 +108,10 @@ public class CodeMap {
 
 	public String getDescription() {
 		return description;
+	}
+
+	public boolean isFromSnomed() {
+		return direction == Direction.FROM_SNOMED;
 	}
 
 	public Direction getDirection() {

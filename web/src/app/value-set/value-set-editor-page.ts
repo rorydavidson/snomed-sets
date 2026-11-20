@@ -47,7 +47,7 @@ type IdentifierCheckState = {
   imports: [ReactiveFormsModule, RouterLink, ConceptPicker, TagInput, ConceptDetails, IdentifierImport],
   template: `
     <main class="page">
-      <p><a [routerLink]="backLink">{{ id === null ? 'Back to the library' : 'Back to the value set' }}</a></p>
+      <p><a [routerLink]="backLink">{{ id === null ? 'Back to the catalogue' : 'Back to the value set' }}</a></p>
 
       @if (loadError(); as message) {
         <div class="error-panel" role="alert">

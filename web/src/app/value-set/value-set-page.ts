@@ -148,7 +148,7 @@ const GPS_OPEN_FROM = '2026-01-01';
   `,
   template: `
     <main class="page">
-      <p><a routerLink="/">Back to the library</a></p>
+      <p><a routerLink="/">Back to the catalogue</a></p>
 
       @if (error(); as message) {
         <div class="error-panel" role="alert">

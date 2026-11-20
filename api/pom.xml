@@ -12,7 +12,7 @@
 	<artifactId>valuesets-api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>valuesets-api</name>
-	<description>Backend for frontend for the SNOMED CT value sets application</description>
+	<description>Backend for frontend for the Sets &amp; Maps application</description>
 
 	<properties>
 		<java.version>25</java.version>

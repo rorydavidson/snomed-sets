@@ -286,4 +286,55 @@ describe('MapPage', () => {
     expect(page.querySelector('tr[data-row="1"]')).toBeNull();
     expect(page.querySelector('tr[data-row="2"]')).not.toBeNull();
   });
+
+  it('filters the table by what is typed under a column heading, and can clear it', async () => {
+    const page = await load([
+      row(1, 'D01', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [ASTHMA] }),
+      row(2, 'D02', 'Cold', { termChecked: true }),
+    ]);
+
+    const term = page.querySelector<HTMLInputElement>('input[data-filter="term"]')!;
+    term.value = 'zzz';
+    term.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    // The headings stay, so the filter that emptied the table can be changed.
+    expect(page.querySelector('input[data-filter="term"]')).not.toBeNull();
+    expect(page.textContent).toContain('No codes match the filters.');
+
+    [...page.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Clear filters')!.click();
+    await fixture.whenStable();
+    expect(page.querySelectorAll('tr[data-row]').length).toBe(2);
+
+    const target = page.querySelector<HTMLInputElement>('input[data-filter="target"]')!;
+    target.value = '195967001';
+    target.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect([...page.querySelectorAll('tr[data-row]')].map((found) => found.getAttribute('data-row'))).toEqual(['1']);
+  });
+
+  it('sorts by a column heading: up, then down, then the original order', async () => {
+    const page = await load([
+      row(1, 'D10', 'Cold', { termChecked: true }),
+      row(2, 'D2', 'Asthma', { termChecked: true }),
+      row(3, 'D1', 'Gout', { termChecked: true }),
+    ]);
+    const order = () => [...page.querySelectorAll('tr[data-row]')].map((found) => found.getAttribute('data-row'));
+    const code = page.querySelector<HTMLButtonElement>('th button.sort')!;
+
+    code.click();
+    await fixture.whenStable();
+    // Numbers in codes sort as numbers.
+    expect(order()).toEqual(['3', '2', '1']);
+    expect(code.closest('th')?.getAttribute('aria-sort')).toBe('ascending');
+
+    code.click();
+    await fixture.whenStable();
+    expect(order()).toEqual(['1', '2', '3']);
+
+    code.click();
+    await fixture.whenStable();
+    expect(order()).toEqual(['1', '2', '3']);
+    expect(code.closest('th')?.hasAttribute('aria-sort')).toBe(false);
+  });
 });

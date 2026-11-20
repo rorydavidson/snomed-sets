@@ -29,6 +29,10 @@ const PAGE_SIZE = 50;
 const SHORTEST_SEARCH = 3;
 
 type StatusFilter = RowStatus | 'ALL';
+type Column = 'code' | 'term' | 'status' | 'target';
+/** The columns filtered by typing. Status is chosen from a list instead. */
+type TextColumn = Exclude<Column, 'status'>;
+const NO_FILTERS: Record<TextColumn, string> = { code: '', term: '', target: '' };
 
 /** How many local codes are listed to choose from at once. The filter narrows a longer list. */
 const LOCAL_CODES_SHOWN = 50;
@@ -235,29 +239,22 @@ const STATUS_LABELS: Record<RowStatus, string> = {
         }
 
         <section class="workbench">
-            <div class="actions">
-              <div class="field">
-                <label for="status-filter">Show</label>
-                <select id="status-filter" (change)="setStatusFilter($any($event.target).value)">
-                  <option value="ALL">All {{ words().rows }}</option>
-                  @for (status of statuses; track status) {
-                    <option [value]="status" [selected]="statusFilter() === status">{{ statusLabel(status) }} ({{ counts()[status] }})</option>
-                  }
-                </select>
-              </div>
-              <div class="field grow">
-                <label for="text-filter">Find a code or term</label>
-                <input id="text-filter" type="text" autocomplete="off" (input)="setTextFilter($any($event.target).value)" />
-              </div>
-            </div>
-
-            @if (shown().length === 0) {
-              <p class="muted" role="status">{{ counts().total === 0 ? 'This map has no ' + words().rows + ' yet. Add some to start.' : 'No ' + words().rows + ' match.' }}</p>
+            @if (counts().total === 0) {
+              <p class="muted" role="status">This map has no {{ words().rows }} yet. Add some to start.</p>
             } @else {
               <p class="meta">
                 Click a row to open its targets, and again to close them. Arrow keys move between rows, Space opens
                 or closes one, Enter accepts a single suggestion, X ticks a suggestion and N marks a row as having no
-                map.
+                map. Click a column heading to sort by it, and type under it to filter.
+              </p>
+              <p class="meta" role="status">
+                {{ filtered() ? 'Showing ' + shown().length + ' of ' + counts().total + ' ' + words().rows + '.' : '' }}
+                @if (filtered()) {
+                  <button type="button" class="link-button" (click)="clearFilters()">Clear filters</button>
+                }
+                @if (sort()) {
+                  <button type="button" class="link-button" (click)="sort.set(null)">Back to the original order</button>
+                }
               </p>
               <div class="table-scroll">
                 <table class="map-table">
@@ -269,13 +266,33 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                                  [attr.aria-label]="'Tick all ' + suggestedShown().length + ' suggested ' + words().rows + ' shown'" (change)="tickAll($any($event.target).checked)" />
                         </th>
                       }
-                      <th scope="col">{{ words().source }}</th>
-                      <th scope="col">Term</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">{{ words().target }}</th>
+                      @for (column of columns; track column) {
+                        <th scope="col" [attr.aria-sort]="ariaSort(column)">
+                          <button type="button" class="sort" (click)="sortBy(column)">
+                            {{ heading(column) }}
+                            <span aria-hidden="true">{{ sort()?.column !== column ? '↕' : sort()?.descending ? '▼' : '▲' }}</span>
+                          </button>
+                          @if (column === 'status') {
+                            <select id="status-filter" class="column-filter" aria-label="Filter by status" (change)="setStatusFilter($any($event.target).value)">
+                              <option value="ALL" [selected]="statusFilter() === 'ALL'">All</option>
+                              @for (status of statuses; track status) {
+                                <option [value]="status" [selected]="statusFilter() === status">{{ statusLabel(status) }} ({{ counts()[status] }})</option>
+                              }
+                            </select>
+                          } @else {
+                            <input type="text" class="column-filter" autocomplete="off" [attr.data-filter]="column" [attr.aria-label]="'Filter by ' + heading(column).toLowerCase()"
+                                   [value]="filters()[column]" (input)="setFilter(column, $any($event.target).value)" />
+                          }
+                        </th>
+                      }
                     </tr>
                   </thead>
                   <tbody>
+                    @if (shown().length === 0) {
+                      <tr class="detail">
+                        <td [attr.colspan]="counts().SUGGESTED > 0 ? 5 : 4" class="muted">No {{ words().rows }} match the filters.</td>
+                      </tr>
+                    }
                     @for (row of pageRows(); track row.id) {
                       <tr tabindex="0" [attr.data-row]="row.id" [class.selected]="row.id === selectedId()" [attr.aria-expanded]="row.id === selectedId()"
                           (click)="toggle(row)" (keydown)="onRowKey($event, row)">
@@ -493,6 +510,32 @@ const STATUS_LABELS: Record<RowStatus, string> = {
       width: 100%;
     }
 
+    .map-table th {
+      vertical-align: top;
+    }
+
+    /* A heading that sorts: it reads as the heading it is, with an arrow for the order. */
+    .sort {
+      display: flex;
+      gap: var(--space-2);
+      align-items: baseline;
+      padding: 0;
+      font: inherit;
+      font-weight: inherit;
+      color: inherit;
+      cursor: pointer;
+      background: none;
+      border: 0;
+    }
+
+    .column-filter {
+      display: block;
+      width: 100%;
+      min-width: 6rem;
+      margin-top: var(--space-2);
+      font-weight: 400;
+    }
+
     /* The selected code's targets on the left, the concept search on the right. */
     .detail .panel {
       display: flex;
@@ -609,7 +652,11 @@ export class MapPage implements OnInit {
   protected readonly pageError = signal<string | null>(null);
 
   protected readonly statusFilter = signal<StatusFilter>('ALL');
-  private readonly textFilter = signal('');
+  protected readonly columns: Column[] = ['code', 'term', 'status', 'target'];
+  protected readonly filters = signal<Record<TextColumn, string>>(NO_FILTERS);
+  /** The column the table is sorted by, or null for the order the codes were given in. */
+  protected readonly sort = signal<{ column: Column; descending: boolean } | null>(null);
+  protected readonly filtered = computed(() => this.statusFilter() !== 'ALL' || Object.values(this.filters()).some((text) => text.trim() !== ''));
   protected readonly page = signal(0);
   protected readonly selectedId = signal<number | null>(null);
   /** The concept whose details are open, if any. */
@@ -659,14 +706,21 @@ export class MapPage implements OnInit {
 
   protected readonly shown = computed(() => {
     const status = this.statusFilter();
-    const words = this.textFilter().toLowerCase().split(/\s+/).filter((word) => word !== '');
-    return this.rows().filter((row) => {
-      if (status !== 'ALL' && row.status !== status) {
-        return false;
-      }
-      const searchable = `${row.code} ${row.term}`.toLowerCase();
-      return words.every((word) => searchable.includes(word));
-    });
+    const filters = this.filters();
+    const matching = this.rows().filter(
+      (row) =>
+        (status === 'ALL' || row.status === status) &&
+        hasWords(row.code, filters.code) &&
+        hasWords(row.term, filters.term) &&
+        hasWords(row.targets.map((target) => `${target.code} ${target.term}`).join(' '), filters.target),
+    );
+    const sort = this.sort();
+    if (sort === null) {
+      return matching;
+    }
+    const direction = sort.descending ? -1 : 1;
+    // Copied before sorting, so the order the codes were given in is still there to go back to.
+    return [...matching].sort((a, b) => direction * this.compare(a, b, sort.column));
   });
   /** The suggested rows the filters let through, on every page: what the box in the table heading ticks. */
   protected readonly suggestedShown = computed(() => this.shown().filter((row) => row.status === 'SUGGESTED'));
@@ -722,9 +776,45 @@ export class MapPage implements OnInit {
     this.page.set(0);
   }
 
-  protected setTextFilter(text: string): void {
-    this.textFilter.set(text);
+  protected setFilter(column: TextColumn, text: string): void {
+    this.filters.update((filters) => ({ ...filters, [column]: text }));
     this.page.set(0);
+  }
+
+  protected clearFilters(): void {
+    this.filters.set(NO_FILTERS);
+    this.setStatusFilter('ALL');
+  }
+
+  protected heading(column: Column): string {
+    return column === 'code' ? this.words().source : column === 'target' ? this.words().target : column === 'term' ? 'Term' : 'Status';
+  }
+
+  /** First click sorts a column upwards, the second downwards, the third puts the original order back. */
+  protected sortBy(column: Column): void {
+    const sort = this.sort();
+    if (sort?.column !== column) {
+      this.sort.set({ column, descending: false });
+    } else {
+      this.sort.set(sort.descending ? null : { column, descending: true });
+    }
+    this.page.set(0);
+  }
+
+  protected ariaSort(column: Column): 'ascending' | 'descending' | null {
+    const sort = this.sort();
+    return sort?.column !== column ? null : sort.descending ? 'descending' : 'ascending';
+  }
+
+  private compare(a: MapRow, b: MapRow, column: Column): number {
+    if (column === 'status') {
+      return this.statuses.indexOf(a.status) - this.statuses.indexOf(b.status);
+    }
+    if (column === 'target') {
+      return (a.targets[0]?.term ?? '').localeCompare(b.targets[0]?.term ?? '', undefined, { sensitivity: 'base' });
+    }
+    // Numeric, so D2 comes before D10 and concept identifiers sort as numbers.
+    return a[column].localeCompare(b[column], undefined, { numeric: true, sensitivity: 'base' });
   }
 
   /**
@@ -1004,6 +1094,12 @@ export class MapPage implements OnInit {
     const byId = new Map(changed.map((row) => [row.id, row]));
     this.rows.update((rows) => rows.map((row) => byId.get(row.id) ?? row));
   }
+}
+
+/** True when the text has every word typed into a filter, in any order. An empty filter lets everything through. */
+function hasWords(text: string, filter: string): boolean {
+  const searchable = text.toLowerCase();
+  return filter.toLowerCase().split(/\s+/).every((word) => searchable.includes(word));
 }
 
 function choice(target: MapTarget): { code: string; relationship: Relationship } {

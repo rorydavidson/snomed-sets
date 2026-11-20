@@ -1,8 +1,8 @@
 import { DecimalPipe } from '@angular/common';
-import { Component, computed, effect, input, output, signal, untracked } from '@angular/core';
+import { Component, computed, input, model, output, signal } from '@angular/core';
 import { MapRow, SourceRow } from '../core/map-api';
 import { hasWords } from '../core/word-filter';
-import { CodeListInput } from './code-list-input';
+import { MapAddCodes } from './map-add-codes';
 
 const PAGE_SIZE = 50;
 
@@ -18,7 +18,7 @@ interface LocalCodeLine extends SourceRow {
  */
 @Component({
   selector: 'app-map-local-codes',
-  imports: [DecimalPipe, CodeListInput],
+  imports: [DecimalPipe, MapAddCodes],
   template: `
     <div class="actions">
       <div class="field grow">
@@ -33,16 +33,7 @@ interface LocalCodeLine extends SourceRow {
     </div>
 
     @if (adding()) {
-      <section class="panel">
-        <h2>Add local codes</h2>
-        <app-code-list-input [existing]="existing()" [room]="room()" (rowsChange)="newRows.set($event)" />
-        <div class="actions">
-          <button type="button" class="button button-primary" [disabled]="!newRows()?.length || busy()" (click)="add.emit(newRows()!)">
-            {{ busy() ? 'Adding…' : 'Add to the map' }}
-          </button>
-          <button type="button" class="button button-secondary" (click)="adding.set(false)">Cancel</button>
-        </div>
-      </section>
+      <app-map-add-codes heading="Add local codes" [existing]="existing()" [room]="room()" [busy]="busy()" (add)="add.emit($event)" (cancelled)="adding.set(false)" />
     }
 
     @if (localCodes().length === 0) {
@@ -109,13 +100,6 @@ interface LocalCodeLine extends SourceRow {
       padding-bottom: var(--space-2);
     }
 
-    .panel {
-      padding: var(--space-5);
-      background: var(--surface-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-    }
-
     .local-table {
       width: 100%;
     }
@@ -129,13 +113,13 @@ export class MapLocalCodes {
   readonly room = input.required<number>();
   /** True while added codes are being saved. */
   readonly busy = input(false);
+  /** True while the form for adding local codes is open. Whoever saves them closes it. */
+  readonly adding = model(false);
   readonly add = output<SourceRow[]>();
 
   protected readonly filter = signal('');
   protected readonly onlyUnmapped = signal(false);
   protected readonly page = signal(0);
-  protected readonly adding = signal(false);
-  protected readonly newRows = signal<SourceRow[] | null>(null);
 
   protected readonly existing = computed<ReadonlySet<string>>(() => new Set(this.localCodes().map((local) => local.code)));
 
@@ -157,17 +141,6 @@ export class MapLocalCodes {
   );
   protected readonly pageCount = computed(() => Math.ceil(this.shown().length / PAGE_SIZE));
   protected readonly pageLines = computed(() => this.shown().slice(this.page() * PAGE_SIZE, (this.page() + 1) * PAGE_SIZE));
-
-  constructor() {
-    // The list changing means added codes were saved, so the form to add them has done its job.
-    effect(() => {
-      this.localCodes();
-      untracked(() => {
-        this.adding.set(false);
-        this.newRows.set(null);
-      });
-    });
-  }
 
   protected setFilter(text: string): void {
     this.filter.set(text);

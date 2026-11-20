@@ -23,7 +23,7 @@ import { hasWords } from '../core/word-filter';
 import { ConceptDetails } from '../value-set/concept-details';
 import { ConceptPicker } from '../value-set/concept-picker';
 import { IdentifierImport } from '../value-set/identifier-import';
-import { CodeListInput } from './code-list-input';
+import { MapAddCodes } from './map-add-codes';
 import { MapAddConcepts } from './map-add-concepts';
 import { MapLocalCodes } from './map-local-codes';
 
@@ -79,7 +79,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
  */
 @Component({
   selector: 'app-map-page',
-  imports: [RouterLink, DecimalPipe, ConceptPicker, ConceptDetails, CodeListInput, IdentifierImport, MapAddConcepts, MapLocalCodes],
+  imports: [RouterLink, DecimalPipe, ConceptPicker, ConceptDetails, IdentifierImport, MapAddCodes, MapAddConcepts, MapLocalCodes],
   template: `
     <main class="page">
       <p><a routerLink="/maps">Back to your maps</a></p>
@@ -112,17 +112,17 @@ const STATUS_LABELS: Record<RowStatus, string> = {
         @if (fromSnomed()) {
           <!-- The map is worked on from the concept side; the local codes have a view of their own. -->
           <div class="tabs" role="tablist" aria-label="Views of this map">
-            <button type="button" role="tab" id="tab-concepts" [attr.aria-selected]="tab() === 'concepts'" [class.current]="tab() === 'concepts'" (click)="tab.set('concepts')">
+            <button type="button" role="tab" id="tab-concepts" [attr.aria-selected]="tab() === 'concepts'" [class.current]="tab() === 'concepts'" (click)="show('concepts')">
               Concepts ({{ counts().total | number }})
             </button>
-            <button type="button" role="tab" id="tab-local" [attr.aria-selected]="tab() === 'local'" [class.current]="tab() === 'local'" (click)="tab.set('local')">
+            <button type="button" role="tab" id="tab-local" [attr.aria-selected]="tab() === 'local'" [class.current]="tab() === 'local'" (click)="show('local')">
               Local codes ({{ localCodes().length | number }}{{ unusedLocalCodes().length > 0 ? ' · ' + unusedLocalCodes().length + ' with nothing mapped' : '' }})
             </button>
           </div>
         }
 
         @if (tab() === 'local' && fromSnomed()) {
-          <app-map-local-codes role="tabpanel" aria-labelledby="tab-local" [localCodes]="localCodes()" [rows]="allRows()" [room]="localRoom()" [busy]="addingRows()" (add)="addRows($event)" />
+          <app-map-local-codes role="tabpanel" aria-labelledby="tab-local" [localCodes]="localCodes()" [rows]="allRows()" [room]="localRoom()" [busy]="addingRows()" [(adding)]="adding" (add)="addRows($event)" />
         } @else {
         <ul class="counts" aria-label="Progress">
           <li><strong>{{ counts().total | number }}</strong> {{ words().rows }}</li>
@@ -147,16 +147,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
           spreadsheet would read as a formula starts with an apostrophe; the TSV has every code exactly as it was given.
         </p>
         @if (adding() && !fromSnomed()) {
-          <section class="panel">
-            <h2>Add codes</h2>
-            <app-code-list-input [existing]="codes()" [room]="room()" (rowsChange)="newRows.set($event)" />
-            <div class="actions">
-              <button type="button" class="button button-primary" [disabled]="!newRows()?.length || addingRows()" (click)="addRows(newRows()!)">
-                {{ addingRows() ? 'Adding…' : 'Add to the map' }}
-              </button>
-              <button type="button" class="button button-secondary" (click)="adding.set(false)">Cancel</button>
-            </div>
-          </section>
+          <app-map-add-codes heading="Add codes" [existing]="codes()" [room]="room()" [busy]="addingRows()" (add)="addRows($event)" (cancelled)="adding.set(false)" />
         }
 
         @if (matching(); as progress) {
@@ -653,8 +644,8 @@ export class MapPage implements OnInit {
   /** What the last accept or dismiss of ticked rows did. */
   protected readonly bulkResult = signal<string | null>(null);
 
+  /** True while the form for adding local codes is open, in either direction of map. */
   protected readonly adding = signal(false);
-  protected readonly newRows = signal<SourceRow[] | null>(null);
   protected readonly addingRows = signal(false);
 
   protected readonly counts = computed(() => {
@@ -729,6 +720,12 @@ export class MapPage implements OnInit {
       return 'This term is too short to look for automatically. Search below to choose a concept.';
     }
     return row.termChecked ? 'No concept has exactly this term. Search below to choose one.' : 'Not mapped yet.';
+  }
+
+  /** Changes the view of a map from SNOMED CT. A half filled form for adding local codes does not follow. */
+  protected show(tab: 'concepts' | 'local'): void {
+    this.tab.set(tab);
+    this.adding.set(false);
   }
 
   protected statusLabel(status: RowStatus): string {

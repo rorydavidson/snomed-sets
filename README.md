@@ -139,7 +139,12 @@ for now. Publishing and versions, upgrading and automap are still to come, and a
   codes later has the concepts still unmapped looked at again.
 - **Suggestions are not maps.** The same words can name a finding, a disorder and a morphology, so
   nothing is mapped until the owner accepts it. A code with exactly one suggestion can be accepted
-  with Enter, or all such codes together with one button. A code with several waits for a choice.
+  with Enter. A code with several waits for a choice.
+- **Deciding on many suggestions at once.** Each suggested row has a tick box, and the box in the
+  table heading ticks every suggested row the filters let through, on all pages. The ticked rows
+  are then accepted or dismissed together, in maps to and from SNOMED CT alike. Accepting skips a
+  row with several suggestions and says how many were left. Dismissing drops them all and leaves
+  the rows unmapped. X ticks the row in focus.
 - **The workbench.** Codes are in a table with their status (Unmapped, Suggested, Mapped, No map),
   a status filter and a text filter. The table runs the full width of the page. Clicking a code
   opens its targets under its row, and clicking it again closes them, with the concept search and concept details used for

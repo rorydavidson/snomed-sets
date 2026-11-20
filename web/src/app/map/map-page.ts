@@ -1,7 +1,7 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, ElementRef, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { Observable, forkJoin } from 'rxjs';
 import {
   CodeMap,
   MATCH_CHUNK,
@@ -42,7 +42,6 @@ const WORDS = {
     target: 'SNOMED CT',
     matching: 'Looking for each term in SNOMED CT',
     unchecked: 'not been looked for in SNOMED CT yet',
-    single: 'exactly one concept with the same term',
     suggested: 'a description with the same words',
     noMap: 'nothing in SNOMED CT fits',
     remove: 'Remove this code',
@@ -54,7 +53,6 @@ const WORDS = {
     target: 'Local code',
     matching: 'Looking for the names of each concept among the local terms',
     unchecked: 'not been looked for among the local terms yet',
-    single: 'exactly one local code with one of its names as its term',
     suggested: 'one of the names of this concept as its term',
     noMap: 'none of the local codes fits',
     remove: 'Remove this concept',
@@ -156,14 +154,32 @@ const STATUS_LABELS: Record<RowStatus, string> = {
         @if (matchError(); as message) {
           <p class="field-error" role="alert">{{ message }}</p>
         }
-        @if (singleSuggestions() > 0 && !matching()) {
-          <p class="matching">
-            {{ singleSuggestions() | number }} {{ singleSuggestions() === 1 ? words().row + ' has' : words().rows + ' have' }}
-            {{ words().single }}. The same words can still name different things, so look before you accept them all.
-            <button type="button" class="link-button" [disabled]="accepting()" (click)="acceptSingles()">
-              Accept all {{ singleSuggestions() | number }}
-            </button>
-          </p>
+        @if (counts().SUGGESTED > 0 && !matching()) {
+          <div class="matching bulk">
+            <p>
+              {{ counts().SUGGESTED | number }} {{ counts().SUGGESTED === 1 ? words().row + ' has' : words().rows + ' have' }}
+              suggestions waiting. Tick the ones to decide together, or tick them all with the box at the top of the
+              table. The same words can still name different things, so look before you accept.
+            </p>
+            @if (ticked().length > 0) {
+              <div class="actions" role="group" aria-label="Ticked suggestions">
+                <strong>{{ ticked().length | number }} ticked</strong>
+                <button type="button" class="button button-primary button-small" [disabled]="deciding()" (click)="acceptTicked()">Accept</button>
+                <button type="button" class="button button-secondary button-small" [disabled]="deciding()" (click)="dismissTicked()">Dismiss</button>
+                <button type="button" class="link-button" [disabled]="deciding()" (click)="checked.set(none)">Untick all</button>
+              </div>
+              @if (tickedWithSeveral() > 0) {
+                <p class="meta">
+                  {{ tickedWithSeveral() | number }} of them {{ tickedWithSeveral() === 1 ? 'has' : 'have' }} several
+                  suggestions. Accept leaves {{ tickedWithSeveral() === 1 ? 'it' : 'those' }} for you to choose between;
+                  Dismiss drops them all.
+                </p>
+              }
+            }
+          </div>
+        }
+        @if (bulkResult(); as message) {
+          <p class="matching" role="status">{{ message }}</p>
         }
 
         <section class="workbench">
@@ -188,12 +204,19 @@ const STATUS_LABELS: Record<RowStatus, string> = {
             } @else {
               <p class="meta">
                 Click a row to open its targets, and again to close them. Arrow keys move between rows, Space opens
-                or closes one, Enter accepts a single suggestion and N marks a row as having no map.
+                or closes one, Enter accepts a single suggestion, X ticks a suggestion and N marks a row as having no
+                map.
               </p>
               <div class="table-scroll">
                 <table class="map-table">
                   <thead>
                     <tr>
+                      @if (counts().SUGGESTED > 0) {
+                        <th scope="col" class="tick">
+                          <input type="checkbox" [checked]="allTicked()" [indeterminate]="someTicked()" [disabled]="suggestedShown().length === 0"
+                                 [attr.aria-label]="'Tick all ' + suggestedShown().length + ' suggested ' + words().rows + ' shown'" (change)="tickAll($any($event.target).checked)" />
+                        </th>
+                      }
                       <th scope="col">{{ words().source }}</th>
                       <th scope="col">Term</th>
                       <th scope="col">Status</th>
@@ -204,6 +227,14 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                     @for (row of pageRows(); track row.id) {
                       <tr tabindex="0" [attr.data-row]="row.id" [class.selected]="row.id === selectedId()" [attr.aria-expanded]="row.id === selectedId()"
                           (click)="toggle(row)" (keydown)="onRowKey($event, row)">
+                        @if (counts().SUGGESTED > 0) {
+                          <!-- Clicks and keys stop here, so ticking a row does not also open it. -->
+                          <td class="tick" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
+                            @if (row.status === 'SUGGESTED') {
+                              <input type="checkbox" [checked]="checked().has(row.id)" [attr.aria-label]="'Tick ' + row.code + ' ' + row.term" (change)="tick(row, $any($event.target).checked)" />
+                            }
+                          </td>
+                        }
                         <td class="mono">{{ row.code }}</td>
                         <td>{{ row.term }}</td>
                         <td><span class="badge" [class.badge-success]="row.status === 'MAPPED'" [class.badge-warning]="row.status === 'SUGGESTED'">{{ statusLabel(row.status) }}</span></td>
@@ -221,7 +252,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                       @if (row.id === selectedId()) {
                         <!-- Under its own row, so the table keeps the full width of the page. -->
                         <tr class="detail">
-                          <td colspan="4">
+                          <td [attr.colspan]="counts().SUGGESTED > 0 ? 5 : 4">
                             <div class="panel">
               <div class="chosen">
               <h2><span class="mono">{{ row.code }}</span> {{ row.term }}</h2>
@@ -374,6 +405,20 @@ const STATUS_LABELS: Record<RowStatus, string> = {
       border-radius: var(--radius-sm);
     }
 
+    .bulk p {
+      margin: 0;
+    }
+
+    .bulk .actions {
+      align-items: center;
+      margin-top: var(--space-3);
+    }
+
+    .tick {
+      width: 1%;
+      cursor: default;
+    }
+
     .panel {
       padding: var(--space-5);
       background: var(--surface-card);
@@ -495,7 +540,14 @@ export class MapPage implements OnInit {
   protected readonly matching = signal<{ done: number; total: number } | null>(null);
   protected readonly matchError = signal<string | null>(null);
   private stopRequested = false;
-  protected readonly accepting = signal(false);
+
+  /** The suggested rows ticked to be accepted or dismissed together. */
+  protected readonly checked = signal<ReadonlySet<number>>(new Set());
+  protected readonly none: ReadonlySet<number> = new Set();
+  /** True while ticked rows are being accepted or dismissed. */
+  protected readonly deciding = signal(false);
+  /** What the last accept or dismiss of ticked rows did. */
+  protected readonly bulkResult = signal<string | null>(null);
 
   protected readonly adding = signal(false);
   protected readonly newRows = signal<SourceRow[] | null>(null);
@@ -518,9 +570,9 @@ export class MapPage implements OnInit {
   protected readonly room = computed(() => MAX_MAP_ROWS - (this.adding() && this.fromSnomed() ? this.localCodes().length : this.rows().length));
   /** Rows whose term has not been looked for on the other side of the map. */
   protected readonly unchecked = computed(() => this.rows().filter((row) => row.status === 'UNMAPPED' && !row.termChecked));
-  protected readonly singleSuggestions = computed(
-    () => this.rows().filter((row) => row.status === 'SUGGESTED' && row.targets.length === 1).length,
-  );
+  /** Ticked rows that are still suggestions. A row decided some other way drops out by itself. */
+  protected readonly ticked = computed(() => this.rows().filter((row) => row.status === 'SUGGESTED' && this.checked().has(row.id)));
+  protected readonly tickedWithSeveral = computed(() => this.ticked().filter((row) => row.targets.length > 1).length);
 
   protected readonly shown = computed(() => {
     const status = this.statusFilter();
@@ -533,6 +585,10 @@ export class MapPage implements OnInit {
       return words.every((word) => searchable.includes(word));
     });
   });
+  /** The suggested rows the filters let through, on every page: what the box in the table heading ticks. */
+  protected readonly suggestedShown = computed(() => this.shown().filter((row) => row.status === 'SUGGESTED'));
+  protected readonly allTicked = computed(() => this.suggestedShown().length > 0 && this.suggestedShown().every((row) => this.checked().has(row.id)));
+  protected readonly someTicked = computed(() => !this.allTicked() && this.suggestedShown().some((row) => this.checked().has(row.id)));
   protected readonly pageCount = computed(() => Math.ceil(this.shown().length / PAGE_SIZE));
   protected readonly pageRows = computed(() => this.shown().slice(this.page() * PAGE_SIZE, (this.page() + 1) * PAGE_SIZE));
   protected readonly selected = computed(() => this.rows().find((row) => row.id === this.selectedId()) ?? null);
@@ -624,25 +680,65 @@ export class MapPage implements OnInit {
     });
   }
 
-  protected acceptSingles(): void {
-    this.accepting.set(true);
-    this.pageError.set(null);
-    this.api.acceptSingleSuggestions(this.id).subscribe({
-      next: () =>
-        this.api.rows(this.id).subscribe({
-          next: (rows) => {
-            this.rows.set(rows);
-            this.accepting.set(false);
-          },
-          error: (error: unknown) => this.failed(error),
-        }),
-      error: (error: unknown) => this.failed(error),
+  protected tick(row: MapRow, on: boolean): void {
+    this.checked.update((checked) => {
+      const next = new Set(checked);
+      if (on) {
+        next.add(row.id);
+      } else {
+        next.delete(row.id);
+      }
+      return next;
     });
   }
 
-  private failed(error: unknown): void {
-    this.accepting.set(false);
-    this.pageError.set(describeMapError(error));
+  /** Ticks or unticks every suggested row the filters let through, not only those on this page. */
+  protected tickAll(on: boolean): void {
+    this.checked.update((checked) => {
+      const next = new Set(checked);
+      for (const row of this.suggestedShown()) {
+        if (on) {
+          next.add(row.id);
+        } else {
+          next.delete(row.id);
+        }
+      }
+      return next;
+    });
+  }
+
+  protected acceptTicked(): void {
+    this.decide(this.api.acceptSuggestions(this.id, this.ticked().map((row) => row.id)), (after) => {
+      const accepted = after.filter((row) => row.status === 'MAPPED').length;
+      const left = after.filter((row) => row.status === 'SUGGESTED').length;
+      const leftOver = left === 0 ? '' : ` ${left} left to choose by hand, as ${left === 1 ? 'it has' : 'they have'} several suggestions.`;
+      return `Accepted ${accepted} ${accepted === 1 ? 'suggestion' : 'suggestions'}.${leftOver}`;
+    });
+  }
+
+  protected dismissTicked(): void {
+    this.decide(this.api.dismissSuggestions(this.id, this.ticked().map((row) => row.id)), (after) => {
+      const dismissed = after.filter((row) => row.status === 'UNMAPPED').length;
+      return `Dismissed the suggestions of ${dismissed} ${dismissed === 1 ? this.words().row : this.words().rows}.`;
+    });
+  }
+
+  private decide(request: Observable<MapRow[]>, describe: (after: MapRow[]) => string): void {
+    this.deciding.set(true);
+    this.pageError.set(null);
+    this.bulkResult.set(null);
+    request.subscribe({
+      next: (after) => {
+        this.replaceRows(after);
+        this.checked.set(this.none);
+        this.deciding.set(false);
+        this.bulkResult.set(describe(after));
+      },
+      error: (error: unknown) => {
+        this.deciding.set(false);
+        this.pageError.set(describeMapError(error));
+      },
+    });
   }
 
   /** Accepts one suggestion as the row's map, dropping any others. */
@@ -797,6 +893,9 @@ export class MapPage implements OnInit {
     } else if (event.key === 'Enter' && row.status === 'SUGGESTED' && row.targets.length === 1 && !this.saving()) {
       event.preventDefault();
       this.accept(row, row.targets[0]);
+    } else if (event.key.toLowerCase() === 'x' && row.status === 'SUGGESTED') {
+      event.preventDefault();
+      this.tick(row, !this.checked().has(row.id));
     } else if (event.key.toLowerCase() === 'n' && row.status !== 'NO_MAP' && !this.saving()) {
       event.preventDefault();
       this.noMap(row);

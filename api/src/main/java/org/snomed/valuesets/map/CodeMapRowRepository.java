@@ -16,8 +16,6 @@ public interface CodeMapRowRepository extends Repository<CodeMapRow, Long> {
 	List<CodeMapRow> findByMapIdAndVersionNumberAndIdInOrderByPosition(long mapId, int versionNumber,
 			Collection<Long> ids);
 
-	List<CodeMapRow> findByMapIdAndVersionNumberAndStatus(long mapId, int versionNumber, CodeMapRow.Status status);
-
 	Optional<CodeMapRow> findByIdAndMapIdAndVersionNumber(long id, long mapId, int versionNumber);
 
 	@Query("select r.sourceCode from CodeMapRow r where r.mapId = :mapId and r.versionNumber = 0")

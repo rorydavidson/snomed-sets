@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import org.snomed.valuesets.map.CodeMapTarget.Relationship;
 import org.snomed.valuesets.map.MapDefinition.SourceRow;
@@ -190,25 +191,43 @@ public class CodeMapService {
 	}
 
 	/**
-	 * Accepts the suggestion of every row that has exactly one. A row with several is left for the
-	 * owner to choose between.
+	 * Accepts the suggestion of each of the given rows that has exactly one. A row with several is
+	 * left for the owner to choose between, and a row that is not a suggestion is left as it is.
 	 *
-	 * @return how many rows were accepted
+	 * @return the given rows as they are afterwards
 	 */
-	public int acceptSingleSuggestions(long id, CurrentUser user) {
+	public List<RowView> acceptSuggestions(long id, List<Long> rowIds, CurrentUser user) {
+		return changeSuggestions(id, rowIds, user, row -> {
+			if (row.getTargets().size() == 1) {
+				row.acceptSuggestions();
+			}
+		});
+	}
+
+	/**
+	 * Drops the suggestions of the given rows, however many each has, leaving them unmapped.
+	 *
+	 * @return the given rows as they are afterwards
+	 */
+	public List<RowView> dismissSuggestions(long id, List<Long> rowIds, CurrentUser user) {
+		return changeSuggestions(id, rowIds, user, CodeMapRow::dismissSuggestions);
+	}
+
+	private List<RowView> changeSuggestions(long id, List<Long> rowIds, CurrentUser user, Consumer<CodeMapRow> change) {
 		CodeMap map = owned(id, user);
 		return transaction.execute(status -> {
-			List<CodeMapRow> single = rows.findByMapIdAndVersionNumberAndStatus(map.getId(), CodeMapRow.WORKING,
-					CodeMapRow.Status.SUGGESTED).stream().filter(row -> row.getTargets().size() == 1).toList();
-			single.forEach(row -> {
-				row.acceptSuggestions();
+			List<CodeMapRow> given = rows.findByMapIdAndVersionNumberAndIdInOrderByPosition(map.getId(),
+					CodeMapRow.WORKING, rowIds);
+			List<CodeMapRow> suggested = given.stream().filter(row -> row.getStatus() == CodeMapRow.Status.SUGGESTED).toList();
+			suggested.forEach(row -> {
+				change.accept(row);
 				rows.save(row);
 			});
-			if (!single.isEmpty()) {
+			if (!suggested.isEmpty()) {
 				map.touch();
 				maps.save(map);
 			}
-			return single.size();
+			return given.stream().map(RowView::of).toList();
 		});
 	}
 

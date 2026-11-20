@@ -173,9 +173,17 @@ export class MapApi {
     return this.http.post<MapRow[]>(`/api/maps/${id}/term-matches`, { rowIds });
   }
 
-  /** Accepts the suggestion of every row that has exactly one. */
-  acceptSingleSuggestions(id: number): Observable<{ accepted: number }> {
-    return this.http.post<{ accepted: number }>(`/api/maps/${id}/accepted-suggestions`, {});
+  /**
+   * Accepts the suggestion of each of these rows that has exactly one. A row with several is left as it is.
+   * Returns the rows as they are afterwards.
+   */
+  acceptSuggestions(id: number, rowIds: number[]): Observable<MapRow[]> {
+    return this.http.post<MapRow[]>(`/api/maps/${id}/accepted-suggestions`, { rowIds });
+  }
+
+  /** Drops the suggestions of these rows, leaving them unmapped. Returns the rows as they are afterwards. */
+  dismissSuggestions(id: number, rowIds: number[]): Observable<MapRow[]> {
+    return this.http.post<MapRow[]>(`/api/maps/${id}/dismissed-suggestions`, { rowIds });
   }
 }
 

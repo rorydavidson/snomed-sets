@@ -150,7 +150,10 @@ for now. Publishing and versions, upgrading and automap are still to come, and a
   row with several suggestions and says how many were left. Dismissing drops them all and leaves
   the rows unmapped. X ticks the row in focus.
 - **The workbench.** Codes are in a table with their status (Unmapped, Suggested, Mapped, No map),
-  a status filter and a text filter. The table runs the full width of the page. Clicking a code
+  and the table runs the full width of the page. Clicking a column heading sorts by it: once
+  upwards, again downwards, a third time back to the order the codes were given in. Under each
+  heading is a filter for that column: text for the code, the term and the target, a list for the
+  status. Numbers in codes sort as numbers. It works the same in maps to and from SNOMED CT. Clicking a code
   opens its targets under its row, and clicking it again closes them, with the concept search and concept details used for
   hand-picked sets. In a map from SNOMED CT the rows are concepts and the targets are picked from
   a filterable list of the local codes instead. A row can have up to ten targets.

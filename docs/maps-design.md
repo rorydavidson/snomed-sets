@@ -358,3 +358,12 @@ Where the first part differs from the sections above:
   ECL expression one button further. Before, only the import was offered there.
 - The list is read only. Starting from a local code and finding a concept for it is still two
   steps: add the concept, then choose the code on its row.
+
+## 19. Sorting and filtering by column
+
+- Each column heading of the workbench table sorts by that column, and holds a filter for it. The
+  status list and the single "find a code or term" box above the table are gone, replaced by these.
+- Sorting and filtering happen in the browser, on rows the page already holds. Nothing is stored:
+  a reload goes back to the original order with no filters.
+- The target column sorts by a row's first target and filters on the code and term of any of them.
+- The box that ticks all suggestions still ticks what the filters let through, on every page.

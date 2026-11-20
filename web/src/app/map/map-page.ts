@@ -144,7 +144,10 @@ const STATUS_LABELS: Record<RowStatus, string> = {
             @if (shown().length === 0) {
               <p class="muted" role="status">{{ counts().total === 0 ? 'This map has no codes yet. Add some to start.' : 'No codes match.' }}</p>
             } @else {
-              <p class="meta">Select a code to see or choose its SNOMED CT concepts. Arrow keys move between rows. Enter accepts a single suggestion. N marks a row as having no map.</p>
+              <p class="meta">
+                Click a code to open its SNOMED CT concepts, and again to close them. Arrow keys move between rows, Space opens
+                or closes one, Enter accepts a single suggestion and N marks a row as having no map.
+              </p>
               <div class="table-scroll">
                 <table class="map-table">
                   <thead>
@@ -157,8 +160,8 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                   </thead>
                   <tbody>
                     @for (row of pageRows(); track row.id) {
-                      <tr tabindex="0" [attr.data-row]="row.id" [class.selected]="row.id === selectedId()" [attr.aria-selected]="row.id === selectedId()"
-                          (click)="selectedId.set(row.id)" (focus)="selectedId.set(row.id)" (keydown)="onRowKey($event, row)">
+                      <tr tabindex="0" [attr.data-row]="row.id" [class.selected]="row.id === selectedId()" [attr.aria-expanded]="row.id === selectedId()"
+                          (click)="toggle(row)" (keydown)="onRowKey($event, row)">
                         <td class="mono">{{ row.code }}</td>
                         <td>{{ row.term }}</td>
                         <td><span class="badge" [class.badge-success]="row.status === 'MAPPED'" [class.badge-warning]="row.status === 'SUGGESTED'">{{ statusLabel(row.status) }}</span></td>
@@ -638,6 +641,11 @@ export class MapPage implements OnInit {
     this.pageError.set(describeMapError(error));
   }
 
+  /** Opens a row's detail, or closes it if it is the one already open. */
+  protected toggle(row: MapRow): void {
+    this.selectedId.set(this.selectedId() === row.id ? null : row.id);
+  }
+
   /** Mapping is repetitive work, so the common decisions can be made without leaving the keyboard. */
   protected onRowKey(event: KeyboardEvent, row: MapRow): void {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -645,8 +653,15 @@ export class MapPage implements OnInit {
       const rows = this.pageRows();
       const next = rows[rows.findIndex((candidate) => candidate.id === row.id) + (event.key === 'ArrowDown' ? 1 : -1)];
       if (next) {
+        this.selectedId.set(next.id);
         this.host.nativeElement.querySelector<HTMLElement>(`tr[data-row="${next.id}"]`)?.focus();
       }
+    } else if (event.key === ' ') {
+      // Stops the page scrolling, which is what Space does otherwise.
+      event.preventDefault();
+      this.toggle(row);
+    } else if (event.key === 'Escape') {
+      this.selectedId.set(null);
     } else if (event.key === 'Enter' && row.status === 'SUGGESTED' && row.targets.length === 1 && !this.saving()) {
       event.preventDefault();
       this.accept(row, row.targets[0]);

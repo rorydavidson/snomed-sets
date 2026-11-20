@@ -122,6 +122,27 @@ describe('MapPage', () => {
     expect(page.querySelector('.panel')?.textContent).toContain('too short to look for automatically');
   });
 
+  it('opens a row when clicked and closes it when clicked again', async () => {
+    const page = await load([row(1, 'D01', 'Asthma', { termChecked: true }), row(2, 'D02', 'Cold', { termChecked: true })]);
+    const first = page.querySelector<HTMLElement>('tr[data-row="1"]')!;
+
+    first.click();
+    await fixture.whenStable();
+    expect(page.querySelector('tr.detail')).not.toBeNull();
+    expect(first.getAttribute('aria-expanded')).toBe('true');
+
+    first.click();
+    await fixture.whenStable();
+    expect(page.querySelector('tr.detail')).toBeNull();
+
+    // Opening another row closes the first: only one is open at a time.
+    first.click();
+    page.querySelector<HTMLElement>('tr[data-row="2"]')!.click();
+    await fixture.whenStable();
+    expect(page.querySelectorAll('tr.detail')).toHaveLength(1);
+    expect(page.querySelector('tr.detail')?.textContent).toContain('Cold');
+  });
+
   it('filters the table by status', async () => {
     const page = await load([
       row(1, 'D01', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [ASTHMA] }),

@@ -335,3 +335,16 @@ Where the first part differs from the sections above:
   be dealt with.
 - Importing concepts by ECL takes 2,000 at a time, the limit of the shared import dialog. A map
   can still hold 5,000.
+
+## 17. Deciding on suggestions together
+
+- Suggested rows can be ticked and then accepted or dismissed in one go. The box in the table
+  heading ticks every suggested row the filters let through, not only the page in view.
+- `POST /maps/{id}/accepted-suggestions` now takes `{"rowIds": [...]}` and returns those rows as
+  they are afterwards. It used to take nothing and accept every row with one suggestion.
+  `POST /maps/{id}/dismissed-suggestions` is new and has the same shape.
+- Accepting still leaves a row with several suggestions alone, so nobody maps one code to several
+  "equivalent" targets without choosing. Dismissing takes them all.
+- A dismissed row stays `term_checked`, so its suggestions do not come straight back. In a map from
+  SNOMED CT they do come back when local codes are added, because that has unmapped rows matched
+  again.

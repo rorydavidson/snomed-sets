@@ -11,12 +11,18 @@ export type RowStatus = 'UNMAPPED' | 'SUGGESTED' | 'MAPPED' | 'NO_MAP';
  */
 export type Relationship = 'EQUIVALENT' | 'TARGET_BROADER' | 'TARGET_NARROWER' | 'RELATED';
 
-export const RELATIONSHIPS: { value: Relationship; label: string }[] = [
-  { value: 'EQUIVALENT', label: 'Equivalent' },
-  { value: 'TARGET_BROADER', label: 'SNOMED CT concept is broader' },
-  { value: 'TARGET_NARROWER', label: 'SNOMED CT concept is narrower' },
-  { value: 'RELATED', label: 'Related' },
-];
+export type Direction = 'TO_SNOMED' | 'FROM_SNOMED';
+
+/** The relationships to choose from, worded for the side the targets are on. */
+export function relationshipsFor(direction: Direction): { value: Relationship; label: string }[] {
+  const target = direction === 'FROM_SNOMED' ? 'Local code' : 'SNOMED CT concept';
+  return [
+    { value: 'EQUIVALENT', label: 'Equivalent' },
+    { value: 'TARGET_BROADER', label: `${target} is broader` },
+    { value: 'TARGET_NARROWER', label: `${target} is narrower` },
+    { value: 'RELATED', label: 'Related' },
+  ];
+}
 
 export interface MapCounts {
   total: number;
@@ -26,12 +32,16 @@ export interface MapCounts {
   noMap: number;
 }
 
-/** A map between a list of local codes and SNOMED CT. Only ever sent to its owner. */
+/**
+ * A map between a list of local codes and SNOMED CT. To SNOMED CT, the local codes are its rows.
+ * From SNOMED CT, concepts are its rows and the local codes are what targets are chosen from.
+ * Only ever sent to its owner.
+ */
 export interface CodeMap {
   id: number;
   name: string;
   description: string;
-  direction: 'TO_SNOMED' | 'FROM_SNOMED';
+  direction: Direction;
   codeSystem: string;
   /** The release branch SNOMED CT is read from, such as MAIN/2026-01-01. */
   branch: string;
@@ -43,11 +53,14 @@ export interface CodeMap {
   localSystemVersion: string | null;
   updatedAt: string;
   counts: MapCounts;
+  /** In a map from SNOMED CT, how many local codes there are to choose from; 0 otherwise. */
+  localCodeCount: number;
 }
 
 export interface MapTarget {
   code: string;
   term: string;
+  /** Empty for a local code. */
   fullySpecifiedName: string;
   relationship: Relationship;
   /** Chosen by a person, or found by matching the source term. */
@@ -58,10 +71,12 @@ export interface MapRow {
   id: number;
   code: string;
   term: string;
+  /** Of a SNOMED CT source; empty for a local code. */
+  fullySpecifiedName: string;
   /** While SUGGESTED, the targets are suggestions nobody has accepted. */
   status: RowStatus;
   note: string | null;
-  /** True once the term has been looked for in SNOMED CT. */
+  /** True once the term has been looked for on the other side of the map. */
   termChecked: boolean;
   targets: MapTarget[];
 }
@@ -75,14 +90,19 @@ export type MapDetails = Pick<CodeMap, 'name' | 'description' | 'localSystemName
 
 export interface MapDraft {
   details: MapDetails;
+  direction: Direction;
   codeSystem: string;
   /** The release to build on; null for the latest. */
   codeSystemVersion: string | null;
+  /** The local codes: what is mapped in a map to SNOMED CT, what is chosen from in a map from it. */
   rows: SourceRow[];
+  /** The concepts to map, for a map from SNOMED CT; empty otherwise. */
+  conceptIds: string[];
 }
 
 export interface RowUpdate {
-  targets: { conceptId: string; relationship: Relationship }[];
+  /** SNOMED CT concept identifiers in a map to SNOMED CT, local codes in a map from it. */
+  targets: { code: string; relationship: Relationship }[];
   noMap: boolean;
   note: string | null;
 }
@@ -122,8 +142,19 @@ export class MapApi {
     return this.http.get<MapRow[]>(`/api/maps/${id}/rows`);
   }
 
-  addRows(id: number, rows: SourceRow[]): Observable<CodeMap> {
-    return this.http.post<CodeMap>(`/api/maps/${id}/rows`, { rows });
+  /** The local codes targets are chosen from, for a map from SNOMED CT. */
+  localCodes(id: number): Observable<SourceRow[]> {
+    return this.http.get<SourceRow[]>(`/api/maps/${id}/local-codes`);
+  }
+
+  /** More local codes: rows to map in a map to SNOMED CT, codes to choose from in a map from it. */
+  addLocalCodes(id: number, rows: SourceRow[]): Observable<CodeMap> {
+    return this.http.post<CodeMap>(`/api/maps/${id}/local-codes`, { rows });
+  }
+
+  /** More concepts to map, for a map from SNOMED CT. */
+  addConcepts(id: number, conceptIds: string[]): Observable<CodeMap> {
+    return this.http.post<CodeMap>(`/api/maps/${id}/concepts`, { conceptIds });
   }
 
   updateRow(id: number, rowId: number, update: RowUpdate): Observable<MapRow> {
@@ -135,7 +166,7 @@ export class MapApi {
   }
 
   /**
-   * Looks for the terms of some unmapped rows in SNOMED CT. Returns those rows as they are
+   * Looks for the terms of some unmapped rows on the other side of the map. Returns those rows as they are
    * afterwards, with what was found as suggestions.
    */
   matchTerms(id: number, rowIds: number[]): Observable<MapRow[]> {

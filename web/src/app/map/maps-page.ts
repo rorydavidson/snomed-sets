@@ -37,7 +37,7 @@ import { LibraryViews } from '../library/library-views';
                   <th scope="col">Maps</th>
                   <th scope="col">Edition</th>
                   <th scope="col">Release</th>
-                  <th scope="col" class="numeric">Codes</th>
+                  <th scope="col" class="numeric" title="Local codes, or concepts in a map from SNOMED CT">Rows</th>
                   <th scope="col" class="numeric">Done</th>
                   <th scope="col">Updated</th>
                 </tr>
@@ -54,7 +54,7 @@ import { LibraryViews } from '../library/library-views';
                         <p class="meta one-line" [title]="map.description">{{ map.description }}</p>
                       }
                     </td>
-                    <td>{{ map.localSystemName }} to SNOMED CT</td>
+                    <td>{{ map.direction === 'FROM_SNOMED' ? 'SNOMED CT to ' + map.localSystemName : map.localSystemName + ' to SNOMED CT' }}</td>
                     <td [title]="map.codeSystem">{{ editionNames()[map.codeSystem] ?? map.codeSystem }}</td>
                     <td class="no-wrap">
                       @if (map.codeSystemVersion) {

@@ -313,4 +313,23 @@ class SnowstormClientTests {
 				new ExpansionPage.Concept("22298006", "Myocardial infarction", "Myocardial infarction (disorder)", "en")));
 		server.verify();
 	}
+
+	@Test
+	void readsTheActiveNamesOfConceptsAndLeavesOutDefinitions() {
+		server.expect(requestTo(startsWith("https://snowstorm.test/MAIN/2026-01-01/descriptions?")))
+				.andExpect(queryParam("conceptIds", "22298006", "195967001"))
+				.andRespond(withSuccess("""
+						{"items":[
+						  {"conceptId":"22298006","term":"Heart attack","lang":"en","type":"SYNONYM","active":true},
+						  {"conceptId":"22298006","term":"Heart attack, NOS","lang":"en","type":"SYNONYM","active":false},
+						  {"conceptId":"195967001","term":"Asthma (disorder)","lang":"en","type":"FSN","active":true},
+						  {"conceptId":"195967001","term":"A long text about asthma.","lang":"en","type":"DEFINITION","active":true}],
+						 "total":4,"limit":1000,"offset":0}
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.termsOf(List.of("22298006", "195967001"), "MAIN/2026-01-01")).containsExactly(
+				new ConceptTerm("22298006", "Heart attack", "en"),
+				new ConceptTerm("195967001", "Asthma (disorder)", "en"));
+		server.verify();
+	}
 }

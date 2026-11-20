@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { CodeMap, MapRow, MapTarget } from '../core/map-api';
+import { CodeMap, MapRow, MapTarget, SourceRow } from '../core/map-api';
 import { MapPage } from './map-page';
 
 const MAP: CodeMap = {
@@ -18,6 +18,7 @@ const MAP: CodeMap = {
   localSystemVersion: null,
   updatedAt: '2026-11-20T12:00:00Z',
   counts: { total: 2, unmapped: 2, suggested: 0, mapped: 0, noMap: 0 },
+  localCodeCount: 0,
 };
 
 const ASTHMA: MapTarget = {
@@ -29,7 +30,7 @@ const ASTHMA: MapTarget = {
 };
 
 function row(id: number, code: string, term: string, changes: Partial<MapRow> = {}): MapRow {
-  return { id, code, term, status: 'UNMAPPED', note: null, termChecked: false, targets: [], ...changes };
+  return { id, code, term, fullySpecifiedName: '', status: 'UNMAPPED', note: null, termChecked: false, targets: [], ...changes };
 }
 
 describe('MapPage', () => {
@@ -53,9 +54,10 @@ describe('MapPage', () => {
 
   afterEach(() => http.verify());
 
-  async function load(rows: MapRow[]): Promise<HTMLElement> {
-    http.expectOne('/api/maps/7').flush(MAP);
+  async function load(rows: MapRow[], map: CodeMap = MAP, localCodes: SourceRow[] = []): Promise<HTMLElement> {
+    http.expectOne('/api/maps/7').flush(map);
     http.expectOne('/api/maps/7/rows').flush(rows);
+    http.expectOne('/api/maps/7/local-codes').flush(localCodes);
     await fixture.whenStable();
     return fixture.nativeElement as HTMLElement;
   }
@@ -96,7 +98,7 @@ describe('MapPage', () => {
 
     const save = http.expectOne('/api/maps/7/rows/1');
     expect(save.request.method).toBe('PUT');
-    expect(save.request.body).toEqual({ targets: [{ conceptId: '195967001', relationship: 'EQUIVALENT' }], noMap: false, note: null });
+    expect(save.request.body).toEqual({ targets: [{ code: '195967001', relationship: 'EQUIVALENT' }], noMap: false, note: null });
     save.flush(row(1, 'D01', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [ASTHMA] }));
     await fixture.whenStable();
 
@@ -141,6 +143,43 @@ describe('MapPage', () => {
     await fixture.whenStable();
     expect(page.querySelectorAll('tr.detail')).toHaveLength(1);
     expect(page.querySelector('tr.detail')?.textContent).toContain('Cold');
+  });
+
+  it('offers local codes as targets in a map from SNOMED CT', async () => {
+    const fromSnomed: CodeMap = { ...MAP, direction: 'FROM_SNOMED', localCodeCount: 2 };
+    const page = await load(
+      [row(1, '195967001', 'Asthma', { fullySpecifiedName: 'Asthma (disorder)', termChecked: true })],
+      fromSnomed,
+      [
+        { code: 'L1', term: 'Bronchial asthma' },
+        { code: 'L2', term: 'Head cold' },
+      ],
+    );
+
+    expect(page.querySelector('thead')?.textContent).toContain('Local code');
+    page.querySelector<HTMLElement>('tr[data-row="1"]')!.click();
+    await fixture.whenStable();
+    // The concept search is for maps to SNOMED CT; here the choice is among the uploaded codes.
+    expect(page.querySelector('app-concept-picker')).toBeNull();
+    const filter = page.querySelector<HTMLInputElement>('#local-filter')!;
+    filter.value = 'cold';
+    filter.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    const offered = [...page.querySelectorAll('.pick-list li')];
+    expect(offered).toHaveLength(1);
+    offered[0].querySelector('button')!.click();
+
+    const save = http.expectOne('/api/maps/7/rows/1');
+    expect(save.request.body).toEqual({ targets: [{ code: 'L2', relationship: 'EQUIVALENT' }], noMap: false, note: null });
+    save.flush(
+      row(1, '195967001', 'Asthma', {
+        status: 'MAPPED',
+        termChecked: true,
+        targets: [{ code: 'L2', term: 'Head cold', fullySpecifiedName: '', relationship: 'EQUIVALENT', origin: 'MANUAL' }],
+      }),
+    );
+    await fixture.whenStable();
+    expect(page.querySelector('.targets select')?.textContent).toContain('Local code is broader');
   });
 
   it('filters the table by status', async () => {

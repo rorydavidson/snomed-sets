@@ -2,10 +2,12 @@ package org.snomed.valuesets.map;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,9 +18,9 @@ import org.snomed.valuesets.map.MapView.Counts;
 import org.snomed.valuesets.map.MapView.RowView;
 import org.snomed.valuesets.snowstorm.CodeSystem;
 import org.snomed.valuesets.snowstorm.CodeSystemVersion;
-import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
 import org.snomed.valuesets.snowstorm.SnowstormClient;
 import org.snomed.valuesets.user.CurrentUser;
+import org.snomed.valuesets.valueset.ValueSetDefinition;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,9 @@ import org.springframework.web.server.ResponseStatusException;
  * All rules about who may see or change a map live here. Maps are private, so every call is for
  * the owner; anyone else gets a 404 as if the map did not exist.
  *
+ * A map to SNOMED CT has the local codes as its rows. A map from SNOMED CT has concepts as its
+ * rows, and keeps the local codes as a separate list that targets are chosen from.
+ *
  * Calls to Snowstorm are made outside database transactions, so a slow Snowstorm does not hold a
  * database connection.
  */
@@ -37,7 +42,8 @@ public class CodeMapService {
 
 	public static final int MAX_ROWS = 5000;
 	public static final int MAX_TARGETS = 10;
-	private static final int DUPLICATES_NAMED = 10;
+	private static final int NAMED_IN_ERRORS = 10;
+	private static final int SNOWSTORM_BATCH_SIZE = 100;
 
 	private final CodeMapRepository maps;
 	private final CodeMapRowRepository rows;
@@ -56,8 +62,11 @@ public class CodeMapService {
 
 	public List<MapView> list(CurrentUser user) {
 		List<CodeMap> owned = maps.findByOwnerSubjectOrderByUpdatedAtDesc(user.subject());
-		Map<Long, Counts> counts = countsOf(owned.stream().map(CodeMap::getId).toList());
-		return owned.stream().map(map -> MapView.of(map, counts.getOrDefault(map.getId(), Counts.NONE))).toList();
+		List<Long> ids = owned.stream().map(CodeMap::getId).toList();
+		Map<Long, Counts> counts = countsOf(ids);
+		Map<Long, Integer> localCodes = localCodeCounts(ids);
+		return owned.stream().map(map -> MapView.of(map, counts.getOrDefault(map.getId(), Counts.NONE),
+				localCodes.getOrDefault(map.getId(), 0))).toList();
 	}
 
 	public MapView get(long id, CurrentUser user) {
@@ -65,14 +74,22 @@ public class CodeMapService {
 	}
 
 	public MapView create(MapDefinition definition, CurrentUser user) {
+		boolean fromSnomed = definition.direction() == CodeMap.Direction.FROM_SNOMED;
 		requireNoRepeats(definition.rows(), Set.of());
 		String branch = definition.codeSystemVersion() == null
 				? releaseBranchOf(definition.codeSystem())
 				: releaseBranchOf(definition.codeSystem(), definition.codeSystemVersion());
+		List<MapCode> concepts = fromSnomed ? activeConcepts(definition.conceptIds(), branch) : List.of();
 		CodeMap created = transaction.execute(status -> {
-			CodeMap map = maps.save(new CodeMap(CodeMap.Direction.TO_SNOMED, definition.codeSystem(), branch,
+			CodeMap map = maps.save(new CodeMap(definition.direction(), definition.codeSystem(), branch,
 					definition.details(), user.subject(), user.name()));
-			insertRows(map.getId(), definition.rows(), 0);
+			if (fromSnomed) {
+				insertLocalCodes(map.getId(), definition.rows(), 0);
+				insertRows(map.getId(), concepts, 0);
+			}
+			else {
+				insertRows(map.getId(), asRows(definition.rows()), 0);
+			}
 			return map;
 		});
 		return view(created);
@@ -94,17 +111,52 @@ public class CodeMapService {
 		return workingRows(map).stream().map(RowView::of).toList();
 	}
 
-	/** Adds local codes to the end of the map. Codes the map already has are refused, not merged. */
-	public MapView addRows(long id, MapDefinition.MoreRows more, CurrentUser user) {
+	/** The local codes targets are chosen from, for a map from SNOMED CT. Empty for a map to it. */
+	public List<SourceRow> localCodes(long id, CurrentUser user) {
+		return localCodes(owned(id, user));
+	}
+
+	/**
+	 * Adds local codes: more rows to map in a map to SNOMED CT, more codes to choose from in a map
+	 * from it. Codes the map already has are refused, not merged.
+	 */
+	public MapView addLocalCodes(long id, MapDefinition.MoreRows more, CurrentUser user) {
 		CodeMap map = owned(id, user);
 		return transaction.execute(status -> {
-			Set<String> existing = new HashSet<>(rows.findWorkingCodes(map.getId()));
-			if (existing.size() + more.rows().size() > MAX_ROWS) {
-				throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-						"A map can hold at most " + MAX_ROWS + " codes. This one has " + existing.size() + ".");
-			}
+			Set<String> existing = map.isFromSnomed()
+					? localCodes(map).stream().map(SourceRow::code).collect(HashSet::new, Set::add, Set::addAll)
+					: new HashSet<>(rows.findWorkingCodes(map.getId()));
+			requireRoom(existing.size(), more.rows().size(), "codes");
 			requireNoRepeats(more.rows(), existing);
-			insertRows(map.getId(), more.rows(), rows.findLastWorkingPosition(map.getId()) + 1);
+			if (map.isFromSnomed()) {
+				insertLocalCodes(map.getId(), more.rows(), existing.size());
+				// A concept that matched nothing before may match one of the new codes, so it is looked at again.
+				jdbc.update("""
+						UPDATE code_map_row SET term_checked = FALSE
+						WHERE map_id = ? AND version_number = ? AND status = ?
+						""", map.getId(), CodeMapRow.WORKING, CodeMapRow.Status.UNMAPPED.name());
+			}
+			else {
+				insertRows(map.getId(), asRows(more.rows()), rows.findLastWorkingPosition(map.getId()) + 1);
+			}
+			map.touch();
+			return view(maps.save(map));
+		});
+	}
+
+	/** Adds concepts to map, to a map from SNOMED CT. Concepts it already has are left as they are. */
+	public MapView addConcepts(long id, MapDefinition.MoreConcepts more, CurrentUser user) {
+		CodeMap map = owned(id, user);
+		if (!map.isFromSnomed()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+					"Concepts are added to a map from SNOMED CT. This map is to SNOMED CT: add local codes instead.");
+		}
+		List<MapCode> concepts = activeConcepts(more.conceptIds(), map.getBranch());
+		return transaction.execute(status -> {
+			Set<String> existing = new HashSet<>(rows.findWorkingCodes(map.getId()));
+			List<MapCode> added = concepts.stream().filter(concept -> !existing.contains(concept.code())).toList();
+			requireRoom(existing.size(), added.size(), "concepts");
+			insertRows(map.getId(), added, rows.findLastWorkingPosition(map.getId()) + 1);
 			map.touch();
 			return view(maps.save(map));
 		});
@@ -113,8 +165,7 @@ public class CodeMapService {
 	/** Sets one row's targets, or records that it has no map. */
 	public RowView updateRow(long id, long rowId, RowUpdate update, CurrentUser user) {
 		CodeMap map = owned(id, user);
-		// LinkedHashMap, so the targets keep the order they were sent in.
-		Map<Concept, Relationship> chosen = update.noMap() ? Map.of() : conceptsOf(update.targets(), map.getBranch());
+		Map<MapCode, Relationship> chosen = update.noMap() ? Map.of() : targetsOf(update.targets(), map);
 		return transaction.execute(status -> {
 			CodeMapRow row = workingRow(map, rowId);
 			if (update.noMap()) {
@@ -176,13 +227,25 @@ public class CodeMapService {
 		return rows.findByMapIdAndVersionNumberOrderByPosition(map.getId(), CodeMapRow.WORKING);
 	}
 
+	/** The working list of local codes of a map from SNOMED CT, in the order they were given. */
+	List<SourceRow> localCodes(CodeMap map) {
+		return jdbc.query("""
+				SELECT code, term FROM code_map_local_code
+				WHERE map_id = ? AND version_number = ?
+				ORDER BY position
+				""", (result, index) -> new SourceRow(result.getString("code"), result.getString("term")),
+				map.getId(), CodeMapRow.WORKING);
+	}
+
 	private CodeMapRow workingRow(CodeMap map, long rowId) {
 		return rows.findByIdAndMapIdAndVersionNumber(rowId, map.getId(), CodeMapRow.WORKING)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Row not found"));
 	}
 
 	private MapView view(CodeMap map) {
-		return MapView.of(map, countsOf(List.of(map.getId())).getOrDefault(map.getId(), Counts.NONE));
+		List<Long> id = List.of(map.getId());
+		return MapView.of(map, countsOf(id).getOrDefault(map.getId(), Counts.NONE),
+				localCodeCounts(id).getOrDefault(map.getId(), 0));
 	}
 
 	private Map<Long, Counts> countsOf(Collection<Long> mapIds) {
@@ -199,29 +262,80 @@ public class CodeMapService {
 		return counts;
 	}
 
-	/**
-	 * The chosen concepts as the release has them. Only identifiers are accepted from the browser,
-	 * so a person cannot attach a made-up term to a concept.
-	 */
-	private Map<Concept, Relationship> conceptsOf(List<RowUpdate.Target> targets, String branch) {
+	private Map<Long, Integer> localCodeCounts(Collection<Long> mapIds) {
+		if (mapIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, Integer> counts = new HashMap<>();
+		List<Object> arguments = new ArrayList<>(mapIds);
+		arguments.add(CodeMapRow.WORKING);
+		jdbc.query("SELECT map_id, COUNT(*) AS codes FROM code_map_local_code WHERE map_id IN ("
+				+ String.join(", ", Collections.nCopies(mapIds.size(), "?")) + ") AND version_number = ? GROUP BY map_id",
+				result -> {
+					counts.put(result.getLong("map_id"), result.getInt("codes"));
+				}, arguments.toArray());
+		return counts;
+	}
+
+	/** The targets as the map's other side has them. Only codes come from the browser, never terms. */
+	private Map<MapCode, Relationship> targetsOf(List<RowUpdate.Target> targets, CodeMap map) {
+		// LinkedHashMap, so the targets keep the order they were sent in.
 		Map<String, Relationship> relationships = new LinkedHashMap<>();
-		targets.forEach(target -> relationships.putIfAbsent(target.conceptId(), target.relationship()));
+		targets.forEach(target -> relationships.putIfAbsent(target.code(), target.relationship()));
 		if (relationships.isEmpty()) {
 			return Map.of();
 		}
-		Map<String, Concept> active = new HashMap<>();
-		snowstorm.activeConcepts(List.copyOf(relationships.keySet()), branch).items()
-				.forEach(concept -> active.put(concept.conceptId(), concept));
-		Map<Concept, Relationship> chosen = new LinkedHashMap<>();
-		relationships.forEach((conceptId, relationship) -> {
-			Concept concept = active.get(conceptId);
-			if (concept == null) {
-				throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-						conceptId + " is not an active concept in this release.");
+		Map<String, MapCode> known = new HashMap<>();
+		if (map.isFromSnomed()) {
+			localCodes(map).forEach(local -> known.put(local.code(), MapCode.local(local.code(), local.term())));
+		}
+		else {
+			activeConceptsFound(relationships.keySet(), map.getBranch()).forEach(concept -> known.put(concept.code(), concept));
+		}
+		Map<MapCode, Relationship> chosen = new LinkedHashMap<>();
+		relationships.forEach((code, relationship) -> {
+			MapCode target = known.get(code);
+			if (target == null) {
+				throw new ResponseStatusException(HttpStatus.BAD_REQUEST, map.isFromSnomed()
+						? code + " is not in this map's list of local codes."
+						: code + " is not an active concept in this release.");
 			}
-			chosen.put(concept, relationship);
+			chosen.put(target, relationship);
 		});
 		return chosen;
+	}
+
+	/** The given concepts as the release has them, in the order given; a 400 if any is not active there. */
+	private List<MapCode> activeConcepts(List<String> conceptIds, String branch) {
+		Set<String> wanted = new LinkedHashSet<>(conceptIds);
+		Map<String, MapCode> found = new HashMap<>();
+		activeConceptsFound(wanted, branch).forEach(concept -> found.put(concept.code(), concept));
+		List<String> missing = wanted.stream().filter(conceptId -> !found.containsKey(conceptId)).toList();
+		if (!missing.isEmpty()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not active concepts in this release: "
+					+ String.join(", ", missing.stream().limit(NAMED_IN_ERRORS).toList())
+					+ (missing.size() > NAMED_IN_ERRORS ? " and others." : "."));
+		}
+		return wanted.stream().map(found::get).toList();
+	}
+
+	/** Those of the given identifiers that are active concepts on the branch. Others are simply not returned. */
+	private List<MapCode> activeConceptsFound(Collection<String> conceptIds, String branch) {
+		// Anything else would be sent to Snowstorm as part of an address.
+		List<String> ids = conceptIds.stream().filter(id -> id.matches(ValueSetDefinition.CONCEPT_ID_REGEX)).toList();
+		List<MapCode> found = new ArrayList<>();
+		for (int start = 0; start < ids.size(); start += SNOWSTORM_BATCH_SIZE) {
+			List<String> batch = ids.subList(start, Math.min(start + SNOWSTORM_BATCH_SIZE, ids.size()));
+			snowstorm.activeConcepts(batch, branch).items().forEach(concept -> found.add(MapCode.of(concept)));
+		}
+		return found;
+	}
+
+	private static void requireRoom(int existing, int added, String what) {
+		if (existing + added > MAX_ROWS) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+					"A map can hold at most " + MAX_ROWS + " " + what + ". This one has " + existing + ".");
+		}
 	}
 
 	private static void requireNoRepeats(List<SourceRow> sent, Set<String> existing) {
@@ -233,22 +347,39 @@ public class CodeMapService {
 			}
 		});
 		if (!repeated.isEmpty()) {
-			List<String> named = repeated.stream().distinct().limit(DUPLICATES_NAMED).toList();
+			List<String> named = repeated.stream().distinct().limit(NAMED_IN_ERRORS).toList();
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each code can be in a map once. Repeated: "
 					+ String.join(", ", named) + (repeated.size() > named.size() ? " and others." : "."));
 		}
 	}
 
+	private static List<MapCode> asRows(List<SourceRow> local) {
+		return local.stream().map(row -> MapCode.local(row.code(), row.term())).toList();
+	}
+
 	/** One statement for all the rows: a map may have thousands. */
-	private void insertRows(long mapId, List<SourceRow> sent, int firstPosition) {
+	private void insertRows(long mapId, List<MapCode> sources, int firstPosition) {
 		List<Object[]> values = new ArrayList<>();
-		for (int index = 0; index < sent.size(); index++) {
-			values.add(new Object[] { mapId, CodeMapRow.WORKING, sent.get(index).code(), sent.get(index).term(),
+		for (int index = 0; index < sources.size(); index++) {
+			MapCode source = sources.get(index);
+			values.add(new Object[] { mapId, CodeMapRow.WORKING, source.code(), source.term(), source.fullySpecifiedName(),
 					CodeMapRow.Status.UNMAPPED.name(), firstPosition + index });
 		}
 		jdbc.batchUpdate("""
-				INSERT INTO code_map_row (map_id, version_number, source_code, source_term, status, position)
-				VALUES (?, ?, ?, ?, ?, ?)
+				INSERT INTO code_map_row (map_id, version_number, source_code, source_term, source_fsn, status, position)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				""", values);
+	}
+
+	private void insertLocalCodes(long mapId, List<SourceRow> local, int firstPosition) {
+		List<Object[]> values = new ArrayList<>();
+		for (int index = 0; index < local.size(); index++) {
+			values.add(new Object[] { mapId, CodeMapRow.WORKING, local.get(index).code(), local.get(index).term(),
+					firstPosition + index });
+		}
+		jdbc.batchUpdate("""
+				INSERT INTO code_map_local_code (map_id, version_number, code, term, position)
+				VALUES (?, ?, ?, ?, ?)
 				""", values);
 	}
 

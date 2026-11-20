@@ -101,46 +101,61 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - **Tags**: up to ten per set, typed in or picked from tags already in use.
 - **Sharing**: a set is private to its owner until shared with the community.
 
-### Maps to SNOMED CT
+### Maps
 
-A map gives each code of a local list (a picklist, a legacy coding scheme) one or more SNOMED CT
-concepts. This is the first part of maps: maps to SNOMED CT, private to their owner. Maps from
-SNOMED CT, publishing and versions, upgrading and automap are still to come, and are described in
+A map links the codes of a local list (a picklist, a legacy coding scheme) with SNOMED CT
+concepts, in one direction. **To SNOMED CT**, each local code is given one or more concepts.
+**From SNOMED CT**, each concept is given one or more local codes. Maps are private to their owner
+for now. Publishing and versions, upgrading and automap are still to come, and are described in
 `docs/maps-design.md`.
 
 - **Two library views.** Signed-in people have a switch at the top of the library between Value
   sets and Maps. The Maps view lists your own maps with the release each is built on, how many
   codes it has and how many are done. Maps are private for now, so visitors see no switch.
-- **Creating a map.** Give it a name, say what the local code list is called (with an optional
-  version and identifier), and choose a code system and release as for a value set. A map is built
-  on that release's branch.
+- **Creating a map.** Choose the direction, which cannot be changed afterwards. Give the map a
+  name, say what the local code list is called (with an optional version and identifier), and
+  choose a code system and release as for a value set. A map is built on that release's branch.
 - **Local codes.** Choose a CSV or TSV file, or paste or type one code and its term per line. The
   file is read in the browser: you say whether the first row is a header and which columns hold
   the code and the term, and only those two columns are sent. A code can be in a map once, and
   codes that differ only in case are different codes. Up to 5,000 codes, 100 characters a code
-  and 500 a term. More can be added later with Add codes.
-- **Term matching.** As soon as a map with new codes is opened, each term is looked for among the
+  and 500 a term. More can be added later with Add codes. In a map to SNOMED CT these codes are
+  the rows to map. In a map from SNOMED CT they are the list targets are chosen from.
+- **Concepts to map, for a map from SNOMED CT.** Picked with the concept search, or imported as
+  a list of identifiers or as everything an ECL expression matches, with the same checks as a
+  hand-picked value set: inactive concepts are not added and their replacements are offered. Up to
+  5,000 concepts, and more can be added later with Add concepts. Only identifiers are sent; the
+  server checks each is active in the release and stores its terms. Changing the release while
+  creating a map clears the concepts, as they were chosen on the other one.
+- **Term matching, to SNOMED CT.** As soon as a map with new codes is opened, each term is looked for among the
   active SNOMED CT descriptions of the release, synonyms included, in every language of the
   edition. A concept with a description that is the same words (case and spacing aside) becomes a
   suggestion. The browser asks for 100 codes at a time and shows how far it has got; it can be
   stopped, and anything left is picked up with Match remaining.
+- **Term matching, from SNOMED CT.** Every active name of each concept (preferred term, fully
+  specified name and synonyms, in every language of the edition) is compared with the local terms,
+  so Myocardial infarction is offered a local code called "Heart attack". The names are fetched
+  for 25 concepts at a time and no searching is needed, so this direction is quick. Adding local
+  codes later has the concepts still unmapped looked at again.
 - **Suggestions are not maps.** The same words can name a finding, a disorder and a morphology, so
   nothing is mapped until the owner accepts it. A code with exactly one suggestion can be accepted
   with Enter, or all such codes together with one button. A code with several waits for a choice.
 - **The workbench.** Codes are in a table with their status (Unmapped, Suggested, Mapped, No map),
   a status filter and a text filter. The table runs the full width of the page. Clicking a code
   opens its targets under its row, and clicking it again closes them, with the concept search and concept details used for
-  hand-picked sets. A code can have up to ten targets.
-  Each has a relationship: Equivalent, SNOMED CT concept is broader, SNOMED CT concept is narrower,
-  or Related. "No map" records that nothing fits, which is not the same as not having looked. A
+  hand-picked sets. In a map from SNOMED CT the rows are concepts and the targets are picked from
+  a filterable list of the local codes instead. A row can have up to ten targets.
+  Each has a relationship: Equivalent, broader, narrower or Related, worded for the side the
+  target is on ("Local code is broader"). "No map" records that nothing fits, which is not the same as not having looked. A
   note can be kept with each code. Every change is saved as it is made. Arrow keys move between
   rows, Space opens or closes one and N marks a row as having no map.
-- **Targets come from Snowstorm.** The browser sends only concept identifiers. The server checks
-  each is an active concept in the map's release and stores its terms, so a made-up term cannot be
-  attached to a concept.
+- **Targets are checked by the server.** The browser sends only codes. For a map to SNOMED CT
+  the server checks each is an active concept in the map's release and stores its terms, so a
+  made-up term cannot be attached to a concept. For a map from SNOMED CT each must be in the
+  map's own list of local codes, and its term is taken from there.
 - **Downloading.** The map as it stands, as CSV or TSV: one line for each code and target, and one
-  for a code with no target, with the code, its term, the SNOMED CT ID, its preferred term, the
-  relationship, the status and the note. Suggestions nobody accepted are left out and their codes
+  for a code with no target, with the source code and term, the target code and term, the
+  relationship, the status and the note. The column headings say which side is SNOMED CT. Suggestions nobody accepted are left out and their codes
   written as unmapped. In the CSV a value a spreadsheet would read as a formula starts with an
   apostrophe; the TSV has every code exactly as given, for programs.
 - No licence note is shown beside map downloads. Whether a map counts as Global Patient Set

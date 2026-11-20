@@ -71,9 +71,23 @@ public class CodeMapController {
 		return service.rows(id, user);
 	}
 
-	@PostMapping("/{id}/rows")
-	public MapView addRows(@PathVariable long id, @Valid @RequestBody MapDefinition.MoreRows more, CurrentUser user) {
-		return service.addRows(id, more, user);
+	/** The local codes targets are chosen from, for a map from SNOMED CT. */
+	@GetMapping("/{id}/local-codes")
+	public List<MapDefinition.SourceRow> localCodes(@PathVariable long id, CurrentUser user) {
+		return service.localCodes(id, user);
+	}
+
+	/** More local codes: rows to map in a map to SNOMED CT, codes to choose from in a map from it. */
+	@PostMapping("/{id}/local-codes")
+	public MapView addLocalCodes(@PathVariable long id, @Valid @RequestBody MapDefinition.MoreRows more, CurrentUser user) {
+		return service.addLocalCodes(id, more, user);
+	}
+
+	/** More concepts to map, for a map from SNOMED CT. */
+	@PostMapping("/{id}/concepts")
+	public MapView addConcepts(@PathVariable long id, @Valid @RequestBody MapDefinition.MoreConcepts more,
+			CurrentUser user) {
+		return service.addConcepts(id, more, user);
 	}
 
 	@PutMapping("/{id}/rows/{rowId}")
@@ -88,7 +102,7 @@ public class CodeMapController {
 		service.deleteRow(id, rowId, user);
 	}
 
-	/** Looks for the terms of some unmapped rows in SNOMED CT and stores what is found as suggestions. */
+	/** Looks for the terms of some unmapped rows on the other side of the map and stores what is found as suggestions. */
 	@PostMapping("/{id}/term-matches")
 	public List<RowView> matchTerms(@PathVariable long id, @Valid @RequestBody MatchRequest request, CurrentUser user) {
 		return termMatches.match(id, request.rowIds(), user);

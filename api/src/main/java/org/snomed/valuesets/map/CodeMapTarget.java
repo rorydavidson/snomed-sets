@@ -11,11 +11,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-import org.snomed.valuesets.snowstorm.ExpansionPage.Concept;
-
 /**
- * One target of a row. The terms are copied from Snowstorm when the target is chosen, so the map
- * can be shown and downloaded without calling Snowstorm.
+ * One target of a row: a SNOMED CT concept in a map to SNOMED CT, or a local code in a map from
+ * it. The terms are copied in when the target is chosen, so the map can be shown and downloaded
+ * without calling Snowstorm.
  */
 @Entity
 @Table(name = "code_map_target")
@@ -59,11 +58,11 @@ public class CodeMapTarget {
 		// for JPA
 	}
 
-	CodeMapTarget(CodeMapRow row, Concept concept, Relationship relationship, Origin origin) {
+	CodeMapTarget(CodeMapRow row, MapCode target, Relationship relationship, Origin origin) {
 		this.row = row;
-		this.code = concept.conceptId();
-		this.term = concept.preferredTerm() == null ? "" : concept.preferredTerm();
-		this.fullySpecifiedName = concept.fullySpecifiedName() == null ? "" : concept.fullySpecifiedName();
+		this.code = target.code();
+		this.term = target.term();
+		this.fullySpecifiedName = target.fullySpecifiedName();
 		this.relationship = relationship;
 		this.origin = origin;
 	}

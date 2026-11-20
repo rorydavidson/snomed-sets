@@ -1,6 +1,6 @@
 # Maps: design and analysis
 
-Status: agreed, phase 1 in progress. Written 20 November 2026.
+Status: agreed. Phases 1 and 2 built. Written 20 November 2026.
 
 ## 1. What is being asked for
 
@@ -318,3 +318,20 @@ Where the first part differs from the sections above:
   fetch is not used until phase 2.
 - The CSV download neutralises formula-like values with an apostrophe, as the upgrade report does.
   The TSV is exact.
+
+## 16. Phase 2 as built
+
+- A map from SNOMED CT has concepts as its rows. The local codes go in `code_map_local_code`, and
+  a target must be one of them. `code_map_row` gained `source_fsn`.
+- The local code list always arrives the same way (`POST /maps/{id}/local-codes`): it adds rows
+  to a map to SNOMED CT and adds choices to a map from it. Concepts are added with
+  `POST /maps/{id}/concepts`.
+- Term matching in this direction uses `GET /{branch}/descriptions?conceptIds=`, 25 concepts a
+  call, read in pages. It was run against a live Snowstorm. Inactive descriptions and text
+  definitions are left out.
+- Adding local codes resets `term_checked` on the rows still unmapped, so they are matched again.
+- A local code cannot yet be removed from a map from SNOMED CT, or have its term changed. Both
+  belong with updating the local list in phase 4, where targets pointing at a removed code have to
+  be dealt with.
+- Importing concepts by ECL takes 2,000 at a time, the limit of the shared import dialog. A map
+  can still hold 5,000.

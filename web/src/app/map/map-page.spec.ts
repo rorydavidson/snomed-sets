@@ -197,6 +197,44 @@ describe('MapPage', () => {
     expect(page.querySelector('tr.detail')?.textContent).toContain('Cold');
   });
 
+  it('lists the local codes no concept is mapped to, not counting suggestions', async () => {
+    const fromSnomed: CodeMap = { ...MAP, direction: 'FROM_SNOMED', localCodeCount: 3 };
+    const target = (code: string, term: string): MapTarget => ({ ...ASTHMA, code, term, fullySpecifiedName: '' });
+    const page = await load(
+      [
+        row(1, '195967001', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [target('L1', 'Bronchial asthma')] }),
+        row(2, '82272006', 'Common cold', { status: 'SUGGESTED', termChecked: true, targets: [target('L2', 'Common cold')] }),
+      ],
+      fromSnomed,
+      [
+        { code: 'L1', term: 'Bronchial asthma' },
+        { code: 'L2', term: 'Common cold' },
+        { code: 'L3', term: 'Gout' },
+      ],
+    );
+
+    expect(page.textContent).toContain('2 of the local codes have no concept mapped to them yet.');
+    [...page.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Show them')!.click();
+    await fixture.whenStable();
+
+    const listed = page.querySelector('.unused')!.textContent;
+    expect(listed).toContain('L2');
+    expect(listed).toContain('L3');
+    expect(listed).not.toContain('L1');
+  });
+
+  it('adds concepts found by searching to a map from SNOMED CT', async () => {
+    const fromSnomed: CodeMap = { ...MAP, direction: 'FROM_SNOMED' };
+    const page = await load([row(1, '195967001', 'Asthma', { termChecked: true })], fromSnomed);
+
+    expect(page.querySelector('app-concept-picker')).toBeNull();
+    [...page.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Add concepts')!.click();
+    await fixture.whenStable();
+
+    expect(page.querySelector('app-concept-picker')).not.toBeNull();
+    expect(page.textContent).toContain('Import a list or ECL');
+  });
+
   it('offers local codes as targets in a map from SNOMED CT', async () => {
     const fromSnomed: CodeMap = { ...MAP, direction: 'FROM_SNOMED', localCodeCount: 2 };
     const page = await load(

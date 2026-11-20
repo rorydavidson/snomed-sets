@@ -32,6 +32,8 @@ type StatusFilter = RowStatus | 'ALL';
 
 /** How many local codes are listed to choose from at once. The filter narrows a longer list. */
 const LOCAL_CODES_SHOWN = 50;
+/** The list of local codes nothing is mapped to scrolls, so it can show more before asking for a filter. */
+const UNUSED_CODES_SHOWN = 500;
 
 /** The words that differ between a map to SNOMED CT and a map from it. */
 const WORDS = {
@@ -101,6 +103,18 @@ const STATUS_LABELS: Record<RowStatus, string> = {
             · {{ localCodes().length | number }} local {{ localCodes().length === 1 ? 'code' : 'codes' }} to choose from
           }
         </p>
+        @if (fromSnomed() && localCodes().length > 0) {
+          <p class="meta">
+            @if (unusedLocalCodes().length === 0) {
+              Every local code has a concept mapped to it.
+            } @else {
+              {{ unusedLocalCodes().length | number }} of the local codes {{ unusedLocalCodes().length === 1 ? 'has' : 'have' }} no concept mapped to {{ unusedLocalCodes().length === 1 ? 'it' : 'them' }} yet.
+              <button type="button" class="link-button" [attr.aria-expanded]="showingUnused()" (click)="showingUnused.set(!showingUnused())">
+                {{ showingUnused() ? 'Hide them' : 'Show them' }}
+              </button>
+            }
+          </p>
+        }
 
         <ul class="counts" aria-label="Progress">
           <li><strong>{{ counts().total | number }}</strong> {{ words().rows }}</li>
@@ -112,7 +126,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
 
         <div class="actions">
           @if (fromSnomed()) {
-            <button type="button" class="button button-secondary" (click)="importing.set(true)">Add concepts</button>
+            <button type="button" class="button button-secondary" [attr.aria-expanded]="addingConcepts()" (click)="addingConcepts.set(!addingConcepts())">Add concepts</button>
           }
           <button type="button" class="button button-secondary" (click)="adding.set(!adding())">{{ fromSnomed() ? 'Add local codes' : 'Add codes' }}</button>
           <a class="button button-secondary" [href]="downloadUrl('CSV')" download>Download (CSV)</a>
@@ -125,6 +139,44 @@ const STATUS_LABELS: Record<RowStatus, string> = {
         </p>
         @if (pageError(); as message) {
           <p class="field-error" role="alert">{{ message }}</p>
+        }
+
+        @if (showingUnused() && unusedLocalCodes().length > 0) {
+          <section class="panel" aria-labelledby="unused-heading">
+            <h2 id="unused-heading">Local codes with nothing mapped to them</h2>
+            <p class="meta">
+              No concept in this map has one of these as an accepted target. A suggestion nobody has accepted does not
+              count. To map to one, add a concept for it with Add concepts, then choose the code on that concept's row.
+            </p>
+            <div class="field">
+              <label for="unused-filter">Find a local code or term</label>
+              <input id="unused-filter" type="text" autocomplete="off" [value]="unusedFilter()" (input)="unusedFilter.set($any($event.target).value)" />
+            </div>
+            <p class="meta" role="status">{{ unusedLabel() }}</p>
+            <ul class="pick-list unused">
+              @for (local of unusedShown(); track local.code) {
+                <li><span>{{ local.term }} <span class="meta mono">{{ local.code }}</span></span></li>
+              }
+            </ul>
+            <div class="actions">
+              <button type="button" class="button button-secondary" (click)="showingUnused.set(false)">Close</button>
+            </div>
+          </section>
+        }
+
+        @if (addingConcepts() && fromSnomed()) {
+          <section class="panel" aria-labelledby="add-concepts-heading">
+            <h2 id="add-concepts-heading">Add concepts</h2>
+            <p class="meta">
+              Search for concepts and add the ones to map. For many at once, import a list of identifiers or everything
+              an ECL expression matches.
+            </p>
+            <app-concept-picker [branch]="map.branch" [inList]="codes()" (add)="addConcepts($event)" (details)="shownConcept.set($event)" />
+            <div class="actions">
+              <button type="button" class="button button-secondary" (click)="importing.set(true)">Import a list or ECL</button>
+              <button type="button" class="button button-secondary" (click)="addingConcepts.set(false)">Close</button>
+            </div>
+          </section>
         }
 
         @if (adding()) {
@@ -419,6 +471,11 @@ const STATUS_LABELS: Record<RowStatus, string> = {
       cursor: default;
     }
 
+    .unused {
+      max-height: 22rem;
+      overflow-y: auto;
+    }
+
     .panel {
       padding: var(--space-5);
       background: var(--surface-card);
@@ -519,6 +576,32 @@ export class MapPage implements OnInit {
     const found = this.localCodesMatching().length;
     return found > LOCAL_CODES_SHOWN ? `${found} local codes. Showing the first ${LOCAL_CODES_SHOWN}; type to narrow them.` : `${found} local ${found === 1 ? 'code' : 'codes'}.`;
   });
+  /** Local codes no row has as an accepted target, in a map from SNOMED CT. Suggestions do not count. */
+  protected readonly unusedLocalCodes = computed(() => {
+    const used = new Set<string>();
+    for (const row of this.rows()) {
+      if (row.status === 'MAPPED') {
+        row.targets.forEach((target) => used.add(target.code));
+      }
+    }
+    return this.localCodes().filter((local) => !used.has(local.code));
+  });
+  protected readonly showingUnused = signal(false);
+  protected readonly unusedFilter = signal('');
+  private readonly unusedMatching = computed(() => {
+    const words = this.unusedFilter().toLowerCase().split(/\s+/).filter((word) => word !== '');
+    return this.unusedLocalCodes().filter((local) => {
+      const searchable = `${local.code} ${local.term}`.toLowerCase();
+      return words.every((word) => searchable.includes(word));
+    });
+  });
+  protected readonly unusedShown = computed(() => this.unusedMatching().slice(0, UNUSED_CODES_SHOWN));
+  protected readonly unusedLabel = computed(() => {
+    const found = this.unusedMatching().length;
+    return found > UNUSED_CODES_SHOWN ? `${found} local codes. Showing the first ${UNUSED_CODES_SHOWN}; type to narrow them.` : `${found} local ${found === 1 ? 'code' : 'codes'}.`;
+  });
+  /** True while the panel for searching for concepts to add is open, in a map from SNOMED CT. */
+  protected readonly addingConcepts = signal(false);
   /** True while the dialog for importing concepts is open. */
   protected readonly importing = signal(false);
   private readonly rows = signal<MapRow[]>([]);

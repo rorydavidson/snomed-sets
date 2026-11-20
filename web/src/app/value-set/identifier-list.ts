@@ -100,7 +100,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** The delimiter found on most of the first lines, or null for plain lines. */
-function delimiterOf(lines: string[]): string | null {
+export function delimiterOf(lines: string[]): string | null {
   const sample = lines.slice(0, 20);
   for (const delimiter of DELIMITERS) {
     if (sample.filter((line) => line.includes(delimiter)).length > sample.length / 2) {
@@ -117,7 +117,7 @@ function splitOnFirstSpace(line: string): string[] {
 }
 
 /** Splits one line of CSV or TSV, honouring double quotes. */
-function splitDelimited(line: string, delimiter: string): string[] {
+export function splitDelimited(line: string, delimiter: string): string[] {
   const cells: string[] = [];
   let cell = '';
   let quoted = false;

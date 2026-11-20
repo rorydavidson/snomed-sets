@@ -6,9 +6,25 @@ import { MapAddCodes } from './map-add-codes';
 
 const PAGE_SIZE = 50;
 
-interface LocalCodeLine extends SourceRow {
+export interface LocalCodeLine extends SourceRow {
   /** The concepts with this code as an accepted target. */
   mappedFrom: { code: string; term: string }[];
+}
+
+/**
+ * Each local code with the concepts mapped to it. A code counts as mapped once a concept has it
+ * as an accepted target; a suggestion nobody accepted does not count.
+ */
+export function localCodeLines(localCodes: SourceRow[], rows: MapRow[]): LocalCodeLine[] {
+  const mappedFrom = new Map<string, { code: string; term: string }[]>();
+  for (const row of rows) {
+    if (row.status === 'MAPPED') {
+      for (const target of row.targets) {
+        mappedFrom.set(target.code, [...(mappedFrom.get(target.code) ?? []), { code: row.code, term: row.term }]);
+      }
+    }
+  }
+  return localCodes.map((local) => ({ ...local, mappedFrom: mappedFrom.get(local.code) ?? [] }));
 }
 
 /**
@@ -36,11 +52,11 @@ interface LocalCodeLine extends SourceRow {
       <app-map-add-codes heading="Add local codes" [existing]="existing()" [room]="room()" [busy]="busy()" (add)="add.emit($event)" (cancelled)="adding.set(false)" />
     }
 
-    @if (localCodes().length === 0) {
+    @if (lines().length === 0) {
       <p class="muted" role="status">This map has no local codes yet. Add some to have something to map to.</p>
     } @else {
       <p class="meta" role="status">
-        {{ shown().length | number }} of {{ localCodes().length | number }} local {{ localCodes().length === 1 ? 'code' : 'codes' }}.
+        {{ shown().length | number }} of {{ lines().length | number }} local {{ lines().length === 1 ? 'code' : 'codes' }}.
         A code counts as mapped once a concept has it as an accepted target; a suggestion does not count.
       </p>
       <div class="table-scroll">
@@ -106,9 +122,7 @@ interface LocalCodeLine extends SourceRow {
   `,
 })
 export class MapLocalCodes {
-  readonly localCodes = input.required<SourceRow[]>();
-  /** The map's rows, which are concepts. */
-  readonly rows = input.required<MapRow[]>();
+  readonly lines = input.required<LocalCodeLine[]>();
   /** How many more local codes the map can take. */
   readonly room = input.required<number>();
   /** True while added codes are being saved. */
@@ -121,19 +135,7 @@ export class MapLocalCodes {
   protected readonly onlyUnmapped = signal(false);
   protected readonly page = signal(0);
 
-  protected readonly existing = computed<ReadonlySet<string>>(() => new Set(this.localCodes().map((local) => local.code)));
-
-  private readonly lines = computed<LocalCodeLine[]>(() => {
-    const mappedFrom = new Map<string, { code: string; term: string }[]>();
-    for (const row of this.rows()) {
-      if (row.status === 'MAPPED') {
-        for (const target of row.targets) {
-          mappedFrom.set(target.code, [...(mappedFrom.get(target.code) ?? []), { code: row.code, term: row.term }]);
-        }
-      }
-    }
-    return this.localCodes().map((local) => ({ ...local, mappedFrom: mappedFrom.get(local.code) ?? [] }));
-  });
+  protected readonly existing = computed<ReadonlySet<string>>(() => new Set(this.lines().map((line) => line.code)));
   protected readonly unmappedCount = computed(() => this.lines().filter((line) => line.mappedFrom.length === 0).length);
 
   protected readonly shown = computed(() =>

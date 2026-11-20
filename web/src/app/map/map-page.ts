@@ -25,7 +25,7 @@ import { ConceptPicker } from '../value-set/concept-picker';
 import { IdentifierImport } from '../value-set/identifier-import';
 import { MapAddCodes } from './map-add-codes';
 import { MapAddConcepts } from './map-add-concepts';
-import { MapLocalCodes } from './map-local-codes';
+import { MapLocalCodes, localCodeLines } from './map-local-codes';
 
 const PAGE_SIZE = 50;
 /** Snowstorm refuses shorter search terms, so the server does not look for them. */
@@ -116,13 +116,13 @@ const STATUS_LABELS: Record<RowStatus, string> = {
               Concepts ({{ counts().total | number }})
             </button>
             <button type="button" role="tab" id="tab-local" [attr.aria-selected]="tab() === 'local'" [class.current]="tab() === 'local'" (click)="show('local')">
-              Local codes ({{ localCodes().length | number }}{{ unusedLocalCodes().length > 0 ? ' · ' + unusedLocalCodes().length + ' with nothing mapped' : '' }})
+              Local codes ({{ localCodes().length | number }}{{ unmappedLocalCodes() > 0 ? ' · ' + unmappedLocalCodes() + ' with nothing mapped' : '' }})
             </button>
           </div>
         }
 
         @if (tab() === 'local' && fromSnomed()) {
-          <app-map-local-codes role="tabpanel" aria-labelledby="tab-local" [localCodes]="localCodes()" [rows]="allRows()" [room]="localRoom()" [busy]="addingRows()" [(adding)]="adding" (add)="addRows($event)" />
+          <app-map-local-codes role="tabpanel" aria-labelledby="tab-local" [lines]="localLines()" [room]="localRoom()" [busy]="addingRows()" [(adding)]="adding" (add)="addRows($event)" />
         } @else {
         <ul class="counts" aria-label="Progress">
           <li><strong>{{ counts().total | number }}</strong> {{ words().rows }}</li>
@@ -594,16 +594,9 @@ export class MapPage implements OnInit {
     const found = this.localCodesMatching().length;
     return found > LOCAL_CODES_SHOWN ? `${found} local codes. Showing the first ${LOCAL_CODES_SHOWN}; type to narrow them.` : `${found} local ${found === 1 ? 'code' : 'codes'}.`;
   });
-  /** Local codes no row has as an accepted target, in a map from SNOMED CT. Suggestions do not count. */
-  protected readonly unusedLocalCodes = computed(() => {
-    const used = new Set<string>();
-    for (const row of this.rows()) {
-      if (row.status === 'MAPPED') {
-        row.targets.forEach((target) => used.add(target.code));
-      }
-    }
-    return this.localCodes().filter((local) => !used.has(local.code));
-  });
+  /** Each local code with the concepts mapped to it, in a map from SNOMED CT. */
+  protected readonly localLines = computed(() => localCodeLines(this.localCodes(), this.rows()));
+  protected readonly unmappedLocalCodes = computed(() => this.localLines().filter((line) => line.mappedFrom.length === 0).length);
   /** Which view of a map from SNOMED CT is showing: the concepts being mapped, or the local codes. */
   protected readonly tab = signal<'concepts' | 'local'>('concepts');
   /** True while the dialog for searching for concepts to add is open, in a map from SNOMED CT. */
@@ -611,8 +604,6 @@ export class MapPage implements OnInit {
   /** True while the dialog for importing concepts is open. */
   protected readonly importing = signal(false);
   private readonly rows = signal<MapRow[]>([]);
-  /** Every row, whatever the table's filters, for the view of local codes. */
-  protected readonly allRows = this.rows.asReadonly();
   protected readonly loadError = signal<string | null>(null);
   protected readonly pageError = signal<string | null>(null);
 

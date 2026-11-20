@@ -380,5 +380,7 @@ Where the first part differs from the sections above:
 - **Add concepts** is a dialog holding the concept search. It stays open between additions and
   hands over to the import dialog for a list or an ECL expression.
 - A map to SNOMED CT has no tabs: its local codes are its rows.
-- The local codes view and the dialog are their own components (`map-local-codes.ts`,
-  `map-add-concepts.ts`), to keep the page from growing further.
+- The local codes view, the dialog, the detail of a row and the form for adding local codes are
+  their own components (`map-local-codes.ts`, `map-add-concepts.ts`, `map-row-detail.ts`,
+  `map-add-codes.ts`), to keep the page from growing further. The row detail works out what a
+  change does to a row; the page saves it.

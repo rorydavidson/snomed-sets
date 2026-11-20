@@ -93,7 +93,7 @@ describe('MapPage', () => {
 
     page.querySelector<HTMLElement>('tr[data-row="1"]')!.click();
     await fixture.whenStable();
-    const accept = [...page.querySelectorAll<HTMLButtonElement>('.panel button')].find((button) => button.textContent?.trim() === 'Accept');
+    const accept = [...page.querySelectorAll<HTMLButtonElement>('app-map-row-detail button')].find((button) => button.textContent?.trim() === 'Accept');
     accept!.click();
 
     const save = http.expectOne('/api/maps/7/rows/1');
@@ -173,7 +173,7 @@ describe('MapPage', () => {
     page.querySelector<HTMLElement>('tr[data-row="1"]')!.click();
     await fixture.whenStable();
 
-    expect(page.querySelector('.panel')?.textContent).toContain('too short to look for automatically');
+    expect(page.querySelector('app-map-row-detail')?.textContent).toContain('too short to look for automatically');
   });
 
   it('opens a row when clicked and closes it when clicked again', async () => {

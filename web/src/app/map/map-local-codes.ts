@@ -1,6 +1,7 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, computed, effect, input, output, signal, untracked } from '@angular/core';
 import { MapRow, SourceRow } from '../core/map-api';
+import { hasWords } from '../core/word-filter';
 import { CodeListInput } from './code-list-input';
 
 const PAGE_SIZE = 50;
@@ -151,16 +152,9 @@ export class MapLocalCodes {
   });
   protected readonly unmappedCount = computed(() => this.lines().filter((line) => line.mappedFrom.length === 0).length);
 
-  protected readonly shown = computed(() => {
-    const words = this.filter().toLowerCase().split(/\s+/).filter((word) => word !== '');
-    return this.lines().filter((line) => {
-      if (this.onlyUnmapped() && line.mappedFrom.length > 0) {
-        return false;
-      }
-      const searchable = `${line.code} ${line.term}`.toLowerCase();
-      return words.every((word) => searchable.includes(word));
-    });
-  });
+  protected readonly shown = computed(() =>
+    this.lines().filter((line) => (!this.onlyUnmapped() || line.mappedFrom.length === 0) && hasWords(`${line.code} ${line.term}`, this.filter())),
+  );
   protected readonly pageCount = computed(() => Math.ceil(this.shown().length / PAGE_SIZE));
   protected readonly pageLines = computed(() => this.shown().slice(this.page() * PAGE_SIZE, (this.page() + 1) * PAGE_SIZE));
 

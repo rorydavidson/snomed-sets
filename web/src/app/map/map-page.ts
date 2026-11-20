@@ -19,6 +19,7 @@ import {
   relationshipsFor,
 } from '../core/map-api';
 import { Concept } from '../core/value-set-api';
+import { hasWords } from '../core/word-filter';
 import { ConceptDetails } from '../value-set/concept-details';
 import { ConceptPicker } from '../value-set/concept-picker';
 import { IdentifierImport } from '../value-set/identifier-import';
@@ -596,13 +597,7 @@ export class MapPage implements OnInit {
   /** The codes targets are chosen from, in a map from SNOMED CT. Empty otherwise. */
   protected readonly localCodes = signal<SourceRow[]>([]);
   protected readonly localFilter = signal('');
-  protected readonly localCodesMatching = computed(() => {
-    const words = this.localFilter().toLowerCase().split(/\s+/).filter((word) => word !== '');
-    return this.localCodes().filter((local) => {
-      const searchable = `${local.code} ${local.term}`.toLowerCase();
-      return words.every((word) => searchable.includes(word));
-    });
-  });
+  protected readonly localCodesMatching = computed(() => this.localCodes().filter((local) => hasWords(`${local.code} ${local.term}`, this.localFilter())));
   protected readonly localCodesShown = computed(() => this.localCodesMatching().slice(0, LOCAL_CODES_SHOWN));
   protected readonly localCodesLabel = computed(() => {
     const found = this.localCodesMatching().length;
@@ -1070,12 +1065,6 @@ export class MapPage implements OnInit {
     const byId = new Map(changed.map((row) => [row.id, row]));
     this.rows.update((rows) => rows.map((row) => byId.get(row.id) ?? row));
   }
-}
-
-/** True when the text has every word typed into a filter, in any order. An empty filter lets everything through. */
-function hasWords(text: string, filter: string): boolean {
-  const searchable = text.toLowerCase();
-  return filter.toLowerCase().split(/\s+/).every((word) => searchable.includes(word));
 }
 
 function choice(target: MapTarget): { code: string; relationship: Relationship } {

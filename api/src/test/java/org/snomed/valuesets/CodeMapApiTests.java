@@ -212,13 +212,66 @@ class CodeMapApiTests {
 				new DescriptionMatch("Cold", "en", COLD_FINDING), new DescriptionMatch("Cold", "en", COMMON_COLD)));
 		matchAllTerms(id);
 
-		mvc.perform(post("/api/maps/" + id + "/accepted-suggestions").with(signedInAs("alice")).with(csrf()))
-				.andExpect(jsonPath("$.accepted").value(1));
+		String both = "{\"rowIds\": [" + rowId(id, "A1") + ", " + rowId(id, "a1") + "]}";
+		mvc.perform(post("/api/maps/" + id + "/accepted-suggestions").contentType(MediaType.APPLICATION_JSON)
+				.content(both).with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$", hasSize(2)))
+				.andExpect(jsonPath("$[0].status").value("MAPPED"))
+				.andExpect(jsonPath("$[0].targets[0].origin").value("EXACT_TERM"))
+				.andExpect(jsonPath("$[1].status").value("SUGGESTED"))
+				.andExpect(jsonPath("$[1].targets", hasSize(2)));
 
 		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
 				.andExpect(jsonPath("$[0].status").value("MAPPED"))
-				.andExpect(jsonPath("$[1].status").value("SUGGESTED"))
-				.andExpect(jsonPath("$[1].targets", hasSize(2)));
+				.andExpect(jsonPath("$[1].status").value("SUGGESTED"));
+	}
+
+	@Test
+	void suggestionsAreDismissedTogetherAndOnlyOnTheRowsChosen() throws Exception {
+		long id = createMap("alice");
+		given(snowstorm.descriptionsMatching(eq("asthma"), eq(RELEASE), anyCollection(), anyInt()))
+				.willReturn(List.of(new DescriptionMatch("Asthma", "en", ASTHMA)));
+		given(snowstorm.descriptionsMatching(eq("cold"), eq(RELEASE), anyCollection(), anyInt())).willReturn(List.of(
+				new DescriptionMatch("Cold", "en", COLD_FINDING), new DescriptionMatch("Cold", "en", COMMON_COLD)));
+		matchAllTerms(id);
+
+		mvc.perform(post("/api/maps/" + id + "/dismissed-suggestions").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"rowIds\": [" + rowId(id, "a1") + "]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$", hasSize(1)))
+				.andExpect(jsonPath("$[0].status").value("UNMAPPED"))
+				.andExpect(jsonPath("$[0].targets", hasSize(0)))
+				// Still counts as looked for, so the same suggestions do not come straight back.
+				.andExpect(jsonPath("$[0].termChecked").value(true));
+
+		mvc.perform(get("/api/maps/" + id + "/rows").with(signedInAs("alice")))
+				.andExpect(jsonPath("$[0].status").value("SUGGESTED"))
+				.andExpect(jsonPath("$[1].status").value("UNMAPPED"));
+	}
+
+	@Test
+	void acceptingOrDismissingLeavesRowsAlreadyDecidedAlone() throws Exception {
+		long id = createMap("alice");
+		long asthma = rowId(id, "A1");
+		given(snowstorm.activeConcepts(anyList(), eq(RELEASE))).willReturn(new ExpansionPage(List.of(ASTHMA), 1, 0, 1));
+		mvc.perform(put("/api/maps/" + id + "/rows/" + asthma).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"targets\": [{\"code\": \"195967001\"}]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(status().isOk());
+
+		mvc.perform(post("/api/maps/" + id + "/dismissed-suggestions").contentType(MediaType.APPLICATION_JSON)
+				.content("{\"rowIds\": [" + asthma + "]}").with(signedInAs("alice")).with(csrf()))
+				.andExpect(jsonPath("$[0].status").value("MAPPED"))
+				.andExpect(jsonPath("$[0].targets", hasSize(1)));
+	}
+
+	@Test
+	void suggestionsOfSomeoneElsesMapCannotBeChanged() throws Exception {
+		long id = createMap("alice");
+		String chosen = "{\"rowIds\": [" + rowId(id, "A1") + "]}";
+
+		mvc.perform(post("/api/maps/" + id + "/accepted-suggestions").contentType(MediaType.APPLICATION_JSON)
+				.content(chosen).with(signedInAs("bob")).with(csrf())).andExpect(status().isNotFound());
+		mvc.perform(post("/api/maps/" + id + "/dismissed-suggestions").contentType(MediaType.APPLICATION_JSON)
+				.content(chosen).with(signedInAs("bob")).with(csrf())).andExpect(status().isNotFound());
 	}
 
 	@Test

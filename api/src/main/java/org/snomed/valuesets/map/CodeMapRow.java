@@ -106,6 +106,17 @@ public class CodeMapRow {
 	}
 
 	/**
+	 * Drops suggestions nobody accepted. The row still counts as looked for, so the same
+	 * suggestions do not come straight back.
+	 */
+	void dismissSuggestions() {
+		if (status == Status.SUGGESTED) {
+			targets.clear();
+			status = Status.UNMAPPED;
+		}
+	}
+
+	/**
 	 * Sets the targets the owner chose, in their order. A target that was already on the row, as a
 	 * suggestion or otherwise, keeps its record of how it got there.
 	 */

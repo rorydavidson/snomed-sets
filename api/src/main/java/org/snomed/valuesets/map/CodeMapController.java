@@ -2,7 +2,6 @@ package org.snomed.valuesets.map;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -108,9 +107,18 @@ public class CodeMapController {
 		return termMatches.match(id, request.rowIds(), user);
 	}
 
+	/** Accepts the suggestion of each of these rows that has exactly one. Returns the rows as they are afterwards. */
 	@PostMapping("/{id}/accepted-suggestions")
-	public Map<String, Integer> acceptSingleSuggestions(@PathVariable long id, CurrentUser user) {
-		return Map.of("accepted", service.acceptSingleSuggestions(id, user));
+	public List<RowView> acceptSuggestions(@PathVariable long id, @Valid @RequestBody RowSelection selection,
+			CurrentUser user) {
+		return service.acceptSuggestions(id, selection.rowIds(), user);
+	}
+
+	/** Drops the suggestions of these rows, leaving them unmapped. Returns the rows as they are afterwards. */
+	@PostMapping("/{id}/dismissed-suggestions")
+	public List<RowView> dismissSuggestions(@PathVariable long id, @Valid @RequestBody RowSelection selection,
+			CurrentUser user) {
+		return service.dismissSuggestions(id, selection.rowIds(), user);
 	}
 
 	/** The map as it stands, as a comma-separated file, or tab-separated with format=tsv. */
@@ -123,6 +131,11 @@ public class CodeMapController {
 				.header(HttpHeaders.CONTENT_DISPOSITION,
 						ContentDisposition.attachment().filename(file.fileName()).build().toString())
 				.body(file.content());
+	}
+
+	/** Rows chosen to be changed together. Any number up to a whole map, as nothing is looked up for them. */
+	public record RowSelection(
+			@NotNull @Size(min = 1, max = CodeMapService.MAX_ROWS) List<@NotNull Long> rowIds) {
 	}
 
 	public record MatchRequest(

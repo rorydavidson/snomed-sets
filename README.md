@@ -128,8 +128,9 @@ SNOMED CT, publishing and versions, upgrading and automap are still to come, and
   nothing is mapped until the owner accepts it. A code with exactly one suggestion can be accepted
   with Enter, or all such codes together with one button. A code with several waits for a choice.
 - **The workbench.** Codes are in a table with their status (Unmapped, Suggested, Mapped, No map),
-  a status filter and a text filter. Selecting one opens its targets beside the table, with the
-  concept search and concept details used for hand-picked sets. A code can have up to ten targets.
+  a status filter and a text filter. The table runs the full width of the page. Selecting a code
+  opens its targets under its row, with the concept search and concept details used for
+  hand-picked sets. A code can have up to ten targets.
   Each has a relationship: Equivalent, SNOMED CT concept is broader, SNOMED CT concept is narrower,
   or Related. "No map" records that nothing fits, which is not the same as not having looked. A
   note can be kept with each code. Every change is saved as it is made. Arrow keys move between

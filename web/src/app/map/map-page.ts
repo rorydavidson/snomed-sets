@@ -37,8 +37,8 @@ const STATUS_LABELS: Record<RowStatus, string> = {
 };
 
 /**
- * Where a map is worked on: its local codes in a table, and beside it the targets of the code
- * that is selected. Every change to a row is saved as it is made.
+ * Where a map is worked on: its local codes in a table across the page, with the targets of the
+ * selected code opening under its row. Every change to a row is saved as it is made.
  */
 @Component({
   selector: 'app-map-page',
@@ -124,8 +124,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
           </p>
         }
 
-        <div class="columns">
-          <section class="wide">
+        <section class="workbench">
             <div class="actions">
               <div class="field">
                 <label for="status-filter">Show</label>
@@ -145,7 +144,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
             @if (shown().length === 0) {
               <p class="muted" role="status">{{ counts().total === 0 ? 'This map has no codes yet. Add some to start.' : 'No codes match.' }}</p>
             } @else {
-              <p class="meta">Arrow keys move between rows. Enter accepts a single suggestion. N marks a row as having no map.</p>
+              <p class="meta">Select a code to see or choose its SNOMED CT concepts. Arrow keys move between rows. Enter accepts a single suggestion. N marks a row as having no map.</p>
               <div class="table-scroll">
                 <table class="map-table">
                   <thead>
@@ -168,28 +167,18 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                             <div [class.suggestion]="row.status === 'SUGGESTED'">
                               {{ target.term }} <span class="meta mono">{{ target.code }}</span>
                               @if (target.relationship !== 'EQUIVALENT') {
-                                <span class="meta">({{ relationshipLabel(target.relationship) }})</span>
+                                <span class="meta">&nbsp;({{ relationshipLabel(target.relationship) }})</span>
                               }
                             </div>
                           }
                         </td>
                       </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-              @if (pageCount() > 1) {
-                <div class="pager actions">
-                  <button type="button" class="button button-secondary button-small" [disabled]="page() === 0" (click)="page.set(page() - 1)">Previous</button>
-                  <span class="meta">Page {{ page() + 1 }} of {{ pageCount() }}</span>
-                  <button type="button" class="button button-secondary button-small" [disabled]="page() >= pageCount() - 1" (click)="page.set(page() + 1)">Next</button>
-                </div>
-              }
-            }
-          </section>
-
-          <section class="panel">
-            @if (selected(); as row) {
+                      @if (row.id === selectedId()) {
+                        <!-- Under its own row, so the table keeps the full width of the page. -->
+                        <tr class="detail">
+                          <td colspan="4">
+                            <div class="panel">
+              <div class="chosen">
               <h2><span class="mono">{{ row.code }}</span> {{ row.term }}</h2>
               @if (rowError(); as message) {
                 <p class="field-error" role="alert">{{ message }}</p>
@@ -253,15 +242,30 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                 <textarea id="row-note" rows="2" maxlength="500" [value]="row.note ?? ''" (change)="saveNote(row, $any($event.target).value)"></textarea>
               </div>
 
+              </div>
               @if (row.status !== 'NO_MAP') {
+                <div class="choose">
                 <h3>Choose a concept</h3>
                 <app-concept-picker [branch]="map.branch" [inList]="acceptedCodes()" (add)="addTargets(row, $event)" (details)="shownConcept.set($event)" />
+                </div>
               }
-            } @else {
-              <p class="muted">Select a code to see or choose its SNOMED CT concepts.</p>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+              @if (pageCount() > 1) {
+                <div class="pager actions">
+                  <button type="button" class="button button-secondary button-small" [disabled]="page() === 0" (click)="page.set(page() - 1)">Previous</button>
+                  <span class="meta">Page {{ page() + 1 }} of {{ pageCount() }}</span>
+                  <button type="button" class="button button-secondary button-small" [disabled]="page() >= pageCount() - 1" (click)="page.set(page() + 1)">Next</button>
+                </div>
+              }
             }
-          </section>
-        </div>
+        </section>
 
         @if (shownConcept(); as conceptId) {
           <app-concept-details [conceptId]="conceptId" [branch]="map.branch" (closed)="shownConcept.set(null)" />
@@ -295,12 +299,38 @@ const STATUS_LABELS: Record<RowStatus, string> = {
       border-radius: var(--radius-md);
     }
 
-    .columns > .panel {
-      position: sticky;
-      top: var(--space-4);
+    .workbench {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
     }
 
-    .map-table tbody tr {
+    .map-table {
+      width: 100%;
+    }
+
+    /* The selected code's targets on the left, the concept search on the right. */
+    .detail .panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-8);
+      border-left: 4px solid var(--color-primary);
+    }
+
+    .detail .panel > div {
+      display: flex;
+      flex: 1 1 360px;
+      flex-direction: column;
+      gap: var(--space-3);
+      min-width: 0;
+    }
+
+    .detail > td {
+      padding: var(--space-3) var(--space-4) var(--space-5);
+      background: var(--surface-inset);
+    }
+
+    .map-table tbody tr:not(.detail) {
       cursor: pointer;
     }
 

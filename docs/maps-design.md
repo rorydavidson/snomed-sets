@@ -348,3 +348,13 @@ Where the first part differs from the sections above:
 - A dismissed row stays `term_checked`, so its suggestions do not come straight back. In a map from
   SNOMED CT they do come back when local codes are added, because that has unmapped rows matched
   again.
+
+## 18. Local codes nothing is mapped to, and searching for concepts to add
+
+- A map from SNOMED CT is built from the concept side, so nothing showed which local codes had
+  been left out. The page now counts the local codes that are not an accepted target of any row
+  and lists them in a panel. It is worked out in the browser; no new endpoint.
+- Add concepts on a map from SNOMED CT opens the concept search, with the import of a list or an
+  ECL expression one button further. Before, only the import was offered there.
+- The list is read only. Starting from a local code and finding a concept for it is still two
+  steps: add the concept, then choose the code on its row.

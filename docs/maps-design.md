@@ -367,3 +367,18 @@ Where the first part differs from the sections above:
   a reload goes back to the original order with no filters.
 - The target column sorts by a row's first target and filters on the code and term of any of them.
 - The box that ticks all suggestions still ticks what the filters let through, on every page.
+
+## 20. A map from SNOMED CT in two views
+
+- Section 18 put the local codes with nothing mapped, the concept search and the form for adding
+  local codes in panels stacked above the map table. With all three open the table was pushed
+  down the page and it was hard to tell which panel did what.
+- The page of a map from SNOMED CT now has two tabs. **Concepts** is the map table and nothing
+  else. **Local codes** is a table of every local code with the concepts mapped to it, a filter,
+  a switch for those with nothing mapped, and the form for adding more. The tab carries the count
+  of codes with nothing mapped, so it is seen without opening it.
+- **Add concepts** is a dialog holding the concept search. It stays open between additions and
+  hands over to the import dialog for a list or an ECL expression.
+- A map to SNOMED CT has no tabs: its local codes are its rows.
+- The local codes view and the dialog are their own components (`map-local-codes.ts`,
+  `map-add-concepts.ts`), to keep the page from growing further.

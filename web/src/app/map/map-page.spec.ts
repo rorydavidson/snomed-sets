@@ -74,7 +74,7 @@ describe('MapPage', () => {
     const page = fixture.nativeElement as HTMLElement;
     expect(page.querySelector('tr[data-row="1"]')?.textContent).toContain('Suggested');
     expect(page.querySelector('tr[data-row="1"]')?.textContent).toContain('Asthma');
-    expect(page.textContent).toContain('Accept all 1');
+    expect(page.textContent).toContain('1 code has suggestions waiting');
   });
 
   it('says so and offers to carry on when matching fails', async () => {
@@ -103,6 +103,58 @@ describe('MapPage', () => {
     await fixture.whenStable();
 
     expect(page.querySelector('tr[data-row="1"]')?.textContent).toContain('Mapped');
+  });
+
+  it('accepts the ticked suggestions together, and says which were left to choose by hand', async () => {
+    const cold: MapTarget = { ...ASTHMA, code: '82272006', term: 'Cold' };
+    const chill: MapTarget = { ...ASTHMA, code: '84162001', term: 'Cold' };
+    const suggested = { status: 'SUGGESTED' as const, termChecked: true };
+    const page = await load([
+      row(1, 'D01', 'Asthma', { ...suggested, targets: [ASTHMA] }),
+      row(2, 'D02', 'Cold', { ...suggested, targets: [cold, chill] }),
+      row(3, 'D03', 'Gout', { termChecked: true }),
+    ]);
+
+    // Only suggestions can be ticked.
+    expect(page.querySelector('tr[data-row="3"] input[type="checkbox"]')).toBeNull();
+    page.querySelector<HTMLInputElement>('thead input[type="checkbox"]')!.click();
+    await fixture.whenStable();
+    expect(page.textContent).toContain('2 ticked');
+    expect(page.textContent).toContain('1 of them has several suggestions');
+    // Ticking a row does not open it.
+    expect(page.querySelector('tr.detail')).toBeNull();
+
+    [...page.querySelectorAll<HTMLButtonElement>('.bulk button')].find((button) => button.textContent?.trim() === 'Accept')!.click();
+
+    const accept = http.expectOne('/api/maps/7/accepted-suggestions');
+    expect(accept.request.body).toEqual({ rowIds: [1, 2] });
+    accept.flush([
+      row(1, 'D01', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [ASTHMA] }),
+      row(2, 'D02', 'Cold', { ...suggested, targets: [cold, chill] }),
+    ]);
+    await fixture.whenStable();
+
+    expect(page.querySelector('tr[data-row="1"]')?.textContent).toContain('Mapped');
+    expect(page.textContent).toContain('Accepted 1 suggestion. 1 left to choose by hand, as it has several suggestions.');
+    expect(page.textContent).not.toContain('ticked');
+  });
+
+  it('dismisses only the suggestions that were ticked', async () => {
+    const suggested = { status: 'SUGGESTED' as const, termChecked: true, targets: [ASTHMA] };
+    const page = await load([row(1, 'D01', 'Asthma', suggested), row(2, 'D02', 'Asthma attack', suggested)]);
+
+    page.querySelector<HTMLInputElement>('tr[data-row="2"] input[type="checkbox"]')!.click();
+    await fixture.whenStable();
+    [...page.querySelectorAll<HTMLButtonElement>('.bulk button')].find((button) => button.textContent?.trim() === 'Dismiss')!.click();
+
+    const dismiss = http.expectOne('/api/maps/7/dismissed-suggestions');
+    expect(dismiss.request.body).toEqual({ rowIds: [2] });
+    dismiss.flush([row(2, 'D02', 'Asthma attack', { termChecked: true })]);
+    await fixture.whenStable();
+
+    expect(page.querySelector('tr[data-row="1"]')?.textContent).toContain('Suggested');
+    expect(page.querySelector('tr[data-row="2"]')?.textContent).toContain('Unmapped');
+    expect(page.textContent).toContain('Dismissed the suggestions of 1 code.');
   });
 
   it('marks a row as having no map from the keyboard', async () => {

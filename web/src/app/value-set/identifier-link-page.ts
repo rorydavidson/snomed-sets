@@ -16,7 +16,7 @@ import { ValueSetApi, describeError } from '../core/value-set-api';
         <div class="error-panel" role="alert">
           <h1>No value set could be found for {{ sctid }}</h1>
           <p>{{ message }}</p>
-          <a routerLink="/">Back to the library</a>
+          <a routerLink="/">Back to the catalogue</a>
         </div>
       } @else {
         <p class="muted" role="status">Finding the value set for {{ sctid }}…</p>

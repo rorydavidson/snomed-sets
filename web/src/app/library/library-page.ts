@@ -18,7 +18,7 @@ import { StepsTip } from './steps-tip';
     <main class="page" id="library">
       <div class="card-heading">
         @if (signedIn()) {
-          <h1 class="grow-heading">Library</h1>
+          <h1 class="grow-heading">Catalogue</h1>
           <a class="button button-primary" routerLink="/value-sets/new">New value set</a>
         } @else {
           <!-- The hero holds the page's h1, so the library is a section of the page here. -->
@@ -33,7 +33,7 @@ import { StepsTip } from './steps-tip';
 
       @if (error(); as message) {
         <div class="error-panel" role="alert">
-          <h2>The library could not be loaded</h2>
+          <h2>The catalogue could not be loaded</h2>
           <p>{{ message }}</p>
           <button type="button" class="button button-secondary" (click)="load()">Try again</button>
         </div>

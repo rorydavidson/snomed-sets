@@ -9,55 +9,55 @@ import { ValueSetPage } from './value-set/value-set-page';
 const editor = () => import('./value-set/value-set-editor-page').then((m) => m.ValueSetEditorPage);
 
 export const routes: Routes = [
-  { path: '', component: LibraryPage, title: 'Library · SNOMED CT value sets' },
+  { path: '', component: LibraryPage, title: 'Catalogue · Sets & Maps' },
   {
     path: 'value-sets/new',
     loadComponent: editor,
     canActivate: [signedInGuard],
-    title: 'New value set · SNOMED CT value sets',
+    title: 'New value set · Sets & Maps',
   },
   // Share links that name a set by its SNOMED CT identifier rather than its number.
-  { path: 'value-sets/sct/:sctid', component: IdentifierLinkPage, title: 'Value set · SNOMED CT value sets' },
-  { path: 'value-sets/sct/:sctid/versions/:version', component: IdentifierLinkPage, title: 'Value set · SNOMED CT value sets' },
-  { path: 'value-sets/:id', component: ValueSetPage, title: 'Value set · SNOMED CT value sets' },
+  { path: 'value-sets/sct/:sctid', component: IdentifierLinkPage, title: 'Value set · Sets & Maps' },
+  { path: 'value-sets/sct/:sctid/versions/:version', component: IdentifierLinkPage, title: 'Value set · Sets & Maps' },
+  { path: 'value-sets/:id', component: ValueSetPage, title: 'Value set · Sets & Maps' },
   // A fixed link to one published version, for sharing.
-  { path: 'value-sets/:id/versions/:version', component: ValueSetPage, title: 'Value set · SNOMED CT value sets' },
+  { path: 'value-sets/:id/versions/:version', component: ValueSetPage, title: 'Value set · Sets & Maps' },
   {
     path: 'value-sets/:id/edit',
     loadComponent: editor,
     canActivate: [signedInGuard],
-    title: 'Edit value set · SNOMED CT value sets',
+    title: 'Edit value set · Sets & Maps',
   },
   // Maps are private to their owner for now, so every map page needs a sign-in.
   {
     path: 'maps',
     loadComponent: () => import('./map/maps-page').then((m) => m.MapsPage),
     canActivate: [signedInGuard],
-    title: 'Maps · SNOMED CT value sets',
+    title: 'Maps · Sets & Maps',
   },
   {
     path: 'maps/new',
     loadComponent: () => import('./map/map-new-page').then((m) => m.MapNewPage),
     canActivate: [signedInGuard],
-    title: 'New map · SNOMED CT value sets',
+    title: 'New map · Sets & Maps',
   },
   {
     path: 'maps/:id',
     loadComponent: () => import('./map/map-page').then((m) => m.MapPage),
     canActivate: [signedInGuard],
-    title: 'Map · SNOMED CT value sets',
+    title: 'Map · Sets & Maps',
   },
   // Loaded only when opened, as most visits never need it.
   {
     path: 'profile',
     loadComponent: () => import('./profile/profile-page').then((m) => m.ProfilePage),
     canActivate: [signedInGuard],
-    title: 'Profile settings · SNOMED CT value sets',
+    title: 'Profile settings · Sets & Maps',
   },
   {
     path: 'privacy',
     loadComponent: () => import('./privacy/privacy-page').then((m) => m.PrivacyPage),
-    title: 'Privacy · SNOMED CT value sets',
+    title: 'Privacy · Sets & Maps',
   },
-  { path: '**', component: NotFoundPage, title: 'Not found · SNOMED CT value sets' },
+  { path: '**', component: NotFoundPage, title: 'Not found · Sets & Maps' },
 ];

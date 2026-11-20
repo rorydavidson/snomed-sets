@@ -6,7 +6,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   selector: 'app-library-views',
   imports: [RouterLink, RouterLinkActive],
   template: `
-    <nav class="views" aria-label="Library views">
+    <nav class="views" aria-label="Catalogue views">
       <a routerLink="/" routerLinkActive="current" [routerLinkActiveOptions]="{ exact: true }" ariaCurrentWhenActive="page">Value sets</a>
       <a routerLink="/maps" routerLinkActive="current" ariaCurrentWhenActive="page">Maps</a>
     </nav>

@@ -8,7 +8,7 @@ import { RouterLink } from '@angular/router';
     <main class="page">
       <h1>Page not found</h1>
       <p>The address may be wrong, or the page may have moved.</p>
-      <p><a routerLink="/">Go to the library</a></p>
+      <p><a routerLink="/">Go to the catalogue</a></p>
     </main>
   `,
 })

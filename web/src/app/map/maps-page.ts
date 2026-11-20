@@ -12,7 +12,7 @@ import { LibraryViews } from '../library/library-views';
   template: `
     <main class="page">
       <div class="card-heading">
-        <h1 class="grow-heading">Library</h1>
+        <h1 class="grow-heading">Catalogue</h1>
         <a class="button button-primary" routerLink="/maps/new">New map</a>
       </div>
       <app-library-views />

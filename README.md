@@ -1,31 +1,31 @@
 <p align="center">
-  <img src="web/public/logo.svg" alt="SNOMED CT value sets logo" width="96" height="96">
+  <img src="web/public/logo.svg" alt="Sets &amp; Maps logo" width="96" height="96">
 </p>
 
-# SNOMED CT value sets
+# Sets & Maps
 
-A collaborative application for creating, managing and sharing SNOMED CT value sets.
+A collaborative application for creating, managing and sharing SNOMED CT value sets and simple maps to and from SNOMED CT.
 
 ## What it does
 
 ### Without signing in
 
-- Visitors land on a short introduction above the library: what a value set is, with an example of
+- Visitors land on a short introduction above the catalogue: what a value set is, with an example of
   an ECL rule and the concepts it gathers, and a "Sign in with your SNOMED International account"
-  button. People who are signed in go straight to their library instead.
-- Anyone can open the library and see the value sets that have been published and shared with
+  button. People who are signed in go straight to the catalogue instead.
+- Anyone can open the catalogue and see the value sets that have been published and shared with
   the community. Drafts and private sets are not shown, and nor is who made a set.
 - A published set can be opened to read its definition, versions and concept lists, and downloaded
   in the Global Patient Set layout. Other formats, concept details and everything that changes a
   set need a SNOMED International account.
 
-### Library
+### Catalogue
 
 - Every value set you own, and every set others have shared with the community, in one compact table.
 - Above the table, a tip shows the three steps of making a value set until you close it. Closing it
   is remembered in that browser only, so nothing about it is stored on the server.
 - Search runs when you press Search, not while you type, and switches between two kinds:
-  - **Value sets** matches words in set names, descriptions and tags, within the library already
+  - **Value sets** matches words in set names, descriptions and tags, within the catalogue already
     on the page. Clicking a tag searches for the other sets that carry it.
   - **Concepts in sets** finds sets whose concept list holds a concept with any active description,
     synonyms included, in any language of its edition, with words starting with each word typed, in
@@ -109,7 +109,7 @@ concepts, in one direction. **To SNOMED CT**, each local code is given one or mo
 for now. Publishing and versions, upgrading and automap are still to come, and are described in
 `docs/maps-design.md`.
 
-- **Two library views.** Signed-in people have a switch at the top of the library between Value
+- **Two catalogue views.** Signed-in people have a switch at the top of the catalogue between Value
   sets and Maps. The Maps view lists your own maps with the release each is built on, how many
   codes it has and how many are done. Maps are private for now, so visitors see no switch.
 - **Creating a map.** Choose the direction, which cannot be changed afterwards. Give the map a

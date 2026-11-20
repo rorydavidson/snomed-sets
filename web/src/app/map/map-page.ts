@@ -10,17 +10,18 @@ import {
   MapApi,
   MapRow,
   MapTarget,
-  RELATIONSHIPS,
   Relationship,
   RowStatus,
   RowUpdate,
   SourceRow,
   describeMapError,
   mapDownloadUrl,
+  relationshipsFor,
 } from '../core/map-api';
 import { Concept } from '../core/value-set-api';
 import { ConceptDetails } from '../value-set/concept-details';
 import { ConceptPicker } from '../value-set/concept-picker';
+import { IdentifierImport } from '../value-set/identifier-import';
 import { CodeListInput } from './code-list-input';
 
 const PAGE_SIZE = 50;
@@ -28,6 +29,37 @@ const PAGE_SIZE = 50;
 const SHORTEST_SEARCH = 3;
 
 type StatusFilter = RowStatus | 'ALL';
+
+/** How many local codes are listed to choose from at once. The filter narrows a longer list. */
+const LOCAL_CODES_SHOWN = 50;
+
+/** The words that differ between a map to SNOMED CT and a map from it. */
+const WORDS = {
+  TO_SNOMED: {
+    rows: 'codes',
+    row: 'code',
+    source: 'Code',
+    target: 'SNOMED CT',
+    matching: 'Looking for each term in SNOMED CT',
+    unchecked: 'not been looked for in SNOMED CT yet',
+    single: 'exactly one concept with the same term',
+    suggested: 'a description with the same words',
+    noMap: 'nothing in SNOMED CT fits',
+    remove: 'Remove this code',
+  },
+  FROM_SNOMED: {
+    rows: 'concepts',
+    row: 'concept',
+    source: 'SNOMED CT concept',
+    target: 'Local code',
+    matching: 'Looking for the names of each concept among the local terms',
+    unchecked: 'not been looked for among the local terms yet',
+    single: 'exactly one local code with one of its names as its term',
+    suggested: 'one of the names of this concept as its term',
+    noMap: 'none of the local codes fits',
+    remove: 'Remove this concept',
+  },
+};
 
 const STATUS_LABELS: Record<RowStatus, string> = {
   UNMAPPED: 'Unmapped',
@@ -42,7 +74,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
  */
 @Component({
   selector: 'app-map-page',
-  imports: [RouterLink, DecimalPipe, ConceptPicker, ConceptDetails, CodeListInput],
+  imports: [RouterLink, DecimalPipe, ConceptPicker, ConceptDetails, CodeListInput, IdentifierImport],
   template: `
     <main class="page">
       <p><a routerLink="/maps">Back to your maps</a></p>
@@ -61,12 +93,19 @@ const STATUS_LABELS: Record<RowStatus, string> = {
           <p>{{ map.description }}</p>
         }
         <p class="meta">
-          {{ map.localSystemName }}{{ map.localSystemVersion ? ' ' + map.localSystemVersion : '' }} to SNOMED CT ·
+          @if (fromSnomed()) {
+            SNOMED CT to {{ map.localSystemName }}{{ map.localSystemVersion ? ' ' + map.localSystemVersion : '' }} ·
+          } @else {
+            {{ map.localSystemName }}{{ map.localSystemVersion ? ' ' + map.localSystemVersion : '' }} to SNOMED CT ·
+          }
           {{ map.codeSystem }} {{ map.codeSystemVersion ?? 'live branch' }}
+          @if (fromSnomed()) {
+            · {{ localCodes().length | number }} local {{ localCodes().length === 1 ? 'code' : 'codes' }} to choose from
+          }
         </p>
 
         <ul class="counts" aria-label="Progress">
-          <li><strong>{{ counts().total | number }}</strong> codes</li>
+          <li><strong>{{ counts().total | number }}</strong> {{ words().rows }}</li>
           <li><strong>{{ counts().MAPPED | number }}</strong> mapped</li>
           <li><strong>{{ counts().NO_MAP | number }}</strong> no map</li>
           <li><strong>{{ counts().SUGGESTED | number }}</strong> suggested</li>
@@ -74,7 +113,10 @@ const STATUS_LABELS: Record<RowStatus, string> = {
         </ul>
 
         <div class="actions">
-          <button type="button" class="button button-secondary" (click)="adding.set(!adding())">Add codes</button>
+          @if (fromSnomed()) {
+            <button type="button" class="button button-secondary" (click)="importing.set(true)">Add concepts</button>
+          }
+          <button type="button" class="button button-secondary" (click)="adding.set(!adding())">{{ fromSnomed() ? 'Add local codes' : 'Add codes' }}</button>
           <a class="button button-secondary" [href]="downloadUrl('CSV')" download>Download (CSV)</a>
           <a class="button button-secondary" [href]="downloadUrl('TSV')" download>Download (TSV)</a>
           <button type="button" class="button button-secondary button-danger" (click)="deleteMap()">Delete map</button>
@@ -89,8 +131,8 @@ const STATUS_LABELS: Record<RowStatus, string> = {
 
         @if (adding()) {
           <section class="panel">
-            <h2>Add codes</h2>
-            <app-code-list-input [existing]="codes()" [room]="room()" (rowsChange)="newRows.set($event)" />
+            <h2>{{ fromSnomed() ? 'Add local codes' : 'Add codes' }}</h2>
+            <app-code-list-input [existing]="localCodeSet()" [room]="room()" (rowsChange)="newRows.set($event)" />
             <div class="actions">
               <button type="button" class="button button-primary" [disabled]="!newRows()?.length || addingRows()" (click)="addRows()">
                 {{ addingRows() ? 'Adding…' : 'Add to the map' }}
@@ -102,12 +144,12 @@ const STATUS_LABELS: Record<RowStatus, string> = {
 
         @if (matching(); as progress) {
           <p class="matching" role="status">
-            Looking for each term in SNOMED CT: {{ progress.done | number }} of {{ progress.total | number }}.
+            {{ words().matching }}: {{ progress.done | number }} of {{ progress.total | number }}.
             <button type="button" class="link-button" (click)="stopMatching()">Stop</button>
           </p>
         } @else if (unchecked().length > 0) {
           <p class="matching">
-            {{ unchecked().length | number }} {{ unchecked().length === 1 ? 'term has' : 'terms have' }} not been looked for in SNOMED CT yet.
+            {{ unchecked().length | number }} {{ unchecked().length === 1 ? words().row + ' has' : words().rows + ' have' }} {{ words().unchecked }}.
             <button type="button" class="link-button" (click)="matchTerms()">Match remaining</button>
           </p>
         }
@@ -116,8 +158,8 @@ const STATUS_LABELS: Record<RowStatus, string> = {
         }
         @if (singleSuggestions() > 0 && !matching()) {
           <p class="matching">
-            {{ singleSuggestions() | number }} {{ singleSuggestions() === 1 ? 'code has' : 'codes have' }} exactly one concept
-            with the same term. The same words can still name different things, so look before you accept them all.
+            {{ singleSuggestions() | number }} {{ singleSuggestions() === 1 ? words().row + ' has' : words().rows + ' have' }}
+            {{ words().single }}. The same words can still name different things, so look before you accept them all.
             <button type="button" class="link-button" [disabled]="accepting()" (click)="acceptSingles()">
               Accept all {{ singleSuggestions() | number }}
             </button>
@@ -129,7 +171,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
               <div class="field">
                 <label for="status-filter">Show</label>
                 <select id="status-filter" (change)="setStatusFilter($any($event.target).value)">
-                  <option value="ALL">All codes</option>
+                  <option value="ALL">All {{ words().rows }}</option>
                   @for (status of statuses; track status) {
                     <option [value]="status" [selected]="statusFilter() === status">{{ statusLabel(status) }} ({{ counts()[status] }})</option>
                   }
@@ -142,20 +184,20 @@ const STATUS_LABELS: Record<RowStatus, string> = {
             </div>
 
             @if (shown().length === 0) {
-              <p class="muted" role="status">{{ counts().total === 0 ? 'This map has no codes yet. Add some to start.' : 'No codes match.' }}</p>
+              <p class="muted" role="status">{{ counts().total === 0 ? 'This map has no ' + words().rows + ' yet. Add some to start.' : 'No ' + words().rows + ' match.' }}</p>
             } @else {
               <p class="meta">
-                Click a code to open its SNOMED CT concepts, and again to close them. Arrow keys move between rows, Space opens
+                Click a row to open its targets, and again to close them. Arrow keys move between rows, Space opens
                 or closes one, Enter accepts a single suggestion and N marks a row as having no map.
               </p>
               <div class="table-scroll">
                 <table class="map-table">
                   <thead>
                     <tr>
-                      <th scope="col">Code</th>
+                      <th scope="col">{{ words().source }}</th>
                       <th scope="col">Term</th>
                       <th scope="col">Status</th>
-                      <th scope="col">SNOMED CT</th>
+                      <th scope="col">{{ words().target }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -183,17 +225,23 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                             <div class="panel">
               <div class="chosen">
               <h2><span class="mono">{{ row.code }}</span> {{ row.term }}</h2>
+              @if (fromSnomed()) {
+                <p class="meta">
+                  {{ row.fullySpecifiedName }}
+                  <button type="button" class="link-button" (click)="shownConcept.set(row.code)">Details</button>
+                </p>
+              }
               @if (rowError(); as message) {
                 <p class="field-error" role="alert">{{ message }}</p>
               }
 
               @if (row.status === 'SUGGESTED') {
                 <p>
-                  {{ row.targets.length === 1 ? 'One concept has' : row.targets.length + ' concepts have' }} a description with
-                  the same words. Nothing is mapped until you accept one.
+                  {{ row.targets.length === 1 ? 'One ' + targetWord() + ' has' : row.targets.length + ' ' + targetWord() + 's have' }}
+                  {{ words().suggested }}. Nothing is mapped until you accept one.
                 </p>
               } @else if (row.status === 'NO_MAP') {
-                <p>Marked as having no map: nothing in SNOMED CT fits.</p>
+                <p>Marked as having no map: {{ words().noMap }}.</p>
               } @else if (row.targets.length === 0) {
                 <p class="muted">{{ unmappedMessage(row) }}</p>
               }
@@ -204,7 +252,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                     <li>
                       <div>
                         <strong>{{ target.term }}</strong>
-                        <span class="meta mono">{{ target.code }} · {{ target.fullySpecifiedName }}</span>
+                        <span class="meta mono">{{ target.code }}{{ target.fullySpecifiedName ? ' · ' + target.fullySpecifiedName : '' }}</span>
                         @if (target.origin === 'EXACT_TERM') {
                           <span class="meta">Found by its term</span>
                         }
@@ -215,13 +263,15 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                         } @else {
                           <label class="visually-hidden" [attr.for]="'relationship-' + target.code">How {{ target.term }} compares</label>
                           <select [id]="'relationship-' + target.code" [disabled]="saving()" (change)="relate(row, target, $any($event.target).value)">
-                            @for (option of relationships; track option.value) {
+                            @for (option of relationships(); track option.value) {
                               <option [value]="option.value" [selected]="option.value === target.relationship">{{ option.label }}</option>
                             }
                           </select>
                           <button type="button" class="link-button" [disabled]="saving()" (click)="removeTarget(row, target)">Remove</button>
                         }
-                        <button type="button" class="link-button" (click)="shownConcept.set(target.code)">Details</button>
+                        @if (!fromSnomed()) {
+                          <button type="button" class="link-button" (click)="shownConcept.set(target.code)">Details</button>
+                        }
                       </div>
                     </li>
                   }
@@ -237,7 +287,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
                 } @else {
                   <button type="button" class="button button-secondary button-small" [disabled]="saving()" (click)="noMap(row)">No map</button>
                 }
-                <button type="button" class="link-button" [disabled]="saving()" (click)="deleteRow(row)">Remove this code</button>
+                <button type="button" class="link-button" [disabled]="saving()" (click)="deleteRow(row)">{{ words().remove }}</button>
               </div>
 
               <div class="field">
@@ -248,8 +298,34 @@ const STATUS_LABELS: Record<RowStatus, string> = {
               </div>
               @if (row.status !== 'NO_MAP') {
                 <div class="choose">
-                <h3>Choose a concept</h3>
-                <app-concept-picker [branch]="map.branch" [inList]="acceptedCodes()" (add)="addTargets(row, $event)" (details)="shownConcept.set($event)" />
+                @if (fromSnomed()) {
+                  <h3>Choose a local code</h3>
+                  @if (localCodes().length === 0) {
+                    <p class="muted">This map has no local codes yet. Add some with Add local codes.</p>
+                  } @else {
+                    <div class="field">
+                      <label for="local-filter">Find a local code or term</label>
+                      <input id="local-filter" type="text" autocomplete="off" [value]="localFilter()" (input)="localFilter.set($any($event.target).value)" />
+                    </div>
+                    <p class="meta" role="status">{{ localCodesLabel() }}</p>
+                    <ul class="pick-list">
+                      @for (local of localCodesShown(); track local.code) {
+                        <li>
+                          <span>{{ local.term }} <span class="meta mono">{{ local.code }}</span></span>
+                          @if (acceptedCodes().has(local.code)) {
+                            <span class="badge">Chosen</span>
+                          } @else {
+                            <button type="button" class="button button-secondary button-small" [disabled]="saving()" (click)="addLocalTarget(row, local)"
+                                    [attr.aria-label]="'Add ' + local.code + ' ' + local.term">Add</button>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  }
+                } @else {
+                  <h3>Choose a concept</h3>
+                  <app-concept-picker [branch]="map.branch" [inList]="acceptedCodes()" (add)="addTargets(row, $event)" (details)="shownConcept.set($event)" />
+                }
                 </div>
               }
                             </div>
@@ -270,6 +346,9 @@ const STATUS_LABELS: Record<RowStatus, string> = {
             }
         </section>
 
+        @if (importing()) {
+          <app-identifier-import [branch]="map.branch" [inList]="codes()" [maxMembers]="room()" (added)="addConcepts($event)" (closed)="importing.set(false)" />
+        }
         @if (shownConcept(); as conceptId) {
           <app-concept-details [conceptId]="conceptId" [branch]="map.branch" (closed)="shownConcept.set(null)" />
         }
@@ -373,9 +452,30 @@ export class MapPage implements OnInit {
   private readonly id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
 
   protected readonly statuses: RowStatus[] = ['UNMAPPED', 'SUGGESTED', 'MAPPED', 'NO_MAP'];
-  protected readonly relationships = RELATIONSHIPS;
 
   protected readonly map = signal<CodeMap | null>(null);
+  protected readonly fromSnomed = computed(() => this.map()?.direction === 'FROM_SNOMED');
+  protected readonly words = computed(() => WORDS[this.map()?.direction ?? 'TO_SNOMED']);
+  /** What a target is called in a sentence. */
+  protected readonly targetWord = computed(() => (this.fromSnomed() ? 'local code' : 'concept'));
+  protected readonly relationships = computed(() => relationshipsFor(this.map()?.direction ?? 'TO_SNOMED'));
+  /** The codes targets are chosen from, in a map from SNOMED CT. Empty otherwise. */
+  protected readonly localCodes = signal<SourceRow[]>([]);
+  protected readonly localFilter = signal('');
+  protected readonly localCodesMatching = computed(() => {
+    const words = this.localFilter().toLowerCase().split(/\s+/).filter((word) => word !== '');
+    return this.localCodes().filter((local) => {
+      const searchable = `${local.code} ${local.term}`.toLowerCase();
+      return words.every((word) => searchable.includes(word));
+    });
+  });
+  protected readonly localCodesShown = computed(() => this.localCodesMatching().slice(0, LOCAL_CODES_SHOWN));
+  protected readonly localCodesLabel = computed(() => {
+    const found = this.localCodesMatching().length;
+    return found > LOCAL_CODES_SHOWN ? `${found} local codes. Showing the first ${LOCAL_CODES_SHOWN}; type to narrow them.` : `${found} local ${found === 1 ? 'code' : 'codes'}.`;
+  });
+  /** True while the dialog for importing concepts is open. */
+  protected readonly importing = signal(false);
   private readonly rows = signal<MapRow[]>([]);
   protected readonly loadError = signal<string | null>(null);
   protected readonly pageError = signal<string | null>(null);
@@ -410,8 +510,13 @@ export class MapPage implements OnInit {
     return counts;
   });
   protected readonly codes = computed<ReadonlySet<string>>(() => new Set(this.rows().map((row) => row.code)));
-  protected readonly room = computed(() => MAX_MAP_ROWS - this.rows().length);
-  /** Rows whose term has not been looked for in SNOMED CT. */
+  /** The local codes the map already has, wherever it keeps them, so none is added twice. */
+  protected readonly localCodeSet = computed<ReadonlySet<string>>(() =>
+    this.fromSnomed() ? new Set(this.localCodes().map((local) => local.code)) : this.codes(),
+  );
+  /** How many more local codes can be added, or in the import dialog how many more concepts. */
+  protected readonly room = computed(() => MAX_MAP_ROWS - (this.adding() && this.fromSnomed() ? this.localCodes().length : this.rows().length));
+  /** Rows whose term has not been looked for on the other side of the map. */
   protected readonly unchecked = computed(() => this.rows().filter((row) => row.status === 'UNMAPPED' && !row.termChecked));
   protected readonly singleSuggestions = computed(
     () => this.rows().filter((row) => row.status === 'SUGGESTED' && row.targets.length === 1).length,
@@ -438,10 +543,11 @@ export class MapPage implements OnInit {
   });
 
   ngOnInit(): void {
-    forkJoin({ map: this.api.get(this.id), rows: this.api.rows(this.id) }).subscribe({
-      next: ({ map, rows }) => {
+    forkJoin({ map: this.api.get(this.id), rows: this.api.rows(this.id), localCodes: this.api.localCodes(this.id) }).subscribe({
+      next: ({ map, rows, localCodes }) => {
         this.map.set(map);
         this.rows.set(rows);
+        this.localCodes.set(localCodes);
         // New codes are term matched straight away, without being asked.
         this.matchTerms();
       },
@@ -451,6 +557,9 @@ export class MapPage implements OnInit {
 
   /** Why an unmapped row has no suggestion. A term under three characters is never searched for. */
   protected unmappedMessage(row: MapRow): string {
+    if (this.fromSnomed()) {
+      return row.termChecked ? 'No local code has one of the names of this concept as its term. Choose one from the list.' : 'Not mapped yet.';
+    }
     if (row.term.trim().length < SHORTEST_SEARCH) {
       return 'This term is too short to look for automatically. Search below to choose a concept.';
     }
@@ -462,7 +571,7 @@ export class MapPage implements OnInit {
   }
 
   protected relationshipLabel(relationship: Relationship): string {
-    return RELATIONSHIPS.find((option) => option.value === relationship)?.label ?? relationship;
+    return this.relationships().find((option) => option.value === relationship)?.label ?? relationship;
   }
 
   protected downloadUrl(format: 'CSV' | 'TSV'): string {
@@ -554,10 +663,10 @@ export class MapPage implements OnInit {
   /** Adds concepts chosen in the search. Suggestions nobody accepted are not kept alongside them. */
   protected addTargets(row: MapRow, concepts: Concept[]): void {
     const kept = row.status === 'MAPPED' ? row.targets.map(choice) : [];
-    const have = new Set(kept.map((target) => target.conceptId));
+    const have = new Set(kept.map((target) => target.code));
     const added = concepts
       .filter((concept) => !have.has(concept.conceptId))
-      .map((concept) => ({ conceptId: concept.conceptId, relationship: 'EQUIVALENT' as Relationship }));
+      .map((concept) => ({ code: concept.conceptId, relationship: 'EQUIVALENT' as Relationship }));
     if (kept.length + added.length > MAX_TARGETS) {
       this.rowError.set(`A code can have at most ${MAX_TARGETS} targets.`);
       return;
@@ -565,6 +674,38 @@ export class MapPage implements OnInit {
     if (added.length > 0) {
       this.save(row, { targets: [...kept, ...added], noMap: false, note: row.note });
     }
+  }
+
+  /** Adds a local code chosen from the list, in a map from SNOMED CT. */
+  protected addLocalTarget(row: MapRow, local: SourceRow): void {
+    const kept = row.status === 'MAPPED' ? row.targets.map(choice) : [];
+    if (kept.length >= MAX_TARGETS) {
+      this.rowError.set(`A concept can have at most ${MAX_TARGETS} targets.`);
+      return;
+    }
+    this.save(row, { targets: [...kept, { code: local.code, relationship: 'EQUIVALENT' }], noMap: false, note: row.note });
+  }
+
+  /** Adds concepts from the import dialog as new rows, in a map from SNOMED CT. */
+  protected addConcepts(concepts: Concept[]): void {
+    this.pageError.set(null);
+    this.api.addConcepts(this.id, concepts.map((concept) => concept.conceptId)).subscribe({
+      next: () => this.reloadAndMatch(),
+      error: (error: unknown) => this.pageError.set(describeMapError(error)),
+    });
+  }
+
+  private reloadAndMatch(): void {
+    forkJoin({ rows: this.api.rows(this.id), localCodes: this.api.localCodes(this.id) }).subscribe({
+      next: ({ rows, localCodes }) => {
+        this.rows.set(rows);
+        this.localCodes.set(localCodes);
+        this.addingRows.set(false);
+        this.adding.set(false);
+        this.matchTerms();
+      },
+      error: (error: unknown) => this.addFailed(error),
+    });
   }
 
   protected noMap(row: MapRow): void {
@@ -586,7 +727,7 @@ export class MapPage implements OnInit {
   }
 
   protected deleteRow(row: MapRow): void {
-    if (!confirm(`Remove ${row.code} from the map? Its targets go with it.`)) {
+    if (!confirm(`Remove ${row.code} ${row.term} from the map? Its targets go with it.`)) {
       return;
     }
     this.saving.set(true);
@@ -621,17 +762,8 @@ export class MapPage implements OnInit {
     }
     this.addingRows.set(true);
     this.pageError.set(null);
-    this.api.addRows(this.id, rows).subscribe({
-      next: () =>
-        this.api.rows(this.id).subscribe({
-          next: (all) => {
-            this.rows.set(all);
-            this.addingRows.set(false);
-            this.adding.set(false);
-            this.matchTerms();
-          },
-          error: (error: unknown) => this.addFailed(error),
-        }),
+    this.api.addLocalCodes(this.id, rows).subscribe({
+      next: () => this.reloadAndMatch(),
       error: (error: unknown) => this.addFailed(error),
     });
   }
@@ -692,6 +824,6 @@ export class MapPage implements OnInit {
   }
 }
 
-function choice(target: MapTarget): { conceptId: string; relationship: Relationship } {
-  return { conceptId: target.code, relationship: target.relationship };
+function choice(target: MapTarget): { code: string; relationship: Relationship } {
+  return { code: target.code, relationship: target.relationship };
 }

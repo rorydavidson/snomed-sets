@@ -29,6 +29,7 @@ describe('MapsPage', () => {
         localSystemVersion: null,
         updatedAt: '2026-11-20T12:00:00Z',
         counts: { total: 12, unmapped: 4, suggested: 2, mapped: 5, noMap: 1 },
+        localCodeCount: 0,
       },
     ]);
     await fixture.whenStable();

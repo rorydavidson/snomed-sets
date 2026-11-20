@@ -93,7 +93,7 @@ describe('MapPage', () => {
 
     page.querySelector<HTMLElement>('tr[data-row="1"]')!.click();
     await fixture.whenStable();
-    const accept = [...page.querySelectorAll<HTMLButtonElement>('.panel button')].find((button) => button.textContent?.trim() === 'Accept');
+    const accept = [...page.querySelectorAll<HTMLButtonElement>('app-map-row-detail button')].find((button) => button.textContent?.trim() === 'Accept');
     accept!.click();
 
     const save = http.expectOne('/api/maps/7/rows/1');
@@ -173,7 +173,7 @@ describe('MapPage', () => {
     page.querySelector<HTMLElement>('tr[data-row="1"]')!.click();
     await fixture.whenStable();
 
-    expect(page.querySelector('.panel')?.textContent).toContain('too short to look for automatically');
+    expect(page.querySelector('app-map-row-detail')?.textContent).toContain('too short to look for automatically');
   });
 
   it('opens a row when clicked and closes it when clicked again', async () => {
@@ -197,7 +197,7 @@ describe('MapPage', () => {
     expect(page.querySelector('tr.detail')?.textContent).toContain('Cold');
   });
 
-  it('lists the local codes no concept is mapped to, not counting suggestions', async () => {
+  it('shows the local codes of a map from SNOMED CT in a view of their own, with what maps to each', async () => {
     const fromSnomed: CodeMap = { ...MAP, direction: 'FROM_SNOMED', localCodeCount: 3 };
     const target = (code: string, term: string): MapTarget => ({ ...ASTHMA, code, term, fullySpecifiedName: '' });
     const page = await load(
@@ -213,26 +213,41 @@ describe('MapPage', () => {
       ],
     );
 
-    expect(page.textContent).toContain('2 of the local codes have no concept mapped to them yet.');
-    [...page.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Show them')!.click();
-    await fixture.whenStable();
+    // The concepts come first, with nothing about local codes stacked above them.
+    expect(page.querySelector('.map-table')).not.toBeNull();
+    expect(page.querySelector('app-map-local-codes')).toBeNull();
+    const tab = page.querySelector<HTMLButtonElement>('#tab-local')!;
+    // A suggestion nobody accepted does not count as mapped.
+    expect(tab.textContent).toContain('Local codes (3 · 2 with nothing mapped)');
 
-    const listed = page.querySelector('.unused')!.textContent;
-    expect(listed).toContain('L2');
-    expect(listed).toContain('L3');
-    expect(listed).not.toContain('L1');
+    tab.click();
+    await fixture.whenStable();
+    expect(page.querySelector('.map-table')).toBeNull();
+    expect(page.querySelector('tr[data-local="L1"]')?.textContent).toContain('Asthma');
+    expect(page.querySelector('tr[data-local="L2"]')?.textContent).toContain('Nothing yet');
+
+    page.querySelector<HTMLInputElement>('#only-unmapped')!.click();
+    await fixture.whenStable();
+    expect([...page.querySelectorAll('tr[data-local]')].map((line) => line.getAttribute('data-local'))).toEqual(['L2', 'L3']);
   });
 
-  it('adds concepts found by searching to a map from SNOMED CT', async () => {
+  it('opens a dialog to search for concepts to add to a map from SNOMED CT', async () => {
     const fromSnomed: CodeMap = { ...MAP, direction: 'FROM_SNOMED' };
     const page = await load([row(1, '195967001', 'Asthma', { termChecked: true })], fromSnomed);
 
-    expect(page.querySelector('app-concept-picker')).toBeNull();
+    expect(page.querySelector('app-map-add-concepts')).toBeNull();
     [...page.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Add concepts')!.click();
     await fixture.whenStable();
 
-    expect(page.querySelector('app-concept-picker')).not.toBeNull();
-    expect(page.textContent).toContain('Import a list or ECL');
+    expect(page.querySelector('app-map-add-concepts dialog app-concept-picker')).not.toBeNull();
+    expect(page.querySelector('app-map-add-concepts')?.textContent).toContain('Import a list or ECL instead');
+  });
+
+  it('has no tabs in a map to SNOMED CT', async () => {
+    const page = await load([row(1, 'D01', 'Asthma', { termChecked: true })]);
+
+    expect(page.querySelector('.tabs')).toBeNull();
+    expect(page.textContent).toContain('Add codes');
   });
 
   it('offers local codes as targets in a map from SNOMED CT', async () => {
@@ -285,5 +300,56 @@ describe('MapPage', () => {
 
     expect(page.querySelector('tr[data-row="1"]')).toBeNull();
     expect(page.querySelector('tr[data-row="2"]')).not.toBeNull();
+  });
+
+  it('filters the table by what is typed under a column heading, and can clear it', async () => {
+    const page = await load([
+      row(1, 'D01', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [ASTHMA] }),
+      row(2, 'D02', 'Cold', { termChecked: true }),
+    ]);
+
+    const term = page.querySelector<HTMLInputElement>('input[data-filter="term"]')!;
+    term.value = 'zzz';
+    term.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    // The headings stay, so the filter that emptied the table can be changed.
+    expect(page.querySelector('input[data-filter="term"]')).not.toBeNull();
+    expect(page.textContent).toContain('No codes match the filters.');
+
+    [...page.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Clear filters')!.click();
+    await fixture.whenStable();
+    expect(page.querySelectorAll('tr[data-row]').length).toBe(2);
+
+    const target = page.querySelector<HTMLInputElement>('input[data-filter="target"]')!;
+    target.value = '195967001';
+    target.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect([...page.querySelectorAll('tr[data-row]')].map((found) => found.getAttribute('data-row'))).toEqual(['1']);
+  });
+
+  it('sorts by a column heading: up, then down, then the original order', async () => {
+    const page = await load([
+      row(1, 'D10', 'Cold', { termChecked: true }),
+      row(2, 'D2', 'Asthma', { termChecked: true }),
+      row(3, 'D1', 'Gout', { termChecked: true }),
+    ]);
+    const order = () => [...page.querySelectorAll('tr[data-row]')].map((found) => found.getAttribute('data-row'));
+    const code = page.querySelector<HTMLButtonElement>('th button.sort')!;
+
+    code.click();
+    await fixture.whenStable();
+    // Numbers in codes sort as numbers.
+    expect(order()).toEqual(['3', '2', '1']);
+    expect(code.closest('th')?.getAttribute('aria-sort')).toBe('ascending');
+
+    code.click();
+    await fixture.whenStable();
+    expect(order()).toEqual(['1', '2', '3']);
+
+    code.click();
+    await fixture.whenStable();
+    expect(order()).toEqual(['1', '2', '3']);
+    expect(code.closest('th')?.hasAttribute('aria-sort')).toBe(false);
   });
 });

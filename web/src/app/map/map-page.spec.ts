@@ -113,6 +113,15 @@ describe('MapPage', () => {
     save.flush(row(1, 'D01', 'Asthma', { status: 'NO_MAP', termChecked: true }));
   });
 
+  it('does not claim to have looked for a term too short to search', async () => {
+    const page = await load([row(1, 'D08', 'MI', { termChecked: true })]);
+
+    page.querySelector<HTMLElement>('tr[data-row="1"]')!.click();
+    await fixture.whenStable();
+
+    expect(page.querySelector('.panel')?.textContent).toContain('too short to look for automatically');
+  });
+
   it('filters the table by status', async () => {
     const page = await load([
       row(1, 'D01', 'Asthma', { status: 'MAPPED', termChecked: true, targets: [ASTHMA] }),

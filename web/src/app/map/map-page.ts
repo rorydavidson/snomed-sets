@@ -24,6 +24,8 @@ import { ConceptPicker } from '../value-set/concept-picker';
 import { CodeListInput } from './code-list-input';
 
 const PAGE_SIZE = 50;
+/** Snowstorm refuses shorter search terms, so the server does not look for them. */
+const SHORTEST_SEARCH = 3;
 
 type StatusFilter = RowStatus | 'ALL';
 
@@ -201,9 +203,7 @@ const STATUS_LABELS: Record<RowStatus, string> = {
               } @else if (row.status === 'NO_MAP') {
                 <p>Marked as having no map: nothing in SNOMED CT fits.</p>
               } @else if (row.targets.length === 0) {
-                <p class="muted">
-                  {{ row.termChecked ? 'No concept has exactly this term. Search below to choose one.' : 'Not mapped yet.' }}
-                </p>
+                <p class="muted">{{ unmappedMessage(row) }}</p>
               }
 
               @if (row.targets.length > 0) {
@@ -414,6 +414,14 @@ export class MapPage implements OnInit {
       },
       error: (error: unknown) => this.loadError.set(describeMapError(error)),
     });
+  }
+
+  /** Why an unmapped row has no suggestion. A term under three characters is never searched for. */
+  protected unmappedMessage(row: MapRow): string {
+    if (row.term.trim().length < SHORTEST_SEARCH) {
+      return 'This term is too short to look for automatically. Search below to choose a concept.';
+    }
+    return row.termChecked ? 'No concept has exactly this term. Search below to choose one.' : 'Not mapped yet.';
   }
 
   protected statusLabel(status: RowStatus): string {

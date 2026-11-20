@@ -312,7 +312,9 @@ Where the first part differs from the sections above:
 - `target_scope_ecl` and `score` are left until automap, and `REVIEW`, visibility, versions and
   deprecation until the phases that use them. Rows already carry `version_number`.
 - The Snowstorm description search (`GET /browser/{branch}/descriptions`) and the batch fetch of
-  descriptions by concept were checked against Snowstorm's source. They have not been run against
-  a live Snowstorm with a release loaded.
+  descriptions by concept were checked against Snowstorm's source. The description search has
+  also been run against a live Snowstorm with the 2026-07-01 International release: it returns the
+  shortest descriptions first and refuses terms under three characters, as assumed. The batch
+  fetch is not used until phase 2.
 - The CSV download neutralises formula-like values with an apostrophe, as the upgrade report does.
   The TSV is exact.

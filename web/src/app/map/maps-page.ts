@@ -25,7 +25,7 @@ import { LibraryViews } from '../library/library-views';
         </div>
       } @else if (maps(); as list) {
         <p class="meta" role="status">
-          {{ list.length === 0 ? 'No maps yet.' : list.length === 1 ? '1 map' : list.length + ' maps' }}
+          {{ list.length === 0 ? 'No maps yet.' : list.length === 1 ? '1 map.' : list.length + ' maps.' }}
           Maps are private to you for now: nobody else can see them.
         </p>
         @if (list.length > 0) {

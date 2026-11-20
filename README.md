@@ -46,7 +46,7 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   ECL set never published shows a dash until it is.
 - Visitors see how much has been shared so far under the introduction: the number of published
   community value sets and of different concepts across them, each counted once. Private sets and
-  drafts are not counted. The figures are worked out at most every five minutes.
+  drafts are not counted. The figures are counted afresh on each visit, so a set made private or deleted drops out at once.
 - Deprecated sets stay in the list, greyed out and marked as deprecated, and can be hidden with a tickbox.
 
 ### Creating and editing value sets

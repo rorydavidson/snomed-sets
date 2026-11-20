@@ -316,6 +316,67 @@ public class SnowstormClient {
 	}
 
 	/**
+	 * Active descriptions of active concepts matching a term, each with its concept. Snowstorm
+	 * puts the shortest descriptions first, so one that is exactly the term comes before longer
+	 * ones that merely contain it.
+	 *
+	 * @param languages language codes such as "en" and "fr"; only descriptions in them are searched
+	 */
+	public List<DescriptionMatch> descriptionsMatching(String term, String branch, Collection<String> languages,
+			int limit) {
+		if (!isValidBranch(branch)) {
+			throw new SnowstormException("Branch path is not valid: " + branch, true, null);
+		}
+		String acceptLanguage = String.join(",", languages);
+		if (!acceptLanguage.matches("[A-Za-z0-9,-]{1,100}")) {
+			throw new SnowstormException("Language is not valid: " + acceptLanguage, true, null);
+		}
+		SnowstormDescriptionPage page;
+		try {
+			page = restClient.get()
+					.uri(uriBuilder -> uriBuilder
+							.pathSegment("browser")
+							.pathSegment(branch.split("/"))
+							.pathSegment("descriptions")
+							// A placeholder, so the term is encoded rather than read as part of the URI.
+							.queryParam("term", "{term}")
+							.queryParam("active", true)
+							.queryParam("conceptActive", true)
+							.queryParam("language", languages.toArray())
+							.queryParam("offset", 0)
+							.queryParam("limit", limit)
+							.build(term))
+					.header(HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage)
+					.retrieve()
+					.body(SnowstormDescriptionPage.class);
+		}
+		catch (RestClientResponseException e) {
+			boolean rejected = e.getStatusCode().is4xxClientError();
+			throw new SnowstormException(rejected ? "Snowstorm rejected the search." : "Snowstorm returned an error.",
+					rejected, e);
+		}
+		catch (RestClientException e) {
+			throw new SnowstormException("Snowstorm could not be reached or did not return JSON.", false, e);
+		}
+		if (page == null || page.items() == null) {
+			throw new SnowstormException("Snowstorm returned an empty response.", false, null);
+		}
+		return page.items().stream()
+				.filter(item -> item.concept() != null && item.term() != null)
+				.map(item -> new DescriptionMatch(item.term(), item.languageCode(),
+						new ExpansionPage.Concept(item.concept().conceptId(), termOf(item.concept().pt()),
+								termOf(item.concept().fsn()),
+								item.concept().pt() == null ? null : item.concept().pt().lang())))
+				.toList();
+	}
+
+	record SnowstormDescriptionPage(List<SnowstormDescriptionMatch> items) {
+	}
+
+	record SnowstormDescriptionMatch(String term, String languageCode, SnowstormConcept concept) {
+	}
+
+	/**
 	 * The same as {@link #expand(String, String, int, int)}, with the expression sent in the request
 	 * body. Used for expressions listing many concepts, which would be too long for a URL.
 	 */

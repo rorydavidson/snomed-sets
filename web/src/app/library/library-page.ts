@@ -5,11 +5,12 @@ import { Session } from '../core/session';
 import { ConceptSearchHit, ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 import { LibraryHero } from './library-hero';
 import { LibrarySearch, LibrarySearchResult } from './library-search';
+import { LibraryViews } from './library-views';
 import { StepsTip } from './steps-tip';
 
 @Component({
   selector: 'app-library-page',
-  imports: [RouterLink, DatePipe, DecimalPipe, LibraryHero, StepsTip, LibrarySearch],
+  imports: [RouterLink, DatePipe, DecimalPipe, LibraryHero, StepsTip, LibrarySearch, LibraryViews],
   template: `
     @if (!signedIn()) {
       <app-library-hero />
@@ -25,6 +26,8 @@ import { StepsTip } from './steps-tip';
         }
       </div>
       @if (signedIn()) {
+        <!-- Maps are private for now, so visitors have only one view and no switch. -->
+        <app-library-views />
         <app-steps-tip />
       }
 

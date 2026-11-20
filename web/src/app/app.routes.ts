@@ -28,6 +28,25 @@ export const routes: Routes = [
     canActivate: [signedInGuard],
     title: 'Edit value set · SNOMED CT value sets',
   },
+  // Maps are private to their owner for now, so every map page needs a sign-in.
+  {
+    path: 'maps',
+    loadComponent: () => import('./map/maps-page').then((m) => m.MapsPage),
+    canActivate: [signedInGuard],
+    title: 'Maps · SNOMED CT value sets',
+  },
+  {
+    path: 'maps/new',
+    loadComponent: () => import('./map/map-new-page').then((m) => m.MapNewPage),
+    canActivate: [signedInGuard],
+    title: 'New map · SNOMED CT value sets',
+  },
+  {
+    path: 'maps/:id',
+    loadComponent: () => import('./map/map-page').then((m) => m.MapPage),
+    canActivate: [signedInGuard],
+    title: 'Map · SNOMED CT value sets',
+  },
   // Loaded only when opened, as most visits never need it.
   {
     path: 'profile',

@@ -288,4 +288,29 @@ class SnowstormClientTests {
 				.containsExactlyEntriesOf(java.util.Map.of("233678006", List.of("195967001")));
 		server.verify();
 	}
+
+	@Test
+	void findsDescriptionsWithTheirConceptsInTheEditionsLanguages() {
+		server.expect(requestTo(startsWith("https://snowstorm.test/browser/MAIN/SNOMEDCT-NO/2026-03-15/descriptions?")))
+				// Encoded, so a term cannot add parameters of its own.
+				.andExpect(queryParam("term", "heart%20attack%26limit%3D9"))
+				.andExpect(queryParam("active", "true"))
+				.andExpect(queryParam("conceptActive", "true"))
+				.andExpect(queryParam("language", "no", "en"))
+				.andExpect(queryParam("limit", "50"))
+				.andRespond(withSuccess("""
+						{"items":[{"term":"Heart attack","active":true,"languageCode":"en","module":"900000000000207008",
+						  "concept":{"conceptId":"22298006","active":true,
+						    "pt":{"term":"Myocardial infarction","lang":"en"},
+						    "fsn":{"term":"Myocardial infarction (disorder)","lang":"en"}}}],
+						 "totalElements":1}
+						""", MediaType.APPLICATION_JSON));
+
+		List<DescriptionMatch> matches = client.descriptionsMatching("heart attack&limit=9", "MAIN/SNOMEDCT-NO/2026-03-15",
+				List.of("no", "en"), 50);
+
+		assertThat(matches).containsExactly(new DescriptionMatch("Heart attack", "en",
+				new ExpansionPage.Concept("22298006", "Myocardial infarction", "Myocardial infarction (disorder)", "en")));
+		server.verify();
+	}
 }

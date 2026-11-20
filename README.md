@@ -101,6 +101,51 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 - **Tags**: up to ten per set, typed in or picked from tags already in use.
 - **Sharing**: a set is private to its owner until shared with the community.
 
+### Maps to SNOMED CT
+
+A map gives each code of a local list (a picklist, a legacy coding scheme) one or more SNOMED CT
+concepts. This is the first part of maps: maps to SNOMED CT, private to their owner. Maps from
+SNOMED CT, publishing and versions, upgrading and automap are still to come, and are described in
+`docs/maps-design.md`.
+
+- **Two library views.** Signed-in people have a switch at the top of the library between Value
+  sets and Maps. The Maps view lists your own maps with the release each is built on, how many
+  codes it has and how many are done. Maps are private for now, so visitors see no switch.
+- **Creating a map.** Give it a name, say what the local code list is called (with an optional
+  version and identifier), and choose a code system and release as for a value set. A map is built
+  on that release's branch.
+- **Local codes.** Choose a CSV or TSV file, or paste or type one code and its term per line. The
+  file is read in the browser: you say whether the first row is a header and which columns hold
+  the code and the term, and only those two columns are sent. A code can be in a map once, and
+  codes that differ only in case are different codes. Up to 5,000 codes, 100 characters a code
+  and 500 a term. More can be added later with Add codes.
+- **Term matching.** As soon as a map with new codes is opened, each term is looked for among the
+  active SNOMED CT descriptions of the release, synonyms included, in every language of the
+  edition. A concept with a description that is the same words (case and spacing aside) becomes a
+  suggestion. The browser asks for 100 codes at a time and shows how far it has got; it can be
+  stopped, and anything left is picked up with Match remaining.
+- **Suggestions are not maps.** The same words can name a finding, a disorder and a morphology, so
+  nothing is mapped until the owner accepts it. A code with exactly one suggestion can be accepted
+  with Enter, or all such codes together with one button. A code with several waits for a choice.
+- **The workbench.** Codes are in a table with their status (Unmapped, Suggested, Mapped, No map),
+  a status filter and a text filter. The table runs the full width of the page. Clicking a code
+  opens its targets under its row, and clicking it again closes them, with the concept search and concept details used for
+  hand-picked sets. A code can have up to ten targets.
+  Each has a relationship: Equivalent, SNOMED CT concept is broader, SNOMED CT concept is narrower,
+  or Related. "No map" records that nothing fits, which is not the same as not having looked. A
+  note can be kept with each code. Every change is saved as it is made. Arrow keys move between
+  rows, Space opens or closes one and N marks a row as having no map.
+- **Targets come from Snowstorm.** The browser sends only concept identifiers. The server checks
+  each is an active concept in the map's release and stores its terms, so a made-up term cannot be
+  attached to a concept.
+- **Downloading.** The map as it stands, as CSV or TSV: one line for each code and target, and one
+  for a code with no target, with the code, its term, the SNOMED CT ID, its preferred term, the
+  relationship, the status and the note. Suggestions nobody accepted are left out and their codes
+  written as unmapped. In the CSV a value a spreadsheet would read as a formula starts with an
+  apostrophe; the TSV has every code exactly as given, for programs.
+- No licence note is shown beside map downloads. Whether a map counts as Global Patient Set
+  content has not been confirmed, so the page does not say it does.
+
 ### Viewing concepts
 
 - Concept lists show each concept's preferred term and the language it is given in. They start in the
@@ -244,8 +289,8 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
   CC BY-ND 4.0, and links to SNOMED CT licensing, SNOMED International and the privacy page.
 - The privacy page lists everything the site keeps about people, why and for how long: an internal
   account ID (a random code from the SNOMED International account, never shown), name, the email
-  address only while messages are switched on, organisation and picture, value sets, and a one-day
-  record of messages sent. It also covers messages sent through Resend,
+  address only while messages are switched on, organisation and picture, value sets, maps with the
+  local codes uploaded to them, and a one-day record of messages sent. It also covers messages sent through Resend,
   the sign-in and request-forgery cookies, what the browser remembers, the visitors' search limit and
   web server logs, and points to SNOMED International's privacy policy for the account itself.
 - `PRIVACY_OPERATOR` and `PRIVACY_CONTACT` set who the page names as running the site and the email
@@ -257,7 +302,7 @@ A collaborative application for creating, managing and sharing SNOMED CT value s
 | Part | What it is |
 |---|---|
 | `web/` | Angular frontend, served by nginx |
-| `api/` | Spring Boot backend for frontend. Handles Keycloak sign-in, stores value sets in MariaDB and calls Snowstorm |
+| `api/` | Spring Boot backend for frontend. Handles Keycloak sign-in, stores value sets and maps in MariaDB and calls Snowstorm |
 | `docker-compose.yml` | Runs the frontend, backend and database together |
 
 The browser only ever talks to the `web` container, which passes API and sign-in requests on to

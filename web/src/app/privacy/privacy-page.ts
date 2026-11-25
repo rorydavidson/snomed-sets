@@ -1,11 +1,5 @@
-import { HttpClient } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
-
-/** Who runs this deployment, as configured; null fields have not been set. */
-export interface SiteInfo {
-  operator: string | null;
-  privacyContact: string | null;
-}
+import { Component, OnInit, computed, inject } from '@angular/core';
+import { SiteConfig } from '../core/site-config';
 
 /**
  * What this site keeps about people, why and for how long. Keep it in step with the code: it
@@ -44,15 +38,16 @@ export interface SiteInfo {
   `,
 })
 export class PrivacyPage implements OnInit {
-  private readonly http = inject(HttpClient);
+  private readonly config = inject(SiteConfig);
 
-  protected readonly site = signal<SiteInfo | null>(null);
+  protected readonly site = this.config.info;
+  /**
+   * Maps are left out only when the deployment says they are switched off. If that cannot be
+   * loaded the page describes them, as saying too much here is safer than leaving something out.
+   */
+  protected readonly maps = computed(() => this.site()?.mapsEnabled !== false);
 
   ngOnInit(): void {
-    this.http.get<SiteInfo>('/api/site').subscribe({
-      next: (info) => this.site.set(info),
-      // The page still reads properly without the deployment's details.
-      error: () => this.site.set({ operator: null, privacyContact: null }),
-    });
+    this.config.load();
   }
 }

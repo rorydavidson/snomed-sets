@@ -19,7 +19,9 @@ describe('PrivacyPage', () => {
 
   it('names who runs the site and how to contact them, as configured', async () => {
     const fixture = open();
-    http.expectOne('/api/site').flush({ operator: 'Example Health Trust', privacyContact: 'privacy@example.org' });
+    http
+      .expectOne('/api/site')
+      .flush({ operator: 'Example Health Trust', privacyContact: 'privacy@example.org', mapsEnabled: true });
     await fixture.whenStable();
     const page = fixture.nativeElement as HTMLElement;
 
@@ -30,6 +32,17 @@ describe('PrivacyPage', () => {
     // What is kept, and that messages are never stored.
     expect(page.querySelector('table')?.textContent).toContain('The message itself is never kept.');
     expect(page.textContent).toContain("SNOMED International's privacy policy");
+    expect(page.querySelector('table')?.textContent).toContain('Your maps');
+  });
+
+  it('leaves maps out when this deployment has switched them off', async () => {
+    const fixture = open();
+    http.expectOne('/api/site').flush({ operator: null, privacyContact: null, mapsEnabled: false });
+    await fixture.whenStable();
+    const page = fixture.nativeElement as HTMLElement;
+
+    expect(page.querySelector('table')?.textContent).toContain('Your value sets');
+    expect(page.textContent).not.toMatch(/\bmaps?\b/i);
   });
 
   it('still reads properly when the deployment has not said who runs it', async () => {
@@ -41,5 +54,7 @@ describe('PrivacyPage', () => {
     expect(page.textContent).toContain('The organisation that runs this site is responsible');
     expect(page.textContent).toContain('contact the organisation that runs it');
     expect(page.querySelector('a[href^="mailto:"]')).toBeNull();
+    // Not knowing whether maps are on, it says what would be kept if they were.
+    expect(page.querySelector('table')?.textContent).toContain('Your maps');
   });
 });

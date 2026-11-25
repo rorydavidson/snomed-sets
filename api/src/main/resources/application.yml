@@ -53,6 +53,12 @@ site:
   operator: ${PRIVACY_OPERATOR:}
   privacy-contact: ${PRIVACY_CONTACT:}
 
+features:
+  maps:
+    # Set MAPS_ENABLED=false to switch maps off: the maps API is removed and the frontend hides
+    # them. Maps already made stay in the database and come back when this is switched on again.
+    enabled: ${MAPS_ENABLED:true}
+
 messages:
   # Messages to value set owners are sent through Resend. Messaging is switched off, and the
   # "Message owner" button hidden, unless the API key, sender address and app URL are all set.

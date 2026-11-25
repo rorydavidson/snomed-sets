@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 
 import org.snomed.valuesets.map.MapView.RowView;
 import org.snomed.valuesets.user.CurrentUser;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,8 +26,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Maps are private to their owner, so nothing here is open to visitors who have not signed in. */
+/**
+ * Maps are private to their owner, so nothing here is open to visitors who have not signed in.
+ * A deployment that switches maps off has no maps API at all, so every request here gets a 404.
+ */
 @RestController
+@ConditionalOnProperty(name = "features.maps.enabled", havingValue = "true", matchIfMissing = true)
 @RequestMapping("/api/maps")
 public class CodeMapController {
 

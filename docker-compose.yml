@@ -32,6 +32,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MESSAGES_FROM: ${MESSAGES_FROM:-}
       APP_URL: ${APP_URL:-}
+      # Set to false to switch maps off. Maps already made are kept.
+      MAPS_ENABLED: ${MAPS_ENABLED:-true}
       # Shown on the privacy page.
       PRIVACY_OPERATOR: ${PRIVACY_OPERATOR:-}
       PRIVACY_CONTACT: ${PRIVACY_CONTACT:-}

@@ -49,6 +49,27 @@ describe('LibraryPage', () => {
     TestBed.inject(Session).state.set({ status: 'signedIn', name: 'Me', avatarUrl: null });
   });
 
+  it('offers the switch to maps only when this deployment has maps switched on', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    http.expectOne('/api/site').flush({ operator: null, privacyContact: null, mapsEnabled: true });
+    await fixture.whenStable();
+
+    const link = (fixture.nativeElement as HTMLElement).querySelector('app-library-views a[href="/maps"]');
+    expect(link?.textContent).toContain('Maps');
+  });
+
+  it('has no switch to maps when this deployment has switched them off', async () => {
+    const fixture = TestBed.createComponent(LibraryPage);
+    fixture.detectChanges();
+    http.expectOne('/api/value-sets').flush([ASTHMA]);
+    http.expectOne('/api/site').flush({ operator: null, privacyContact: null, mapsEnabled: false });
+    await fixture.whenStable();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-library-views')).toBeNull();
+  });
+
   it('lists value sets with a link to each', async () => {
     const fixture = TestBed.createComponent(LibraryPage);
     fixture.detectChanges();

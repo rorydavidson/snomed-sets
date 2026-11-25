@@ -2,6 +2,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Session } from '../core/session';
+import { SiteConfig } from '../core/site-config';
 import { ConceptSearchHit, ValueSet, ValueSetApi, describeError } from '../core/value-set-api';
 import { LibraryHero } from './library-hero';
 import { LibrarySearch, LibrarySearchResult } from './library-search';
@@ -26,8 +27,11 @@ import { StepsTip } from './steps-tip';
         }
       </div>
       @if (signedIn()) {
-        <!-- Maps are private for now, so visitors have only one view and no switch. -->
-        <app-library-views />
+        <!-- Maps are private for now, so visitors have only one view and no switch. Nor is there one
+             when this deployment has switched maps off. -->
+        @if (mapsEnabled()) {
+          <app-library-views />
+        }
         <app-steps-tip />
       }
 
@@ -159,7 +163,10 @@ export class LibraryPage implements OnInit {
   private readonly api = inject(ValueSetApi);
   private readonly session = inject(Session);
 
+  private readonly site = inject(SiteConfig);
+
   protected readonly signedIn = computed(() => this.session.state().status === 'signedIn');
+  protected readonly mapsEnabled = computed(() => this.site.info()?.mapsEnabled === true);
 
   protected readonly valueSets = signal<ValueSet[] | null>(null);
   protected readonly error = signal<string | null>(null);
@@ -236,6 +243,7 @@ export class LibraryPage implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    this.site.load();
     // Only for display names: the short name is shown instead if this fails.
     this.api.codeSystems().subscribe({
       next: (codeSystems) =>

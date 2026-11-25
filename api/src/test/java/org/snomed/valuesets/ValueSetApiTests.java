@@ -946,7 +946,8 @@ class ValueSetApiTests {
 		mvc.perform(get("/api/site"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.operator").value(nullValue()))
-				.andExpect(jsonPath("$.privacyContact").value(nullValue()));
+				.andExpect(jsonPath("$.privacyContact").value(nullValue()))
+				.andExpect(jsonPath("$.mapsEnabled").value(true));
 	}
 
 	@Test

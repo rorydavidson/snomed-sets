@@ -109,6 +109,11 @@ concepts, in one direction. **To SNOMED CT**, each local code is given one or mo
 for now. Publishing and versions, upgrading and automap are still to come, and are described in
 `docs/maps-design.md`.
 
+Maps can be switched off for a whole deployment with `MAPS_ENABLED=false`. The maps API is then
+not there at all (every `/api/maps` address answers 404), the catalogue has no switch to Maps, map
+addresses show the not-found page, and the privacy page no longer mentions maps. Maps already made
+are kept in the database and come back when it is switched on again. It is on by default.
+
 - **Two catalogue views.** Signed-in people have a switch at the top of the catalogue between Value
   sets and Maps. The Maps view lists your own maps with the release each is built on, how many
   codes it has and how many are done. Maps are private for now, so visitors see no switch.

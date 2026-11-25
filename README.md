@@ -124,8 +124,8 @@ for now. Publishing and versions, upgrading and automap are still to come, and a
 - **Concepts to map, for a map from SNOMED CT.** Picked with the concept search, or imported as
   a list of identifiers or as everything an ECL expression matches, with the same checks as a
   hand-picked value set: inactive concepts are not added and their replacements are offered. Up to
-  5,000 concepts, and more can be added later with Add concepts, which offers the same concept
-  search and import. Only identifiers are sent; the
+  5,000 concepts, and more can be added later with Add concepts, a dialog with the same concept
+  search and a way on to the import. Only identifiers are sent; the
   server checks each is active in the release and stores its terms. Changing the release while
   creating a map clears the concepts, as they were chosen on the other one.
 - **Term matching, to SNOMED CT.** As soon as a map with new codes is opened, each term is looked for among the
@@ -133,9 +133,11 @@ for now. Publishing and versions, upgrading and automap are still to come, and a
   edition. A concept with a description that is the same words (case and spacing aside) becomes a
   suggestion. The browser asks for 100 codes at a time and shows how far it has got; it can be
   stopped, and anything left is picked up with Match remaining.
-- **Local codes nothing is mapped to.** A map from SNOMED CT says how many of its local codes
-  have no concept mapped to them yet and lists them on request, with a filter. A suggestion nobody
-  has accepted does not count. It is worked out in the browser from what the page already holds.
+- **Two views of a map from SNOMED CT.** Concepts is the map table. Local codes lists every local
+  code with the concepts mapped to it, a filter, and a switch to show only those with nothing
+  mapped; its tab says how many those are. A suggestion nobody has accepted does not count. More
+  local codes are added from that view. It is worked out in the browser from what the page
+  already holds.
 - **Term matching, from SNOMED CT.** Every active name of each concept (preferred term, fully
   specified name and synonyms, in every language of the edition) is compared with the local terms,
   so Myocardial infarction is offered a local code called "Heart attack". The names are fetched
@@ -150,7 +152,10 @@ for now. Publishing and versions, upgrading and automap are still to come, and a
   row with several suggestions and says how many were left. Dismissing drops them all and leaves
   the rows unmapped. X ticks the row in focus.
 - **The workbench.** Codes are in a table with their status (Unmapped, Suggested, Mapped, No map),
-  a status filter and a text filter. The table runs the full width of the page. Clicking a code
+  and the table runs the full width of the page. Clicking a column heading sorts by it: once
+  upwards, again downwards, a third time back to the order the codes were given in. Under each
+  heading is a filter for that column: text for the code, the term and the target, a list for the
+  status. Numbers in codes sort as numbers. It works the same in maps to and from SNOMED CT. Clicking a code
   opens its targets under its row, and clicking it again closes them, with the concept search and concept details used for
   hand-picked sets. In a map from SNOMED CT the rows are concepts and the targets are picked from
   a filterable list of the local codes instead. A row can have up to ten targets.

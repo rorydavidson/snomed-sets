@@ -358,3 +358,29 @@ Where the first part differs from the sections above:
   ECL expression one button further. Before, only the import was offered there.
 - The list is read only. Starting from a local code and finding a concept for it is still two
   steps: add the concept, then choose the code on its row.
+
+## 19. Sorting and filtering by column
+
+- Each column heading of the workbench table sorts by that column, and holds a filter for it. The
+  status list and the single "find a code or term" box above the table are gone, replaced by these.
+- Sorting and filtering happen in the browser, on rows the page already holds. Nothing is stored:
+  a reload goes back to the original order with no filters.
+- The target column sorts by a row's first target and filters on the code and term of any of them.
+- The box that ticks all suggestions still ticks what the filters let through, on every page.
+
+## 20. A map from SNOMED CT in two views
+
+- Section 18 put the local codes with nothing mapped, the concept search and the form for adding
+  local codes in panels stacked above the map table. With all three open the table was pushed
+  down the page and it was hard to tell which panel did what.
+- The page of a map from SNOMED CT now has two tabs. **Concepts** is the map table and nothing
+  else. **Local codes** is a table of every local code with the concepts mapped to it, a filter,
+  a switch for those with nothing mapped, and the form for adding more. The tab carries the count
+  of codes with nothing mapped, so it is seen without opening it.
+- **Add concepts** is a dialog holding the concept search. It stays open between additions and
+  hands over to the import dialog for a list or an ECL expression.
+- A map to SNOMED CT has no tabs: its local codes are its rows.
+- The local codes view, the dialog, the detail of a row and the form for adding local codes are
+  their own components (`map-local-codes.ts`, `map-add-concepts.ts`, `map-row-detail.ts`,
+  `map-add-codes.ts`), to keep the page from growing further. The row detail works out what a
+  change does to a row; the page saves it.
